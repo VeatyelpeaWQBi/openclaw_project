@@ -20,8 +20,7 @@ from stock_filter import filter_etf_candidates, calculate_volume_ratio
 from sectors import is_attack_sector, filter_attack_sectors
 from stock_data import get_stock_daily_kline_range
 from supertrend import is_supertrend_bullish
-from data_storage import (merge_and_save_kline, load_kline, save_signal,
-                          save_report, get_month_str, get_kline_filepath)
+from data_storage import merge_and_save_kline, save_signal, save_report
 import pandas as pd
 from datetime import datetime, timedelta
 import json
@@ -44,67 +43,35 @@ def get_last_trading_date():
 def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
     """
     加载已有日K数据，不足时增量获取
+    SQLite版本：不需要按月分文件
 
     参数:
         stock_code: 股票代码
         market: 市场
-        stock_name: 股票名称（用于文件命名）
-        sector_name: 所属板块（写入CSV）
+        stock_name: 股票名称
+        sector_name: 所属板块
 
     返回:
         DataFrame: 日K数据（SuperTrend最低需要15条）
     """
+    from data_storage import get_daily_data_from_sqlite
     from data_storage import INITIAL_FETCH_DAYS
 
-    now = datetime.now()
-    month_str = get_month_str(now)
-    last_month_str = get_month_str(now - timedelta(days=31))
+    existing = get_daily_data_from_sqlite(stock_code)
 
-    existing = load_kline(stock_code, month_str)
-
-    # 上个月的数据也加载（用于跨月）
-    if last_month_str != month_str:
-        prev_month = load_kline(stock_code, last_month_str)
-        if not prev_month.empty:
-            existing = pd.concat([prev_month, existing], ignore_index=True)
-            existing['date'] = pd.to_datetime(existing['date'])
-            existing = existing.drop_duplicates(subset='date', keep='last')
-            existing = existing.sort_values('date').reset_index(drop=True)
-
-    # 判断需要获取的日期范围
     if existing.empty:
-        # 完全没有数据，获取近60天（SuperTrend需要足够多的历史数据）
-        start_date = (now - timedelta(days=INITIAL_FETCH_DAYS)).strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=INITIAL_FETCH_DAYS)).strftime('%Y%m%d')
     else:
-        # 从已有数据最后一天的前一天开始（刷新上一个交易日）
-        last_date = existing['date'].max()
-        fetch_start = last_date - timedelta(days=1)
-        start_date = fetch_start.strftime('%Y%m%d')
+        last_date = pd.to_datetime(existing['date']).max()
+        start_date = (last_date - timedelta(days=1)).strftime('%Y%m%d')
 
-    end_date = now.strftime('%Y%m%d')
+    end_date = datetime.now().strftime('%Y%m%d')
 
-    # 获取数据
     new_df = get_stock_daily_kline_range(stock_code, market=market,
-                                         start_date=start_date, end_date=end_date)
+                                          start_date=start_date, end_date=end_date)
 
     if not new_df.empty:
-        # 合并并保存（当前月和上月）
-        for m_str in [month_str, last_month_str]:
-            month_data = new_df[new_df['date'].dt.strftime('%Y-%m') == m_str]
-            if not month_data.empty:
-                merge_and_save_kline(stock_code, month_data, m_str,
-                                     stock_name=stock_name, sector_name=sector_name)
-
-        # 重新加载合并后的数据
-        combined = load_kline(stock_code, month_str)
-        if last_month_str != month_str:
-            prev = load_kline(stock_code, last_month_str)
-            if not prev.empty:
-                combined = pd.concat([prev, combined], ignore_index=True)
-                combined['date'] = pd.to_datetime(combined['date'])
-                combined = combined.drop_duplicates(subset='date', keep='last')
-                combined = combined.sort_values('date').reset_index(drop=True)
-        return combined
+        return merge_and_save_kline(stock_code, new_df, stock_name=stock_name, sector_name=sector_name)
     else:
         return existing
 
@@ -159,6 +126,8 @@ def generate_report(date_str, top_sectors, candidates, has_signal):
 
 def run():
     """主运行函数"""
+    import time
+    start_time = time.time()
     date_str = datetime.now().strftime('%Y-%m-%d')
     print(f"=== 尾盘T+1信号生成 — {date_str} ===")
 
@@ -340,6 +309,12 @@ def run():
 
     print("\n运行完成！")
     print(report)
+
+    # 计算运行时长
+    elapsed = time.time() - start_time
+    elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
+    report += f"\n⏱️ 运行时长：{elapsed_str}"
+    print(f"\n⏱️ 总运行时长：{elapsed_str}")
 
     return report
 

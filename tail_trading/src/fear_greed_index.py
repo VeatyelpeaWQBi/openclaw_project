@@ -46,7 +46,7 @@ class FearGreedIndex:
         self.data_dir = data_dir
         self.index_history_dir = index_history_dir
 
-        # 加载指数数据（优先SQLite，CSV fallback）
+        # 加载指数数据（优先SQLite，CSV fallback用于指数历史文件）
         self.hs300 = self._load_index('hs300_kline.csv')
         self.zz1000 = self._load_index('zz1000_kline.csv')
 
@@ -54,7 +54,7 @@ class FearGreedIndex:
         # 如果本地没有数据文件，则后续用等权构造或沪深300近似
         self.all_a_index = self._try_load_full_a_index()
 
-        # 加载所有个股数据（优先SQLite，CSV fallback）
+        # 加载所有个股数据（只从SQLite）
         self.all_stocks = {}
         self.stock_names = {}
         self._load_all_stocks()
@@ -167,38 +167,12 @@ class FearGreedIndex:
             print(f"⚠️ SQLite加载个股数据失败: {e}")
             return None
 
-    def _csv_load_all_stocks(self):
-        """从CSV加载所有个股数据（fallback）"""
-        files = [f for f in os.listdir(self.data_dir) if f.endswith('.csv')]
-        for f in files:
-            code = f.split('_')[0]
-            name = f.replace('.csv', '').split('_', 1)[1] if '_' in f else code
-            filepath = os.path.join(self.data_dir, f)
-            try:
-                df = pd.read_csv(filepath)
-                df.columns = ['date', 'open', 'high', 'low', 'close',
-                              'volume', 'amount', 'turnover',
-                              'pe', 'pb', 'ps', 'pcf', 'vol_ratio']
-                df['date'] = pd.to_datetime(df['date'])
-                for col in ['open', 'high', 'low', 'close', 'volume',
-                            'amount', 'turnover']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                df = df.sort_values('date').reset_index(drop=True)
-                # 计算涨跌幅
-                df['change_pct'] = df['close'].pct_change() * 100
-                self.all_stocks[code] = df
-                self.stock_names[code] = name
-            except Exception:
-                continue
-
-        print(f"CSV加载 {len(self.all_stocks)} 只个股数据")
 
     def _load_all_stocks(self):
-        """加载所有个股数据（优先SQLite，CSV fallback）"""
-        result = self._sqlite_load_all_stocks()
-        if result is None or len(self.all_stocks) == 0:
-            # CSV fallback
-            self._csv_load_all_stocks()
+        """加载所有个股数据（只从SQLite加载）"""
+        self._sqlite_load_all_stocks()
+        if len(self.all_stocks) == 0:
+            print("⚠️ SQLite中无个股数据")
 
     def _try_load_full_a_index(self):
         """
