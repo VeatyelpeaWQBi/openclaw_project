@@ -134,8 +134,6 @@ def check_multi_timeframe_supertrend(df_daily, df_weekly, atr_period=10, multipl
 
 if __name__ == '__main__':
     # 测试
-    import sys
-    sys.path.append('***REMOVED***/tail_trading/src')
     from stock_data import get_stock_daily_kline
     
     print("测试SuperTrend计算...")
