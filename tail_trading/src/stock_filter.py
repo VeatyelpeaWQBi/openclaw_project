@@ -3,9 +3,6 @@
 实现游牧型T+1选股逻辑
 """
 
-import sys
-sys.path.append('***REMOVED***/tail_trading/src')
-
 from stock_data import get_stock_daily_kline
 from supertrend import is_supertrend_bullish
 import pandas as pd
