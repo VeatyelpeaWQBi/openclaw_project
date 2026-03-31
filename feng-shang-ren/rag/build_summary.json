@@ -1,0 +1,29 @@
+{
+  "version": 3,
+  "total_chunks": 13911,
+  "total_books": 5,
+  "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "embedding_dim": 384,
+  "faiss_type": "FlatIP",
+  "scene_types": [
+    "日常对话",
+    "内心独白",
+    "幽默吐槽",
+    "动作战斗",
+    "场景描写",
+    "感情互动",
+    "ACG文化",
+    "能力觉醒",
+    "回忆闪回",
+    "悬疑紧张"
+  ],
+  "chunks_per_book": {
+    "异体": 3017,
+    "第七脑域": 1514,
+    "时空之头号玩家": 1991,
+    "末日咆哮2": 3818,
+    "末日咆哮1": 3571
+  },
+  "build_time_seconds": 231.3,
+  "build_date": "2026-03-30 22:28:54"
+}

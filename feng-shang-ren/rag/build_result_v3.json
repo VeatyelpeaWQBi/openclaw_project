@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "version": 3,
+  "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "embedding_dim": 384,
+  "total_chunks": 13923,
+  "faiss_type": "FlatIP",
+  "build_time_seconds": 226.3,
+  "books": {
+    "异体": 3017,
+    "第七脑域": 1518,
+    "时空之头号玩家": 1998,
+    "末日咆哮2": 3819,
+    "末日咆哮1": 3571
+  },
+  "test_results": {
+    "test1_text_search": "搜索'校园里超能力觉醒被同学嘲笑 自嘲幽默' → 找到3个结果，最高相关度0.6365（第七脑域）",
+    "test2_hybrid_search": "搜索'青梅竹马脸红心跳表白' + 感情互动场景 → 找到3个结果，最高相关度0.6864（时空之头号玩家）",
+    "test3_book_filter": "搜索'第一人称校园日常' + 异体书目 → 找到3个结果，均来自异体，最高相关度0.4869",
+    "test4_stats": "5本书共13923个块，384维向量，FlatIP索引，10种场景类型"
+  },
+  "notes": "sentence-transformers替换Word2Vec，向量从128维提升到384维，语义理解质量显著提升"
+}
