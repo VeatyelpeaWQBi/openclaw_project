@@ -1,0 +1,27 @@
+{
+  "cleanup_time": "2026-03-30T20:23:00+08:00",
+  "deleted_files": [
+    {"file": "tfidf_index.json", "size": "204M", "reason": "v1 TF-IDF索引，v2不再使用"},
+    {"file": "build_index.py", "size": "18K", "reason": "v1构建脚本，已被build_index_v2.py替代"},
+    {"file": "query.py", "size": "13K", "reason": "v1查询脚本，已被query_v2.py替代"}
+  ],
+  "disk_before": "299M",
+  "disk_after": "95M",
+  "space_freed": "204M",
+  "remaining_files": [
+    "build_index_v2.py",
+    "query_v2.py",
+    "faiss_index.bin",
+    "w2v_model.bin",
+    "vectors.npy",
+    "chunks_meta.json",
+    "chunks_第七脑域.json",
+    "chunks_末日咆哮1.json",
+    "chunks_末日咆哮2.json",
+    "chunks_时空之头号玩家.json",
+    "chunks_异体.json",
+    "feature_index.json",
+    "build_summary.json"
+  ],
+  "status": "success"
+}

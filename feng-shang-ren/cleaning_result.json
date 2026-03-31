@@ -1,0 +1,100 @@
+{
+  "timestamp": "2026-03-30T21:03:18.746401",
+  "files_processed": 5,
+  "statistics": [
+    {
+      "file": "第七脑域_utf8.txt",
+      "total_lines": 23562,
+      "ad_lines_removed": 164,
+      "header_footer_removed": 8,
+      "lines_modified": 7,
+      "final_lines": 23380
+    },
+    {
+      "file": "末日咆哮1_utf8.txt",
+      "total_lines": 65505,
+      "ad_lines_removed": 21,
+      "header_footer_removed": 0,
+      "lines_modified": 319,
+      "final_lines": 65483
+    },
+    {
+      "file": "末日咆哮2_utf8.txt",
+      "total_lines": 68860,
+      "ad_lines_removed": 21,
+      "header_footer_removed": 0,
+      "lines_modified": 1615,
+      "final_lines": 68839
+    },
+    {
+      "file": "时空之头号玩家_utf8.txt",
+      "total_lines": 53279,
+      "ad_lines_removed": 0,
+      "header_footer_removed": 5376,
+      "lines_modified": 1,
+      "final_lines": 47903
+    },
+    {
+      "file": "异体_utf8.txt",
+      "total_lines": 23691,
+      "ad_lines_removed": 0,
+      "header_footer_removed": 0,
+      "lines_modified": 0,
+      "final_lines": 23691
+    }
+  ],
+  "total_ad_lines_removed": 206,
+  "total_header_footer_removed": 5384,
+  "total_lines_modified": 1942,
+  "total_report_entries": 7580,
+  "v2_timestamp": "2026-03-30T21:04:19.574077",
+  "v2_lines_modified": 1221,
+  "v2_statistics": [
+    {
+      "file": "第七脑域_utf8.txt",
+      "lines_modified": 0
+    },
+    {
+      "file": "末日咆哮1_utf8.txt",
+      "lines_modified": 129
+    },
+    {
+      "file": "末日咆哮2_utf8.txt",
+      "lines_modified": 1092
+    },
+    {
+      "file": "时空之头号玩家_utf8.txt",
+      "lines_modified": 0
+    },
+    {
+      "file": "异体_utf8.txt",
+      "lines_modified": 0
+    }
+  ],
+  "completed_at": "2026-03-30T21:11:33.351583",
+  "status": "completed",
+  "steps_completed": [
+    "1. 采样分析 - 已完成，识别出主要脏数据模式",
+    "2. 编写清洗脚本 - clean_text.py + clean_text_v2.py",
+    "3. 执行清洗 - 完成多轮清洗",
+    "4. 重建RAG索引 - faiss索引已重建（13698块, 384维）",
+    "5. 检查风格指南/分析报告 - 无脏数据引用，无需修正",
+    "6. 记录结果 - 本文件"
+  ],
+  "dirty_data_patterns_found": [
+    "bookdown.com 水印（行内嵌入 + 头尾声明）",
+    "shuyaya.com 水印（多种编码变体）",
+    "拼音声调替代（xìng→性, sè→色, jīng→精, yīn→阴, shè→射, rì→日, yín→淫等）",
+    "完整拼音替代（zhèng fǔ→政府, qīngchu→清楚, zì yóu→自由等）",
+    "杂项拼音（cháo→潮, jī活→激活, jǐng惕→警惕等）",
+    "作者自定义 *** 遮蔽（保留未改动，属原文特征）",
+    "CRLF 换行符统一为 LF",
+    "冗余空行清理"
+  ],
+  "rag_index_rebuilt": true,
+  "rag_index_stats": {
+    "total_chunks": 13698,
+    "embedding_dim": 384,
+    "model": "paraphrase-multilingual-MiniLM-L12-v2"
+  }
+}

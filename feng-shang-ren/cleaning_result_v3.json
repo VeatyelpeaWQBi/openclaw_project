@@ -1,0 +1,55 @@
+{
+  "version": "v3",
+  "date": "2026-03-30",
+  "description": "精准清洗修复，从原始GBK文件重新生成。宁可不洗，不可误删。",
+  "problem_fixed": {
+    "时空之头号玩家": "之前被误删前5376行正常正文，现已恢复",
+    "末日咆哮2": "之前整行删除含行尾水印的正文行，现已改为只删水印部分"
+  },
+  "stats": {
+    "第七脑域": {
+      "total": 23562,
+      "kept": 23232,
+      "full_line_removed": 330,
+      "watermark_removed": 0,
+      "note": "删除的是分节阅读/声明/分隔线等独立广告行"
+    },
+    "末日咆哮1": {
+      "total": 65505,
+      "kept": 65484,
+      "full_line_removed": 0,
+      "watermark_removed": 21,
+      "note": "清理了行尾的(本章免费)标记"
+    },
+    "末日咆哮2": {
+      "total": 68860,
+      "kept": 68839,
+      "full_line_removed": 0,
+      "watermark_removed": 21,
+      "note": "清理了行尾的www.shuyaya.com等水印，保留正文"
+    },
+    "时空之头号玩家": {
+      "total": 53279,
+      "kept": 52803,
+      "full_line_removed": 476,
+      "watermark_removed": 0,
+      "note": "删除的是独立的------------分隔线和分节阅读标记"
+    },
+    "异体": {
+      "total": 23691,
+      "kept": 23691,
+      "full_line_removed": 0,
+      "watermark_removed": 0,
+      "note": "无需清洗"
+    }
+  },
+  "output_dir": "***REMOVED***/feng-shang-ren/cleaned_v3",
+  "report": "***REMOVED***/feng-shang-ren/cleaned_v3/cleaning_report_v3.csv",
+  "rag_rebuild": {
+    "status": "success",
+    "total_chunks": 13911,
+    "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+    "embedding_dim": 384,
+    "build_time_seconds": 231.3
+  }
+}
