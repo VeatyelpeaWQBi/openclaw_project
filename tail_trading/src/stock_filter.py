@@ -3,10 +3,13 @@
 实现游牧型T+1选股逻辑
 """
 
+import logging
 from stock_data import get_stock_daily_kline
 from supertrend import is_supertrend_bullish
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 def get_weekly_kline(daily_df):
     """
@@ -192,13 +195,13 @@ def filter_etf_candidates(sector_name):
     return etf_candidates
 
 if __name__ == '__main__':
-    print("测试选股过滤模块...")
+    logger.info("测试选股过滤模块...")
     # 测试数据
     test_stocks = [
         {'code': '002409', 'name': '紫光国微', 'change_pct': 5.2, 'turnover': 8.3}
     ]
-    
+
     candidates = filter_stocks(test_stocks, '半导体')
-    print(f"筛选结果: {len(candidates)} 只")
+    logger.info(f"筛选结果: {len(candidates)} 只")
     for c in candidates:
-        print(f"  {c['name']} ({c['code']}): 涨幅{c['change_pct']}%, SuperTrend {c['daily_supertrend']}/{c['weekly_supertrend']}")
+        logger.info(f"  {c['name']} ({c['code']}): 涨幅{c['change_pct']}%, SuperTrend {c['daily_supertrend']}/{c['weekly_supertrend']}")

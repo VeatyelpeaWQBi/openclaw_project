@@ -255,7 +255,7 @@ def save_report(date_str, report_text):
 
 
 if __name__ == '__main__':
-    print("测试数据存储模块...")
+    logger.info("测试数据存储模块...")
 
     import pandas as pd
     test_df = pd.DataFrame({
@@ -272,4 +272,4 @@ if __name__ == '__main__':
     })
 
     result = merge_and_save_kline('000001', test_df, stock_name='测试股票')
-    print(f"✅ 保存了 {len(result)} 条数据")
+    logger.info(f"保存了 {len(result)} 条数据")

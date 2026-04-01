@@ -5,6 +5,7 @@
 
 import sys
 import os
+import logging
 sys.path.append('***REMOVED***/tail_trading/src')
 sys.path.append('***REMOVED***/tail_trading/config')
 
@@ -16,6 +17,8 @@ from data_storage import (merge_and_save_kline, save_signal, save_report,
                           get_month_str)
 from datetime import datetime
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 REPORT_DIR = '***REMOVED***/reports'
 
@@ -104,7 +107,7 @@ def generate_report(date_str, attack_sectors, candidates, has_signal):
 
 def run():
     date_str = datetime.now().strftime('%Y-%m-%d')
-    print(f"=== 基于指定板块数据跑一次 — {date_str} ===\n")
+    logger.info(f"=== 基于指定板块数据跑一次 — {date_str} ===")
 
     # 直接从搜索API找板块内的个股（通过板块名称搜索）
     # 因为没有板块code，需要先找到板块code
@@ -114,7 +117,7 @@ def run():
     all_analyzed = []
 
     # 先获取所有板块排名，找到匹配的板块code
-    print("获取板块数据...")
+    logger.info("获取板块数据...")
     all_sectors = get_sector_ranking(sector_type=2, limit=50)
 
     matched_sectors = []
@@ -125,18 +128,18 @@ def run():
                 break
 
     if not matched_sectors:
-        print("未找到匹配的板块数据，尝试用ETF方式...")
+        logger.warning("未找到匹配的板块数据，尝试用ETF方式...")
         for target in ATTACK_SECTORS:
             etf_candidates = filter_etf_candidates(target['name'])
             for etf in etf_candidates:
                 all_candidates.append(etf)
     else:
         for sector in matched_sectors[:3]:
-            print(f"\n处理板块: {sector['name']} (+{sector['change_percent']}%)")
+            logger.info(f"处理板块: {sector['name']} (+{sector['change_percent']}%)")
             stocks = get_sector_stocks(sector['code'], sector_type=2, limit=30)
 
             if not stocks:
-                print(f"  未获取到 {sector['name']} 内个股")
+                logger.warning(f"未获取到 {sector['name']} 内个股")
                 continue
 
             for stock in stocks[:15]:
@@ -191,7 +194,7 @@ def run():
                         'target_profit': '5-10%', 'stop_loss': '-3%',
                         'risk_level': '中等'
                     })
-                    print(f"  ✅ {name}({code}) 候选!")
+                    logger.info(f"候选! {name}({code})")
 
             # ETF fallback
             if not any(c['sector'] == sector['name'] for c in all_candidates):
@@ -217,15 +220,10 @@ def run():
     candidate_count = sum(1 for s in all_analyzed if s['is_candidate'])
     analyzed_count = len(all_analyzed)
 
-    print(f"\n📊 分析统计:")
-    print(f"  分析股票总数: {analyzed_count}")
-    print(f"  符合条件: {candidate_count}")
-    print(f"  不符合: {analyzed_count - candidate_count}")
-
-    print(f"\n日K数据: ***REMOVED***/tail_trading/data/kline/")
-    print(f"信号文件: {signal_file}")
-    print(f"报告文件: {report_file}")
-    print(f"\n{report}")
+    logger.info(f"分析统计: 总数{analyzed_count}, 符合{candidate_count}, 不符合{analyzed_count - candidate_count}")
+    logger.info(f"信号文件: {signal_file}")
+    logger.info(f"报告文件: {report_file}")
+    logger.info(report)
 
     return report
 

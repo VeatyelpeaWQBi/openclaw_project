@@ -611,23 +611,23 @@ def get_stock_realtime(stock_code):
 # ==================== 测试入口 ====================
 
 if __name__ == '__main__':
-    print("=" * 50)
-    print("测试统一数据源路由器")
-    print(f"SECTOR_RANKING_SOURCE={SECTOR_RANKING_SOURCE}")
-    print(f"SECTOR_STOCKS_SOURCE={SECTOR_STOCKS_SOURCE}")
-    print(f"STOCK_KLINE_SOURCE={STOCK_KLINE_SOURCE}")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("测试统一数据源路由器")
+    logger.info(f"SECTOR_RANKING_SOURCE={SECTOR_RANKING_SOURCE}")
+    logger.info(f"SECTOR_STOCKS_SOURCE={SECTOR_STOCKS_SOURCE}")
+    logger.info(f"STOCK_KLINE_SOURCE={STOCK_KLINE_SOURCE}")
+    logger.info("=" * 50)
 
-    print("\n--- 1. 板块排名 ---")
+    logger.info("--- 1. 板块排名 ---")
     sectors = get_sector_ranking(sector_type=2, limit=5)
-    print(f"获取到 {len(sectors)} 个板块")
+    logger.info(f"获取到 {len(sectors)} 个板块")
     for s in sectors[:3]:
-        print(f"  {s['name']}: {s['change_percent']}%")
+        logger.info(f"  {s['name']}: {s['change_percent']}%")
 
     time.sleep(2)
 
-    print("\n--- 2. 个股日K ---")
+    logger.info("--- 2. 个股日K ---")
     df = get_stock_daily_kline('002409', market='sz', days=30)
-    print(f"获取到 {len(df)} 条日K数据")
+    logger.info(f"获取到 {len(df)} 条日K数据")
     if not df.empty:
-        print(df.tail(3))
+        logger.debug(f"\n{df.tail(3)}")

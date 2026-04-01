@@ -134,18 +134,20 @@ def check_multi_timeframe_supertrend(df_daily, df_weekly, atr_period=10, multipl
 
 if __name__ == '__main__':
     # 测试
+    import logging
+    logger = logging.getLogger(__name__)
     from stock_data import get_stock_daily_kline
-    
-    print("测试SuperTrend计算...")
+
+    logger.info("测试SuperTrend计算...")
     df = get_stock_daily_kline('002409', market='sz', days=60)
-    
+
     if not df.empty:
         st = calculate_supertrend(df)
-        print(f"最近5天SuperTrend状态:")
+        logger.info("最近5天SuperTrend状态:")
         for i in range(-5, 0):
             trend = "多头" if st['supertrend'].iloc[i] else "空头"
-            print(f"  {df['date'].iloc[i].strftime('%Y-%m-%d')}: {trend}")
-        
-        print(f"\n当前趋势: {'多头' if st['supertrend'].iloc[-1] else '空头'}")
+            logger.info(f"  {df['date'].iloc[i].strftime('%Y-%m-%d')}: {trend}")
+
+        logger.info(f"当前趋势: {'多头' if st['supertrend'].iloc[-1] else '空头'}")
     else:
-        print("未获取到测试数据")
+        logger.warning("未获取到测试数据")
