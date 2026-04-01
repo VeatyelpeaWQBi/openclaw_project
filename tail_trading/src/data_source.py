@@ -6,6 +6,7 @@
 - 板块排名：新浪 (ak.stock_sector_spot)
 - 板块成分股：新浪 (ak.stock_sector_detail)
 - 个股日K：新浪 (ak.stock_zh_a_daily)
+- ETF日K：新浪 (ak.fund_etf_hist_sina)
 """
 
 import akshare as ak
@@ -250,6 +251,92 @@ def _sina_daily_kline(stock_code, market='sh', start_date=None, end_date=None):
     except Exception as e:
         logger.error(f"[新浪] {sina_code} 日K获取失败: {type(e).__name__}: {e}")
         return pd.DataFrame()
+
+
+def _sina_etf_daily_kline(etf_code, start_date=None, end_date=None):
+    """
+    新浪ETF日K数据
+
+    参数:
+        etf_code: ETF代码（如 'sh512010' 或 '512010'，自动识别市场）
+        start_date: 起始日期 'YYYYMMDD'（新浪接口不支持范围，返回全部后截取）
+        end_date: 截止日期 'YYYYMMDD'
+
+    返回:
+        DataFrame: 标准化日K数据
+    """
+    from datetime import datetime, timedelta
+
+    # 自动识别市场前缀
+    if not etf_code.startswith(('sh', 'sz')):
+        code_num = etf_code
+        if code_num.startswith(('5', '9')):
+            sina_code = f'sh{code_num}'
+        elif code_num.startswith(('1', '3')):
+            sina_code = f'sz{code_num}'
+        else:
+            sina_code = f'sh{code_num}'
+    else:
+        sina_code = etf_code
+
+    try:
+        logger.debug(f"[新浪] 获取ETF日K: {sina_code}")
+        df = ak.fund_etf_hist_sina(symbol=sina_code)
+
+        if df is None or df.empty:
+            logger.warning(f"[新浪] ETF {sina_code} 日K返回空数据")
+            return pd.DataFrame()
+
+        if 'date' not in df.columns:
+            logger.warning(f"[新浪] ETF {sina_code} 返回数据无date列")
+            return pd.DataFrame()
+
+        df['date'] = pd.to_datetime(df['date'])
+        for col in ['open', 'close', 'high', 'low', 'volume', 'amount']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # 补充缺失列
+        if 'change_pct' not in df.columns and 'close' in df.columns:
+            df['change_pct'] = df['close'].pct_change() * 100
+
+        df = df.sort_values('date').reset_index(drop=True)
+
+        # 截取日期范围
+        if start_date:
+            start_dt = pd.to_datetime(start_date)
+            df = df[df['date'] >= start_dt]
+        if end_date:
+            end_dt = pd.to_datetime(end_date)
+            df = df[df['date'] <= end_dt]
+        df = df.reset_index(drop=True)
+
+        logger.debug(f"[新浪] ETF {sina_code} 日K: {len(df)} 条")
+        return df
+
+    except Exception as e:
+        logger.error(f"[新浪] ETF {sina_code} 日K获取失败: {type(e).__name__}: {e}")
+        return pd.DataFrame()
+
+
+def get_etf_daily_kline(etf_code, start_date=None, end_date=None):
+    """
+    获取ETF日K数据（公开接口）
+
+    参数:
+        etf_code: ETF代码（如 '512010'，自动识别市场）
+        start_date: 起始日期 'YYYYMMDD'
+        end_date: 截止日期 'YYYYMMDD'
+
+    返回:
+        DataFrame: 标准化日K数据
+    """
+    logger.info(f"获取ETF日K: {etf_code} ({start_date or '全部'}~{end_date or '全部'})")
+    df = _sina_etf_daily_kline(etf_code, start_date=start_date, end_date=end_date)
+    if df.empty:
+        logger.warning(f"[ETF {etf_code}] 日K数据获取为空")
+    time.sleep(random.uniform(1, 3))  # 防ban
+    return df
 
 
 def get_stock_daily_kline(stock_code, market='sh', days=60):

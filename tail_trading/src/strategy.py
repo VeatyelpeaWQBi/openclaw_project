@@ -18,6 +18,7 @@ from stock_filter import calculate_volume_ratio, filter_etf_candidates
 from sectors import is_attack_sector
 from stock_data import get_stock_daily_kline_range
 from supertrend import is_supertrend_bullish
+from data_source import get_etf_daily_kline
 from data_storage import merge_and_save_kline, get_daily_data_from_sqlite, INITIAL_FETCH_DAYS
 from paths import DB_PATH
 import pandas as pd
@@ -54,11 +55,12 @@ def get_last_trading_date():
 def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
     """
     加载已有日K数据，不足时增量获取
+    自动识别ETF代码并使用对应的ETF日K接口
 
     参数:
-        stock_code: 股票代码
-        market: 市场
-        stock_name: 股票名称
+        stock_code: 股票/ETF代码
+        market: 市场（ETF会自动识别）
+        stock_name: 名称
         sector_name: 所属板块
 
     返回:
@@ -74,8 +76,14 @@ def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
 
     end_date = datetime.now().strftime('%Y%m%d')
 
-    new_df = get_stock_daily_kline_range(stock_code, market=market,
-                                          start_date=start_date, end_date=end_date)
+    # 判断是否为ETF代码
+    is_etf = stock_code.startswith(('51', '159', '56', '58'))
+
+    if is_etf:
+        new_df = get_etf_daily_kline(stock_code, start_date=start_date, end_date=end_date)
+    else:
+        new_df = get_stock_daily_kline_range(stock_code, market=market,
+                                              start_date=start_date, end_date=end_date)
 
     if new_df.empty:
         logger.warning(f"[{stock_code}] 日K数据获取为空 (start={start_date}, end={end_date})")
@@ -143,16 +151,15 @@ def _filter_stock(stock, sector_name):
     if 'ST' in name or '*ST' in name:
         return False, _skip_stats('ST股')
 
-    # 跳过ETF（代码51xxxx/159xxxx/56xxxx等ETF特征）
-    if code.startswith(('51', '159', '56', '58')):
-        return False, _skip_stats('ETF')
-
     # 跳过北交所股票（代码83/87/430/92开头，新浪无数据）
     if code.startswith(('83', '87', '430', '92')):
         return False, _skip_stats('北交所股票')
 
+    # 判断是否为ETF
+    is_etf = code.startswith(('51', '159', '56', '58'))
+
     # 增量获取日K数据
-    market = 'sh' if code.startswith('6') else 'sz'
+    market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
 
     if df.empty or len(df) < 30:
         return False, {
@@ -171,8 +178,10 @@ def _filter_stock(stock, sector_name):
     reasons = []
     if change_pct < 3 or change_pct > 7:
         reasons.append(f'涨幅{change_pct}%不在3-7%范围')
-    if turnover < 5 or turnover > 15:
-        reasons.append(f'换手率{turnover}%不在5-15%范围')
+    # ETF不检查换手率（ETF无换手率概念）
+    if not is_etf:
+        if turnover < 5 or turnover > 15:
+            reasons.append(f'换手率{turnover}%不在5-15%范围')
     if volume_ratio < 1.2:
         reasons.append(f'量比{volume_ratio:.2f}不足1.2')
     if not daily_bullish:
@@ -197,7 +206,8 @@ def _filter_stock(stock, sector_name):
             'price': stock.get('price', 0),
             'daily_supertrend': '多头',
             'target_profit': '5-10%', 'stop_loss': '-3%',
-            'risk_level': '中等'
+            'risk_level': '较低' if is_etf else '中等',
+            'is_etf': is_etf
         }
 
     return False, stats
