@@ -5,6 +5,7 @@
 
 import logging
 from stock_data import get_stock_daily_kline
+from data_source import get_etf_daily_kline
 from supertrend import is_supertrend_bullish
 import pandas as pd
 import numpy as np
@@ -166,8 +167,7 @@ def filter_etf_candidates(sector_name):
     # 获取ETF数据
     etf_candidates = []
     for code in etf_codes:
-        market = 'sh' if code.startswith('5') else 'sz'
-        df = get_stock_daily_kline(code, market=market, days=60)
+        df = get_etf_daily_kline(code)  # 使用ETF专用接口
         
         if df.empty or len(df) < 30:
             continue

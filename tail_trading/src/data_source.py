@@ -249,7 +249,10 @@ def _sina_daily_kline(stock_code, market='sh', start_date=None, end_date=None):
         return df
 
     except Exception as e:
-        logger.error(f"[新浪] {sina_code} 日K获取失败: {type(e).__name__}: {e}")
+        if 'JSONDecodeError' in type(e).__name__ or 'No value' in str(e):
+            logger.warning(f"[新浪] {sina_code} 日K返回空数据（可能已退市或不存在）: {e}")
+        else:
+            logger.error(f"[新浪] {sina_code} 日K获取失败: {type(e).__name__}: {e}")
         return pd.DataFrame()
 
 

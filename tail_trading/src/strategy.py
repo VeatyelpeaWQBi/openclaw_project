@@ -130,7 +130,9 @@ def _fetch_hot_sectors():
 
 def _filter_stock(stock, sector_name):
     """
-    对单只股票执行筛选条件
+    两阶段筛选单只股票
+    阶段一：用成分股自带数据轻量筛选（涨幅/换手率/ST/北交所），不请求日K
+    阶段二：通过阶段一的股票才获取日K，计算量比+SuperTrend
 
     返回:
         (is_candidate: bool, stats: dict)
@@ -139,6 +141,7 @@ def _filter_stock(stock, sector_name):
     name = stock['name']
     change_pct = stock.get('change_pct', 0) or stock.get('change_percent', 0)
     turnover = stock.get('turnover', 0)
+    is_etf = code.startswith(('51', '159', '56', '58'))
 
     _skip_stats = lambda reason: {
         'code': code, 'name': name, 'sector': sector_name,
@@ -146,6 +149,8 @@ def _filter_stock(stock, sector_name):
         'volume_ratio': 0, 'daily_supertrend': '-',
         'is_candidate': False, 'reason': reason
     }
+
+    # ========== 阶段一：轻量筛选（不请求日K） ==========
 
     # 跳过ST股
     if 'ST' in name or '*ST' in name:
@@ -155,62 +160,56 @@ def _filter_stock(stock, sector_name):
     if code.startswith(('83', '87', '430', '92')):
         return False, _skip_stats('北交所股票')
 
-    # 判断是否为ETF
-    is_etf = code.startswith(('51', '159', '56', '58'))
+    # 涨幅筛选（3%-7%），ETF放宽到1%-10%
+    if is_etf:
+        if change_pct < 1 or change_pct > 10:
+            return False, _skip_stats(f'涨幅{change_pct}%不在1-10%范围')
+    else:
+        if change_pct < 3 or change_pct > 7:
+            return False, _skip_stats(f'涨幅{change_pct}%不在3-7%范围')
 
-    # 增量获取日K数据
-    market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
-
-    if df.empty or len(df) < 30:
-        return False, {
-            'code': code, 'name': name, 'sector': sector_name,
-            'change_pct': change_pct, 'turnover': turnover,
-            'volume_ratio': 0, 'daily_supertrend': '-',
-            'is_candidate': False, 'reason': '数据不足'
-        }
-
-    # 检查各项条件
-    volume_ratio = calculate_volume_ratio(df)
-    daily_bullish = is_supertrend_bullish(df)
-
-    logger.debug(f"[{code}] {name}: 涨幅={change_pct}%, 换手={turnover}%, 量比={volume_ratio:.2f}, SuperTrend={'多头' if daily_bullish else '空头'}, K线={len(df)}条")
-
-    reasons = []
-    if change_pct < 3 or change_pct > 7:
-        reasons.append(f'涨幅{change_pct}%不在3-7%范围')
-    # ETF不检查换手率（ETF无换手率概念）
+    # 换手率筛选（5%-15%），ETF跳过
     if not is_etf:
         if turnover < 5 or turnover > 15:
-            reasons.append(f'换手率{turnover}%不在5-15%范围')
+            return False, _skip_stats(f'换手率{turnover}%不在5-15%范围')
+
+    # ========== 阶段二：获取日K计算量比+SuperTrend ==========
+
+    market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
+
+    try:
+        df = load_or_fetch_kline(code, market=market, stock_name=name, sector_name=sector_name)
+    except Exception as e:
+        logger.warning(f"[{code}] {name}: 日K获取异常: {type(e).__name__}: {e}")
+        return False, _skip_stats(f'日K异常: {type(e).__name__}')
+
+    if df.empty or len(df) < 30:
+        return False, _skip_stats('数据不足(日K<30条)')
+
+    # 量比
+    volume_ratio = calculate_volume_ratio(df)
     if volume_ratio < 1.2:
-        reasons.append(f'量比{volume_ratio:.2f}不足1.2')
+        return False, _skip_stats(f'量比{volume_ratio:.2f}不足1.2')
+
+    # SuperTrend
+    daily_bullish = is_supertrend_bullish(df)
     if not daily_bullish:
-        reasons.append('SuperTrend日线非多头')
+        return False, _skip_stats('SuperTrend日线非多头')
 
-    is_candidate = len(reasons) == 0
-    filter_reason = '; '.join(reasons) if reasons else '符合条件'
+    # ========== 全部通过 ==========
 
-    stats = {
+    logger.info(f"[{code}] {name} 候选! 涨幅={change_pct}%, 换手={turnover}%, 量比={volume_ratio:.2f}, SuperTrend=多头")
+
+    return True, {
         'code': code, 'name': name, 'sector': sector_name,
         'change_pct': change_pct, 'turnover': turnover,
         'volume_ratio': round(volume_ratio, 2),
-        'daily_supertrend': '多头' if daily_bullish else '空头',
-        'is_candidate': is_candidate, 'reason': filter_reason
+        'daily_supertrend': '多头',
+        'price': stock.get('price', 0),
+        'target_profit': '5-10%', 'stop_loss': '-3%',
+        'risk_level': '较低' if is_etf else '中等',
+        'is_etf': is_etf
     }
-
-    if is_candidate:
-        return True, {
-            'code': code, 'name': name, 'sector': sector_name,
-            'change_pct': change_pct, 'turnover': turnover,
-            'volume_ratio': round(volume_ratio, 2),
-            'price': stock.get('price', 0),
-            'daily_supertrend': '多头',
-            'target_profit': '5-10%', 'stop_loss': '-3%',
-            'risk_level': '较低' if is_etf else '中等',
-            'is_etf': is_etf
-        }
-
-    return False, stats
 
 
 def run_tail_t1_strategy():
