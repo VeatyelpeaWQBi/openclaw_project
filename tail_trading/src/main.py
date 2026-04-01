@@ -107,10 +107,7 @@ def run():
         candidate_count = sum(1 for s in all_analyzed if s['is_candidate'])
         analyzed_count = len(all_analyzed)
 
-        print(f"\n📊 分析统计:")
-        print(f"  分析股票总数: {analyzed_count}")
-        print(f"  符合条件: {candidate_count}")
-        print(f"  不符合: {analyzed_count - candidate_count}")
+        logger.info(f"📊 分析统计: 总数{analyzed_count}, 符合{candidate_count}, 不符合{analyzed_count - candidate_count}")
 
         reason_stats = {}
         for s in all_analyzed:
@@ -120,26 +117,23 @@ def run():
                     reason_stats[r] = reason_stats.get(r, 0) + 1
 
         if reason_stats:
-            print(f"\n  不符合原因统计:")
-            for reason, count in sorted(reason_stats.items(), key=lambda x: -x[1])[:5]:
-                print(f"    • {reason}: {count}只")
+            top_reasons = ', '.join(f"{r}({c}只)" for r, c in sorted(reason_stats.items(), key=lambda x: -x[1])[:5])
+            logger.info(f"不符合原因TOP5: {top_reasons}")
 
-    print(f"\n信号文件: {signal_file}")
-    print(f"报告文件: {report_file}")
+    logger.info(f"信号文件: {signal_file}")
+    logger.info(f"报告文件: {report_file}")
 
     # 计算运行时长
     elapsed = time.time() - start_time
     elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
     report += f"\n⏱️ 运行时长：{elapsed_str}"
-    print(f"\n⏱️ 总运行时长：{elapsed_str}")
-
-    print("\n运行完成！")
-    print(report)
+    logger.info(f"⏱️ 总运行时长：{elapsed_str}")
+    logger.info("运行完成！")
 
     return report
 
 
 if __name__ == '__main__':
     report = run()
-    print("\n=== 最终报告 ===")
-    print(report)
+    logger.info("=== 最终报告 ===")
+    logger.info(report)
