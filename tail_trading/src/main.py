@@ -77,6 +77,23 @@ def generate_report(result):
     report_path = os.path.join(REPORT_DIR, f'report_{date_str}.txt')
     lines.append(f"📝 报告已保存至：{report_path}")
 
+    # 异常/跳过统计
+    all_analyzed = result.get('all_analyzed', [])
+    if all_analyzed:
+        skip_reasons = {}
+        for s in all_analyzed:
+            if not s.get('is_candidate', False):
+                reason = s.get('reason', '未知')
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+        # 过滤掉常见原因，只显示异常
+        exception_reasons = {k: v for k, v in skip_reasons.items()
+                            if '异常' in k or '数据' in k}
+        if exception_reasons:
+            lines.append("")
+            lines.append("⚠️ 异常情况：")
+            for reason, count in exception_reasons.items():
+                lines.append(f"  • {reason}: {count}只")
+
     return '\n'.join(lines)
 
 
@@ -104,15 +121,17 @@ def run():
     # 4. 输出分析统计
     all_analyzed = result.get('all_analyzed', [])
     if all_analyzed:
-        candidate_count = sum(1 for s in all_analyzed if s['is_candidate'])
+        candidate_count = sum(1 for s in all_analyzed if s.get('is_candidate', False))
         analyzed_count = len(all_analyzed)
+        exception_count = sum(1 for s in all_analyzed if '异常' in s.get('reason', ''))
 
-        logger.info(f"📊 分析统计: 总数{analyzed_count}, 符合{candidate_count}, 不符合{analyzed_count - candidate_count}")
+        logger.info(f"📊 分析统计: 总数{analyzed_count}, 符合{candidate_count}, 不符合{analyzed_count - candidate_count - exception_count}, 异常{exception_count}")
 
         reason_stats = {}
         for s in all_analyzed:
-            if not s['is_candidate']:
-                reasons = s['reason'].split('; ')
+            if not s.get('is_candidate', False):
+                reason = s.get('reason', '未知')
+                reasons = reason.split('; ')
                 for r in reasons:
                     reason_stats[r] = reason_stats.get(r, 0) + 1
 

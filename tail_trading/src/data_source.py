@@ -218,16 +218,18 @@ def _sina_daily_kline(stock_code, market='sh', start_date=None, end_date=None):
         df = ak.stock_zh_a_daily(symbol=sina_code, start_date=start_date, end_date=end_date)
 
         if df is None or df.empty:
-            logger.warning(f"[新浪] {sina_code} 日K返回空数据")
+            logger.warning(f"[新浪] {sina_code} 日K返回空数据（可能已退市或不存在）")
             return pd.DataFrame()
 
-        # 新浪返回字段: date, open, high, low, close, volume, amount, outstanding_share, turnover
-        # 标准化列名（akshare返回的已经是英文小写）
-        if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'])
-        elif 'Date' in df.columns:
+        # 检查是否有date列（新浪对某些股票/ETF返回异常数据）
+        if 'date' not in df.columns and 'Date' not in df.columns:
+            logger.warning(f"[新浪] {sina_code} 返回数据无date列（可能已退市/北交所/ETF）")
+            return pd.DataFrame()
+
+        # 标准化列名
+        if 'Date' in df.columns:
             df = df.rename(columns={'Date': 'date'})
-            df['date'] = pd.to_datetime(df['date'])
+        df['date'] = pd.to_datetime(df['date'])
 
         # 确保必要的数值列存在
         for col in ['open', 'close', 'high', 'low', 'volume', 'amount']:
