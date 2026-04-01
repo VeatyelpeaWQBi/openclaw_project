@@ -151,7 +151,7 @@ def _ths_sector_ranking_concept():
                 'amount': _safe_float(idx_df.iloc[-1].get('成交额')),
             })
         except Exception as e:
-            print(f"  ⚠️ THS板块[{name}]指数获取失败: {e}")
+            logger.warning(f"THS板块[{name}]指数获取失败: {e}")
             sectors.append({
                 'code': code, 'name': name,
                 'change_percent': 0, 'volume': 0, 'amount': 0,
@@ -199,7 +199,7 @@ def _ths_sector_ranking_industry():
                 'amount': _safe_float(idx_df.iloc[-1].get('成交额')),
             })
         except Exception as e:
-            print(f"  ⚠️ THS行业板块[{name}]指数获取失败: {e}")
+            logger.warning(f"THS行业板块[{name}]指数获取失败: {e}")
             sectors.append({
                 'code': code, 'name': name,
                 'change_percent': 0, 'volume': 0, 'amount': 0,
@@ -274,10 +274,10 @@ def get_sector_ranking_em(sector_type=2, limit=20):
     df, source = _try_sources(sources)
 
     if df is None or (hasattr(df, 'empty') and df.empty):
-        print("获取板块数据失败: 所有数据源均不可用")
+        logger.warning("获取板块数据失败: 所有数据源均不可用")
         return []
 
-    print(f"  ✅ 板块数据来源: {source} ({len(df)}个板块)")
+    logger.info(f"板块数据来源: {source} ({len(df)}个板块)")
 
     sectors = []
     if source == 'AKShare-EM':
