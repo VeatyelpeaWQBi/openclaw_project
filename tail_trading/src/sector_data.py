@@ -1,9 +1,12 @@
 """
 板块数据获取模块（薄封装层）
 实际数据获取逻辑在 data_source.py 中
+调用者无需关心数据源配置
 """
 
 from data_source import get_sector_ranking, get_sector_stocks
+
+__all__ = ['get_sector_ranking', 'get_sector_stocks']
 
 if __name__ == '__main__':
     print("测试板块数据获取...")
