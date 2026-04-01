@@ -54,6 +54,7 @@ class MinuteDataLoader:
                 stocks = []
                 for _, row in df.iterrows():
                     stocks.append({'code': row['code'], 'name': row['name']})
+                logger.debug(f"SQLite get_stock_list: {len(stocks)} 只股票")
                 return stocks
         except Exception as e:
             logger.warning(f"SQLite get_stock_list失败: {e}")
@@ -83,6 +84,7 @@ class MinuteDataLoader:
 
             if not df.empty:
                 df['date'] = pd.to_datetime(df['date'])
+                logger.debug(f"SQLite get_daily_data({code}): {len(df)} 条 (start={start_date}, end={end_date})")
                 return df
         except Exception as e:
             logger.warning(f"SQLite get_daily_data失败: {e}")

@@ -1,0 +1,11 @@
+# 日志配置
+# 开发环境默认 DEBUG，生产环境改为 INFO
+logging:
+  level: DEBUG  # DEBUG | INFO | WARNING | ERROR
+  file:
+    enabled: true
+    dir: logs
+    name: "tail_trading_{date}.log"
+  console:
+    enabled: true
+    level: INFO  # 控制台单独控制级别

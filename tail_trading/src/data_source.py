@@ -19,10 +19,20 @@ import time
 import random
 import os
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 禁止代理干扰
 for _k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
     os.environ.pop(_k, None)
+
+
+# ==================== 数据源配置 ====================
+
+SECTOR_RANKING_SOURCE = 'ths'  # 可选: 'em', 'ths'
+SECTOR_STOCKS_SOURCE = 'em'    # 成分股获取（THS无可用接口，暂用EM）
+STOCK_KLINE_SOURCE = 'auto'    # 可选: 'em', 'tx', 'sina', 'auto'（自动降级）
 
 
 # ==================== 核心路由引擎 ====================
@@ -40,16 +50,22 @@ def _try_sources(sources, *args, **kwargs):
     """
     for name, func in sources:
         try:
+            logger.debug(f"尝试数据源: {name}")
             result = func(*args, **kwargs)
             if result is not None:
                 if hasattr(result, 'empty') and result.empty:
+                    logger.debug(f"[{name}] 返回空DataFrame，跳过")
                     continue
                 if isinstance(result, list) and len(result) == 0:
+                    logger.debug(f"[{name}] 返回空列表，跳过")
                     continue
+                size = len(result) if hasattr(result, '__len__') else '?'
+                logger.debug(f"[{name}] ✅ 成功，数据量: {size}")
                 return result, name
         except Exception as e:
-            print(f"  ⚠️ [{name}] 失败: {e}")
+            logger.error(f"[{name}] 失败: {type(e).__name__}: {e}")
             continue
+    logger.warning("所有数据源均失败")
     return None, None
 
 
@@ -95,9 +111,113 @@ def _adata_ths_sector_ranking(sector_type):
     return None
 
 
+def _ths_sector_ranking_concept():
+    """THS 概念板块排名（含涨跌幅）"""
+    # 获取板块列表
+    df = ak.stock_board_concept_name_ths()
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    sectors = []
+    for _, row in df.iterrows():
+        name = str(row.get('name', ''))
+        code = str(row.get('code', ''))
+        if not name:
+            continue
+
+        try:
+            # 获取该板块的指数数据
+            idx_df = ak.stock_board_concept_index_ths(symbol=name)
+            if idx_df is None or idx_df.empty or len(idx_df) < 2:
+                sectors.append({
+                    'code': code, 'name': name,
+                    'change_percent': 0, 'volume': 0, 'amount': 0,
+                })
+                time.sleep(random.uniform(1, 3))
+                continue
+
+            # 取最后2行计算涨跌幅
+            today_close = _safe_float(idx_df.iloc[-1].get('收盘价'))
+            yesterday_close = _safe_float(idx_df.iloc[-2].get('收盘价'))
+            if yesterday_close > 0:
+                change_pct = (today_close - yesterday_close) / yesterday_close * 100
+            else:
+                change_pct = 0
+
+            sectors.append({
+                'code': code, 'name': name,
+                'change_percent': round(change_pct, 2),
+                'volume': _safe_float(idx_df.iloc[-1].get('成交量')),
+                'amount': _safe_float(idx_df.iloc[-1].get('成交额')),
+            })
+        except Exception as e:
+            print(f"  ⚠️ THS板块[{name}]指数获取失败: {e}")
+            sectors.append({
+                'code': code, 'name': name,
+                'change_percent': 0, 'volume': 0, 'amount': 0,
+            })
+
+        time.sleep(random.uniform(1, 3))
+
+    return sectors
+
+
+def _ths_sector_ranking_industry():
+    """THS 行业板块排名（含涨跌幅）"""
+    df = ak.stock_board_industry_name_ths()
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    sectors = []
+    for _, row in df.iterrows():
+        name = str(row.get('name', ''))
+        code = str(row.get('code', ''))
+        if not name:
+            continue
+
+        try:
+            idx_df = ak.stock_board_industry_index_ths(symbol=name)
+            if idx_df is None or idx_df.empty or len(idx_df) < 2:
+                sectors.append({
+                    'code': code, 'name': name,
+                    'change_percent': 0, 'volume': 0, 'amount': 0,
+                })
+                time.sleep(random.uniform(1, 3))
+                continue
+
+            today_close = _safe_float(idx_df.iloc[-1].get('收盘价'))
+            yesterday_close = _safe_float(idx_df.iloc[-2].get('收盘价'))
+            if yesterday_close > 0:
+                change_pct = (today_close - yesterday_close) / yesterday_close * 100
+            else:
+                change_pct = 0
+
+            sectors.append({
+                'code': code, 'name': name,
+                'change_percent': round(change_pct, 2),
+                'volume': _safe_float(idx_df.iloc[-1].get('成交量')),
+                'amount': _safe_float(idx_df.iloc[-1].get('成交额')),
+            })
+        except Exception as e:
+            print(f"  ⚠️ THS行业板块[{name}]指数获取失败: {e}")
+            sectors.append({
+                'code': code, 'name': name,
+                'change_percent': 0, 'volume': 0, 'amount': 0,
+            })
+
+        time.sleep(random.uniform(1, 3))
+
+    return sectors
+
+
+def _ths_sector_stocks(sector_name):
+    """THS 板块成分股（THS无可用接口，直接降级到EM）"""
+    return None  # 触发调用方降级到EM
+
+
 def get_sector_ranking(sector_type=2, limit=20):
     """
-    获取板块涨幅排名（多数据源）
+    获取板块涨幅排名（根据SECTOR_RANKING_SOURCE配置选择数据源）
 
     参数:
         sector_type: 1=行业板块, 2=概念板块
@@ -106,6 +226,44 @@ def get_sector_ranking(sector_type=2, limit=20):
     返回:
         list: [{code, name, change_percent, volume, amount}]
     """
+    type_name = '行业' if sector_type == 1 else '概念'
+    if SECTOR_RANKING_SOURCE == 'ths':
+        # THS数据源：直接调用THS方法（自带涨跌幅）
+        logger.info(f"使用THS数据源获取{type_name}板块排名(limit={limit})...")
+        if sector_type == 1:
+            raw = _ths_sector_ranking_industry()
+        else:
+            raw = _ths_sector_ranking_concept()
+
+        if raw is None or (hasattr(raw, 'empty') and raw.empty):
+            # THS失败，降级到EM
+            logger.warning(f"THS{type_name}板块排名失败，降级到EM...")
+            return get_sector_ranking_em(sector_type, limit)
+
+        if isinstance(raw, list):
+            sectors = raw
+        else:
+            sectors = []
+            for _, row in raw.iterrows():
+                sectors.append({
+                    'code': str(row.get('code', '')),
+                    'name': str(row.get('name', '')),
+                    'change_percent': _safe_float(row.get('change_percent')),
+                    'volume': _safe_float(row.get('volume')),
+                    'amount': _safe_float(row.get('amount')),
+                })
+
+        sectors.sort(key=lambda x: x.get('change_percent', 0), reverse=True)
+        result = sectors[:limit]
+        logger.debug(f"{type_name}板块排名TOP5: {[(s['name'], s['change_percent']) for s in result[:5]]}")
+        return result
+    else:
+        # EM数据源（默认）
+        return get_sector_ranking_em(sector_type, limit)
+
+
+def get_sector_ranking_em(sector_type=2, limit=20):
+    """EM数据源获取板块排名（原有逻辑）"""
     sources = [
         ('AKShare-EM', lambda st=sector_type: _ak_em_sector_ranking(st)),
         ('AKShare-THS', lambda st=sector_type: _ak_ths_sector_ranking(st)),
@@ -209,7 +367,7 @@ def _normalize_stock_list(df):
 
 def get_sector_stocks(sector_code, sector_type=2, limit=50, index_code=None):
     """
-    获取板块内的个股列表（多数据源）
+    获取板块内的个股列表（根据SECTOR_STOCKS_SOURCE配置选择数据源）
 
     参数:
         sector_code: 板块名称（如 "人工智能"）
@@ -233,10 +391,10 @@ def get_sector_stocks(sector_code, sector_type=2, limit=50, index_code=None):
     stocks, source = _try_sources(sources)
 
     if stocks is None or not stocks:
-        print(f"  ⚠️ 获取板块[{sector_code}]成分股失败: 所有数据源均不可用")
+        logger.warning(f"板块[{sector_code}]成分股获取失败: 所有数据源均不可用")
         return []
 
-    print(f"  ✅ 板块[{sector_code}]成分股来源: {source} ({len(stocks)}只)")
+    logger.debug(f"板块[{sector_code}]成分股: 来源={source}, 数量={len(stocks)}")
     time.sleep(random.uniform(0.3, 1.0))
     return stocks[:limit]
 
@@ -371,20 +529,30 @@ def get_stock_daily_kline_range(stock_code, market='sh', start_date=None, end_da
     if start_date is None:
         start_date = (datetime.now() - timedelta(days=60)).strftime('%Y%m%d')
 
-    sources = [
-        ('AKShare-EM', lambda: _ak_hist(stock_code, start_date, end_date)),
-        ('AKShare-TX', lambda: _ak_tx_hist(stock_code, start_date, end_date)),
-        ('adata-sina', lambda: _adata_sina_hist(stock_code, start_date, end_date)),
-        ('adata-qq', lambda: _adata_qq_hist(stock_code, start_date, end_date)),
-        ('adata-baidu', lambda: _adata_baidu_hist(stock_code, start_date, end_date)),
-    ]
+    # 根据STOCK_KLINE_SOURCE配置构建数据源列表
+    if STOCK_KLINE_SOURCE == 'em':
+        sources = [('AKShare-EM', lambda: _ak_hist(stock_code, start_date, end_date))]
+    elif STOCK_KLINE_SOURCE == 'tx':
+        sources = [('AKShare-TX', lambda: _ak_tx_hist(stock_code, start_date, end_date))]
+    elif STOCK_KLINE_SOURCE == 'sina':
+        sources = [('adata-sina', lambda: _adata_sina_hist(stock_code, start_date, end_date))]
+    else:
+        # auto（默认）：多数据源自动降级
+        sources = [
+            ('AKShare-EM', lambda: _ak_hist(stock_code, start_date, end_date)),
+            ('AKShare-TX', lambda: _ak_tx_hist(stock_code, start_date, end_date)),
+            ('adata-sina', lambda: _adata_sina_hist(stock_code, start_date, end_date)),
+            ('adata-qq', lambda: _adata_qq_hist(stock_code, start_date, end_date)),
+            ('adata-baidu', lambda: _adata_baidu_hist(stock_code, start_date, end_date)),
+        ]
 
     df, source = _try_sources(sources)
 
     if df is None or (hasattr(df, 'empty') and df.empty):
-        print(f"获取个股日K数据失败 ({stock_code}): 所有数据源均不可用")
+        logger.error(f"[{stock_code}] 日K数据获取失败: 所有数据源均不可用 (start={start_date}, end={end_date})")
         return pd.DataFrame()
 
+    logger.debug(f"[{stock_code}] 日K: 来源={source}, 条数={len(df)}, 范围={start_date}~{end_date}")
     time.sleep(random.uniform(0.2, 0.8))
     return df
 
@@ -433,9 +601,10 @@ def get_stock_realtime(stock_code):
     result, source = _try_sources(sources)
 
     if result is None or not result:
-        print(f"获取实时行情失败 ({stock_code}): 所有数据源均不可用")
+        logger.error(f"[{stock_code}] 实时行情获取失败: 所有数据源均不可用")
         return {}
 
+    logger.debug(f"[{stock_code}] 实时行情: 来源={source}, price={result.get('price')}, change_pct={result.get('change_pct')}")
     return result
 
 
@@ -444,6 +613,9 @@ def get_stock_realtime(stock_code):
 if __name__ == '__main__':
     print("=" * 50)
     print("测试统一数据源路由器")
+    print(f"SECTOR_RANKING_SOURCE={SECTOR_RANKING_SOURCE}")
+    print(f"SECTOR_STOCKS_SOURCE={SECTOR_STOCKS_SOURCE}")
+    print(f"STOCK_KLINE_SOURCE={STOCK_KLINE_SOURCE}")
     print("=" * 50)
 
     print("\n--- 1. 板块排名 ---")
