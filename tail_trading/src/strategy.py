@@ -259,7 +259,7 @@ def run_tail_t1_strategy():
     for sector in top5_sectors:
         logger.info(f"  处理板块: {sector['name']}")
 
-        stocks = get_sector_stocks(sector['code'], sector_type=2, limit=30)
+        stocks = get_sector_stocks(sector['code'], limit=30)
         logger.debug(f"  板块[{sector['name']}] 获取成分股 {len(stocks) if stocks else 0} 只")
 
         if stocks:
