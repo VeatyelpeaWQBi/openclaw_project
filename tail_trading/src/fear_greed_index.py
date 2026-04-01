@@ -16,8 +16,11 @@ A股恐贪指数（Fear & Greed Index）
 import os
 import json
 import sqlite3
+import logging
 import time as _time
 import numpy as np
+
+logger = logging.getLogger(__name__)
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -89,7 +92,7 @@ class FearGreedIndex:
                 df = df.sort_values('date').reset_index(drop=True)
                 return df
         except Exception as e:
-            print(f"⚠️ SQLite加载指数 {index_code} 失败: {e}")
+            logger.warning(f" SQLite加载指数 {index_code} 失败: {e}")
         return None
 
     def _csv_load_index(self, filename):
@@ -161,10 +164,10 @@ class FearGreedIndex:
                 self.all_stocks[code] = df
                 self.stock_names[code] = name
 
-            print(f"✅ SQLite加载 {len(self.all_stocks)} 只个股数据")
+            logger.info(f" SQLite加载 {len(self.all_stocks)} 只个股数据")
             return True
         except Exception as e:
-            print(f"⚠️ SQLite加载个股数据失败: {e}")
+            logger.warning(f" SQLite加载个股数据失败: {e}")
             return None
 
 
@@ -172,7 +175,7 @@ class FearGreedIndex:
         """加载所有个股数据（只从SQLite加载）"""
         self._sqlite_load_all_stocks()
         if len(self.all_stocks) == 0:
-            print("⚠️ SQLite中无个股数据")
+            logger.warning(" SQLite中无个股数据")
 
     def _try_load_full_a_index(self):
         """
@@ -182,7 +185,7 @@ class FearGreedIndex:
         # 1. 尝试本地文件
         local_file = os.path.join(self.index_history_dir, 'all_a_kline.csv')
         if os.path.exists(local_file):
-            print("✅ 加载本地中证全A指数数据")
+            logger.info(" 加载本地中证全A指数数据")
             return self._load_index('all_a_kline.csv')
 
         # 2. 检查baostock失败标记（避免重复尝试）
@@ -214,21 +217,21 @@ class FearGreedIndex:
                 df = df.sort_values('date').reset_index(drop=True)
                 # 缓存到本地
                 df.to_csv(local_file, index=False)
-                print(f"✅ 从baostock下载中证全A指数 ({len(df)} 条)")
+                logger.info(f" 从baostock下载中证全A指数 ({len(df)} 条)")
                 return df
             else:
                 # 写入失败标记
                 with open(fail_flag, 'w') as f:
                     f.write(str(_time.time()))
         except Exception as e:
-            print(f"⚠️ baostock下载中证全A失败: {e}")
+            logger.warning(f" baostock下载中证全A失败: {e}")
             try:
                 with open(fail_flag, 'w') as f:
                     f.write(str(_time.time()))
             except:
                 pass
 
-        print("ℹ️ 无中证全A数据，将用等权构造或沪深300近似")
+        logger.info(" 无中证全A数据，将用等权构造或沪深300近似")
         return None
 
     def _build_equal_weight_index(self):
@@ -237,7 +240,7 @@ class FearGreedIndex:
         用于因子1的均线偏离度计算
         向量化实现，避免逐日期逐股票的双重循环
         """
-        print("🔨 构造全A等权指数（向量化）...")
+        logger.info(" 构造全A等权指数（向量化）...")
         t0 = _time.time()
 
         # 将所有股票数据合并为一个大表
@@ -251,7 +254,7 @@ class FearGreedIndex:
             frames.append(sub)
 
         if not frames:
-            print("⚠️ 无个股数据，跳过等权构造")
+            logger.warning(" 无个股数据，跳过等权构造")
             return
 
         merged = pd.concat(frames, ignore_index=True)
@@ -270,7 +273,7 @@ class FearGreedIndex:
         grouped = grouped.sort_values('date').reset_index(drop=True)
 
         self.equal_weight_index = grouped
-        print(f"✅ 全A等权指数构造完成 ({len(grouped)} 条, 耗时{_time.time()-t0:.1f}s)")
+        logger.info(f" 全A等权指数构造完成 ({len(grouped)} 条, 耗时{_time.time()-t0:.1f}s)")
 
     def _build_daily_stock_agg(self):
         """
@@ -278,7 +281,7 @@ class FearGreedIndex:
         输出: DataFrame, index=date, columns=[adv, dec, flat, limit_up, limit_down,
                traded, high_turnover_count]
         """
-        print("🔨 预计算每日股票聚合数据...")
+        logger.info(" 预计算每日股票聚合数据...")
         t0 = _time.time()
 
         # 合并所有非ST/非退市股票数据
@@ -317,7 +320,7 @@ class FearGreedIndex:
         agg = agg.sort_values('date').reset_index(drop=True)
 
         self._daily_stock_agg = agg
-        print(f"✅ 每日聚合数据完成 ({len(agg)} 条, 耗时{_time.time()-t0:.1f}s)")
+        logger.info(f" 每日聚合数据完成 ({len(agg)} 条, 耗时{_time.time()-t0:.1f}s)")
 
     def _get_daily_agg(self, date_str):
         """获取指定日期的股票聚合数据"""
@@ -643,7 +646,7 @@ class FearGreedIndex:
             }
         """
         self._leading_indicator_data = data_dict
-        print("✅ 领先指标数据已加载，将优先使用领先指标方案")
+        logger.info(" 领先指标数据已加载，将优先使用领先指标方案")
 
     def _offense_defense_index_compare(self, date_str, lookback):
         """
@@ -743,7 +746,7 @@ class FearGreedIndex:
                 pass
 
             if (i + 1) % 50 == 0:
-                print(f"  历史计算进度: {i + 1}/{total}")
+                logger.info(f"  历史计算进度: {i + 1}/{total}")
 
         self._history_cache = results
         return results
@@ -751,7 +754,7 @@ class FearGreedIndex:
     def save_history(self, filepath):
         """保存历史数据到JSON"""
         if self._history_cache is None:
-            print("⚠️ 请先调用 calculate_history() 计算历史数据")
+            logger.warning(" 请先调用 calculate_history() 计算历史数据")
             return False
 
         # 确保目录存在
@@ -760,7 +763,7 @@ class FearGreedIndex:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self._history_cache, f, ensure_ascii=False, indent=2)
 
-        print(f"✅ 历史数据已保存到 {filepath}（{len(self._history_cache)} 条记录）")
+        logger.info(f" 历史数据已保存到 {filepath}（{len(self._history_cache)} 条记录）")
         return True
 
     # ==================== 辅助方法 ====================
@@ -881,30 +884,30 @@ if __name__ == '__main__':
     INDEX_DIR = INDEX_HISTORY_DIR
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'tail_trading', 'output')
 
-    print("🚀 初始化恐贪指数引擎...")
+    logger.info(" 初始化恐贪指数引擎...")
     fgi = FearGreedIndex(DATA_DIR, INDEX_DIR)
 
     # 1. 计算最新交易日恐贪指数
-    print("\n" + "=" * 50)
-    print("📋 计算最新交易日恐贪指数")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info(" 计算最新交易日恐贪指数")
+    logger.info("=" * 50)
     result = fgi.calculate()
-    print(FearGreedIndex.format_report(result))
+    logger.info(FearGreedIndex.format_report(result))
 
     # 2. 计算过去250个交易日历史
-    print("\n" + "=" * 50)
-    print("📋 计算历史恐贪指数（250个交易日）")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info(" 计算历史恐贪指数（250个交易日）")
+    logger.info("=" * 50)
     history = fgi.calculate_history(days=250)
-    print(f"✅ 已计算 {len(history)} 个交易日的恐贪指数")
+    logger.info(f" 已计算 {len(history)} 个交易日的恐贪指数")
 
     # 3. 保存历史数据
     output_file = os.path.join(OUTPUT_DIR, 'fear_greed_history.json')
     fgi.save_history(output_file)
 
     # 4. 重新计算带历史均值的结果
-    print("\n" + "=" * 50)
-    print("📋 最新交易日恐贪指数（含历史均值）")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info(" 最新交易日恐贪指数（含历史均值）")
+    logger.info("=" * 50)
     result_with_avg = fgi.calculate()
-    print(FearGreedIndex.format_report(result_with_avg))
+    logger.info(FearGreedIndex.format_report(result_with_avg))
