@@ -132,18 +132,27 @@ def _filter_stock(stock, sector_name):
     change_pct = stock.get('change_pct', 0) or stock.get('change_percent', 0)
     turnover = stock.get('turnover', 0)
 
+    _skip_stats = lambda reason: {
+        'code': code, 'name': name, 'sector': sector_name,
+        'change_pct': change_pct, 'turnover': turnover,
+        'volume_ratio': 0, 'daily_supertrend': '-',
+        'is_candidate': False, 'reason': reason
+    }
+
     # 跳过ST股
     if 'ST' in name or '*ST' in name:
-        return False, {
-            'code': code, 'name': name, 'sector': sector_name,
-            'change_pct': change_pct, 'turnover': turnover,
-            'volume_ratio': 0, 'daily_supertrend': '-',
-            'is_candidate': False, 'reason': 'ST股'
-        }
+        return False, _skip_stats('ST股')
+
+    # 跳过ETF（代码51xxxx/159xxxx/56xxxx等ETF特征）
+    if code.startswith(('51', '159', '56', '58')):
+        return False, _skip_stats('ETF')
+
+    # 跳过北交所股票（代码83/87/430/92开头，新浪无数据）
+    if code.startswith(('83', '87', '430', '92')):
+        return False, _skip_stats('北交所股票')
 
     # 增量获取日K数据
     market = 'sh' if code.startswith('6') else 'sz'
-    df = load_or_fetch_kline(code, market=market, stock_name=name, sector_name=sector_name)
 
     if df.empty or len(df) < 30:
         return False, {
@@ -259,28 +268,48 @@ def run_tail_t1_strategy():
     for sector in top5_sectors:
         logger.info(f"  处理板块: {sector['name']}")
 
-        stocks = get_sector_stocks(sector['code'], limit=30)
+        try:
+            stocks = get_sector_stocks(sector['code'], limit=30)
+        except Exception as e:
+            logger.error(f"  板块[{sector['name']}] 获取成分股失败: {e}")
+            continue
+
         logger.debug(f"  板块[{sector['name']}] 获取成分股 {len(stocks) if stocks else 0} 只")
 
         if stocks:
             for stock in stocks[:15]:
-                is_cand, stats = _filter_stock(stock, sector['name'])
+                try:
+                    is_cand, stats = _filter_stock(stock, sector['name'])
+                except Exception as e:
+                    logger.warning(f"  [{stock.get('code','?')}] {stock.get('name','?')} 筛选异常: {e}")
+                    stats = {
+                        'code': stock.get('code', '?'), 'name': stock.get('name', '?'),
+                        'sector': sector['name'],
+                        'change_pct': 0, 'turnover': 0, 'volume_ratio': 0,
+                        'daily_supertrend': '-',
+                        'is_candidate': False, 'reason': f'筛选异常: {e}'
+                    }
+                    is_cand = False
                 all_analyzed_stocks.append(stats)
                 if is_cand:
                     all_candidates.append(stats)
 
         # 如果个股没有符合条件的，尝试ETF
-        if not any(c['sector'] == sector['name'] for c in all_candidates):
+        if not any(c.get('sector') == sector['name'] for c in all_candidates):
             etf_candidates = filter_etf_candidates(sector['name'])
             for etf in etf_candidates:
                 code = etf['code']
                 market = 'sh' if code.startswith('5') else 'sz'
-                df = load_or_fetch_kline(code, market=market, stock_name=etf['name'], sector_name=sector['name'])
-                if not df.empty:
-                    etf_change = etf.get('change_pct', 0)
-                    etf_vol_ratio = etf.get('volume_ratio', 0)
-                    if etf_change >= 1 and etf_vol_ratio >= 1.0:
-                        all_candidates.append(etf)
+                try:
+                    df = load_or_fetch_kline(code, market=market, stock_name=etf['name'], sector_name=sector['name'])
+                    if not df.empty:
+                        etf_change = etf.get('change_pct', 0)
+                        etf_vol_ratio = etf.get('volume_ratio', 0)
+                        if etf_change >= 1 and etf_vol_ratio >= 1.0:
+                            etf['is_candidate'] = True
+                            all_candidates.append(etf)
+                except Exception as e:
+                    logger.warning(f"  ETF [{code}] {etf.get('name','')} 异常: {e}")
 
     # 4. 去重和排序
     if all_candidates:
