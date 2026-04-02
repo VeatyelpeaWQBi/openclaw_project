@@ -21,6 +21,9 @@ from data_storage import save_signal, save_report
 
 import logging
 
+# 初始化模块级日志器
+logger = logging.getLogger(__name__)
+
 
 def generate_report(result):
     """
@@ -101,7 +104,6 @@ def run():
     """主运行函数"""
     # 初始化日志系统
     setup_logging()
-    logger = logging.getLogger(__name__)
 
     import time
     start_time = time.time()
