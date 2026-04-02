@@ -5,8 +5,9 @@
 
 import sys
 import logging
-sys.path.append('***REMOVED***/tail_trading/src')
-sys.path.append('***REMOVED***/tail_trading/config')
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'config'))
 
 logger = logging.getLogger(__name__)
 
