@@ -153,7 +153,10 @@ def run():
 
     # 计算运行时长
     elapsed = time.time() - start_time
-    elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
+    if elapsed < 1:
+        elapsed_str = f"{int(elapsed*1000)}毫秒"
+    else:
+        elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
     report += f"\n⏱️ 运行时长：{elapsed_str}"
     logger.info(f"⏱️ 总运行时长：{elapsed_str}")
     logger.info("运行完成！")
