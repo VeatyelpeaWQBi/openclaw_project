@@ -70,12 +70,26 @@ def generate_report(result):
             zz_change = indices['中证全指']['change_pct']
             if sh_change != 0:
                 ratio = zz_change / sh_change
-                if ratio > 1.2:
-                    desc = '中小盘股跌更多，市场偏空'
-                elif ratio < 0.8:
-                    desc = '权重股跌更多，市场偏空'
-                else:
-                    desc = '市场分化不明显'
+                # 根据涨跌趋势和分化系数判断市场状态
+                if sh_change > 0.3:  # 上涨趋势
+                    if ratio > 1.2:
+                        desc = '🟢 中小盘领涨，赚钱效应扩散，强势上涨'
+                    elif ratio < 0.8:
+                        desc = '🟡 权重护盘，题材弱，赚钱效应差，警惕分化'
+                    else:
+                        desc = '🟢 市场同步上涨，结构健康'
+                elif sh_change < -0.3:  # 下跌趋势
+                    if ratio > 1.2:
+                        desc = '🔴 中小盘恐慌抛售，亏钱效应严重'
+                    elif ratio < 0.8:
+                        desc = '🟡 权重补跌，题材抗跌，关注见底信号'
+                    else:
+                        desc = '🟠 系统性下跌，市场同步调整'
+                else:  # 震荡
+                    if abs(ratio - 1) > 0.3:
+                        desc = '🜲 板块轮动明显，结构性行情'
+                    else:
+                        desc = '⚪ 市场缺乏方向，观望情绪'
                 lines.append(f"  上证(加权): {sh_change:+.2f}% | 中证全指(等权参考): {zz_change:+.2f}%")
                 lines.append(f"  分化系数: {ratio:.2f} → {desc}")
             lines.append("")
