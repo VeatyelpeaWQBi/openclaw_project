@@ -18,6 +18,7 @@ from paths import DATA_DIR, REPORTS_DIR as REPORT_DIR
 from log_setup import setup_logging
 from strategy import run_tail_t1_strategy
 from data_storage import save_signal, save_report
+from data_source import get_index_realtime, get_market_sentiment, get_market_volume_compare
 
 import logging
 
@@ -44,6 +45,72 @@ def generate_report(result):
     lines = []
     lines.append(f"📊 尾盘T+1信号 — {date_str}")
     lines.append("")
+
+    # ========== 市场概况 ==========
+    try:
+        indices = get_index_realtime()
+        sentiment = get_market_sentiment()
+        volume = get_market_volume_compare()
+
+        # 主要指数
+        if indices:
+            lines.append("【主要指数】")
+            show_indices = ['上证指数', '深证成指', '创业板指', '沪深300', '中证500', '中证1000']
+            for name in show_indices:
+                if name in indices:
+                    idx = indices[name]
+                    sign = '+' if idx['change_pct'] >= 0 else ''
+                    lines.append(f"  {name}: {idx['price']:.2f} ({sign}{idx['change_pct']:.2f}%)")
+            lines.append("")
+
+        # 市场分化
+        if indices and '上证指数' in indices and '中证全指' in indices:
+            lines.append("【市场分化】")
+            sh_change = indices['上证指数']['change_pct']
+            zz_change = indices['中证全指']['change_pct']
+            if sh_change != 0:
+                ratio = zz_change / sh_change
+                if ratio > 1.2:
+                    desc = '中小盘股跌更多，市场偏空'
+                elif ratio < 0.8:
+                    desc = '权重股跌更多，市场偏空'
+                else:
+                    desc = '市场分化不明显'
+                lines.append(f"  上证(加权): {sh_change:+.2f}% | 中证全指(等权参考): {zz_change:+.2f}%")
+                lines.append(f"  分化系数: {ratio:.2f} → {desc}")
+            lines.append("")
+
+        # 市场情绪
+        if sentiment:
+            lines.append("【市场情绪】")
+            up = sentiment.get('up', 0)
+            down = sentiment.get('down', 0)
+            limit_up = sentiment.get('limit_up', 0)
+            limit_down = sentiment.get('limit_down', 0)
+            if up + down > 0:
+                ratio_str = f"1:{down/up:.1f}" if up > 0 else "-"
+                if down > up * 2:
+                    mood = '🔴偏空'
+                elif up > down:
+                    mood = '🟢偏多'
+                else:
+                    mood = '🟡震荡'
+                lines.append(f"  上涨: {up}只({limit_up}涨停) | 下跌: {down}只({limit_down}跌停)")
+                lines.append(f"  涨跌比: {ratio_str}  情绪: {mood}")
+
+        # 成交量
+        if volume:
+            today = volume.get('today_amount', 0)
+            yesterday = volume.get('yesterday_amount', 0)
+            change_pct = volume.get('change_pct', 0)
+            is_fang = volume.get('is_fangliang', False)
+            direction = '放量' if is_fang else '缩量'
+            lines.append(f"  大盘成交额: {today:.0f}亿 vs 昨日{yesterday:.0f}亿 {direction}{abs(change_pct):.1f}%")
+            lines.append("")
+
+    except Exception as e:
+        logger.warning(f"获取市场概况失败: {e}")
+        lines.append("")
 
     if not top_sectors:
         lines.append("今日热门板块获取失败，今日跳过。")

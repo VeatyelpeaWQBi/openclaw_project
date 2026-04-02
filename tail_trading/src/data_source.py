@@ -435,6 +435,160 @@ def get_stock_realtime(stock_code):
         return {}
 
 
+# ==================== 6. 市场概况（指数+情绪+成交量） ====================
+
+def get_index_realtime():
+    """
+    获取主要指数实时数据（腾讯接口）
+
+    返回:
+        dict: {
+            '上证指数': {'code': 'sh000001', 'price': 3927.60, 'change_pct': -0.53, 'amount': 5165},
+            '中证全指': {...},
+            ...
+        }
+    """
+    import requests
+
+    indices = {
+        'sh000001': '上证指数',
+        'sh000985': '中证全指',
+        'sz399001': '深证成指',
+        'sz399006': '创业板指',
+        'sh000300': '沪深300',
+        'sh000905': '中证500',
+        'sh000852': '中证1000',
+    }
+
+    result = {}
+    try:
+        codes_str = ','.join(indices.keys())
+        url = f'https://qt.gtimg.cn/q={codes_str}'
+        resp = requests.get(url, timeout=10)
+        resp.encoding = 'gbk'
+
+        for line in resp.text.strip().split('\n'):
+            if '=' not in line or '""' in line:
+                continue
+            parts = line.split('=')[1].strip('"').split('~')
+            if len(parts) < 40:
+                continue
+            code = parts[2]
+            price = _safe_float(parts[3])
+            change_pct = _safe_float(parts[32])
+            amount = _safe_float(parts[37])  # 成交额（万元）
+
+            for idx_code, idx_name in indices.items():
+                if code == idx_code[-6:]:
+                    result[idx_name] = {
+                        'code': idx_code,
+                        'price': price,
+                        'change_pct': change_pct,
+                        'amount': round(amount / 10000, 0),  # 转为亿元
+                    }
+                    break
+
+        logger.info(f"获取主要指数: {len(result)} 个")
+        return result
+
+    except Exception as e:
+        logger.error(f"获取指数数据失败: {type(e).__name__}: {e}")
+        return {}
+
+
+def get_market_sentiment():
+    """
+    获取市场情绪（上涨/下跌/涨停/跌停）
+
+    返回:
+        dict: {'up': 941, 'down': 4172, 'limit_up': 22, 'limit_down': 16, 'flat': 69}
+    """
+    try:
+        df = ak.stock_market_activity_legu()
+        if df is None or df.empty:
+            logger.warning("市场情绪数据为空")
+            return {}
+
+        data = {}
+        for _, row in df.iterrows():
+            item = str(row.get('item', ''))
+            value = row.get('value', 0)
+            if item == '上涨':
+                data['up'] = int(value) if value else 0
+            elif item == '下跌':
+                data['down'] = int(value) if value else 0
+            elif item == '涨停':
+                data['limit_up'] = int(value) if value else 0
+            elif item == '跌停':
+                data['limit_down'] = int(value) if value else 0
+            elif item == '平盘':
+                data['flat'] = int(value) if value else 0
+
+        logger.info(f"市场情绪: 上涨{data.get('up',0)}, 下跌{data.get('down',0)}, 涨停{data.get('limit_up',0)}, 跌停{data.get('limit_down',0)}")
+        return data
+
+    except Exception as e:
+        logger.error(f"获取市场情绪失败: {type(e).__name__}: {e}")
+        return {}
+
+
+def get_market_volume_compare():
+    """
+    获取大盘成交量对比（今日vs昨日，计算放量/缩量）
+
+    返回:
+        dict: {'today_amount': 11867, 'yesterday_amount': 10789, 'change_pct': 10.0, 'is_fangliang': True}
+    """
+    import requests
+
+    try:
+        # 从腾讯接口获取中证全指实时成交额
+        url = 'https://qt.gtimg.cn/q=sh000985'
+        resp = requests.get(url, timeout=10)
+        resp.encoding = 'gbk'
+        parts = resp.text.split('=')[1].strip('"').split('~')
+        today_amount = _safe_float(parts[37]) / 10000  # 万元转亿元
+
+        # 获取历史数据（昨日成交额）
+        url2 = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000985,day,,,5,qfq'
+        resp2 = requests.get(url2, timeout=10)
+        data2 = resp2.json()
+        day_data = data2['data']['sh000985'].get('day', [])
+
+        # 用成交量比例估算昨日成交额
+        if len(day_data) >= 2:
+            today_vol = _safe_float(day_data[-1][5])
+            yesterday_vol = _safe_float(day_data[-2][5])
+            if today_vol > 0:
+                yesterday_amount = today_amount * (yesterday_vol / today_vol)
+            else:
+                yesterday_amount = today_amount
+        else:
+            yesterday_amount = today_amount
+
+        today_yi = round(today_amount, 0)
+        yesterday_yi = round(yesterday_amount, 0)
+
+        if yesterday_yi > 0:
+            change_pct = round((today_yi - yesterday_yi) / yesterday_yi * 100, 1)
+        else:
+            change_pct = 0
+
+        result = {
+            'today_amount': today_yi,
+            'yesterday_amount': yesterday_yi,
+            'change_pct': change_pct,
+            'is_fangliang': change_pct > 0,
+        }
+
+        logger.info(f"成交量对比: 今日{today_yi}亿 vs 昨日{yesterday_yi}亿 ({'放量' if result['is_fangliang'] else '缩量'}{abs(change_pct)}%)")
+        return result
+
+    except Exception as e:
+        logger.error(f"获取成交量对比失败: {type(e).__name__}: {e}")
+        return {}
+
+
 # ==================== 测试入口 ====================
 
 if __name__ == '__main__':
