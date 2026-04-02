@@ -219,7 +219,8 @@ def run_tail_t1_strategy():
     返回:
         dict: {
             'date_str': str,
-            'top_sectors': list,   # 前5板块
+            'top_sectors': list,   # 前10板块
+            'top10_attack': list,  # 前10中的进攻型板块
             'candidates': list,    # 筛选出的候选股
             'all_analyzed': list,  # 所有分析过的股票统计
             'has_signal': bool,
@@ -234,6 +235,7 @@ def run_tail_t1_strategy():
         return {
             'date_str': date_str,
             'top_sectors': [],
+            'top10_attack': [],
             'candidates': [],
             'all_analyzed': [],
             'has_signal': False,
@@ -246,7 +248,8 @@ def run_tail_t1_strategy():
     if not top10_attack:
         return {
             'date_str': date_str,
-            'top_sectors': all_sectors[:5],
+            'top_sectors': all_sectors[:10],
+            'top10_attack': [],
             'candidates': [],
             'all_analyzed': [],
             'has_signal': False,
@@ -259,7 +262,8 @@ def run_tail_t1_strategy():
     if not top5_attack:
         return {
             'date_str': date_str,
-            'top_sectors': top5_sectors,
+            'top_sectors': top10_sectors,
+            'top10_attack': top10_attack,
             'candidates': [],
             'all_analyzed': [],
             'has_signal': False,
@@ -323,11 +327,12 @@ def run_tail_t1_strategy():
     # 4. 去重和排序
     if all_candidates:
         all_candidates = sorted(all_candidates, key=lambda x: x.get('volume_ratio', 0), reverse=True)
-        all_candidates = all_candidates[:5]
+        all_candidates = all_candidates[:10]
 
     return {
         'date_str': date_str,
-        'top_sectors': top5_sectors,
+        'top_sectors': top10_sectors,
+        'top10_attack': top10_attack,
         'candidates': all_candidates,
         'all_analyzed': all_analyzed_stocks,
         'has_signal': len(all_candidates) > 0,
