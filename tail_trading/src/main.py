@@ -71,11 +71,16 @@ def generate_report(result):
             if sh_change != 0:
                 ratio = zz_change / sh_change
                 # 根据涨跌趋势和分化系数判断市场状态
-                if sh_change > 0.3:  # 上涨趋势
+                if ratio < 0:  # 分化系数为负：上证和中证全指方向相反
+                    if sh_change > 0 and zz_change < 0:
+                        desc = '🐊 鳄鱼张嘴（指数红了但个股在跌，主力拉指数掩护出货，危险！）'
+                    else:
+                        desc = '🦅 题材先行（大盘股在跌，小盘股在涨，风格可能在切换）'
+                elif sh_change > 0.3:  # 上涨趋势
                     if ratio > 1.2:
                         desc = '🟢 权重搭台，题材唱戏（大盘股稳住，小盘股飞涨，大家都赚钱）'
                     elif ratio < 0.8:
-                        desc = '🟡 鳄鱼张嘴（只涨指数不涨个股，散户容易亏钱）'
+                        desc = '🟡 只赚指数不赚钱（大盘股撑场面，散户手里股票不涨）'
                     else:
                         desc = '🟢 齐涨共涨（指数和个股同步上涨，健康行情）'
                 elif sh_change < -0.3:  # 下跌趋势
