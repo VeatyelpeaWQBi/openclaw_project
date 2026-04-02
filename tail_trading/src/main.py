@@ -50,11 +50,18 @@ def generate_report(result):
         return '\n'.join(lines)
 
     # 热门板块
-    lines.append("🔥 今日热门板块前5：")
-    for s in top_sectors[:5]:
+    lines.append("🔥 今日热门板块前10：")
+    for s in top_sectors[:10]:
         pct = s.get('change_percent', 0)
         lines.append(f"  • {s['name']}: {'+' if pct > 0 else ''}{pct}%")
     lines.append("")
+    
+    # 进攻型板块信息
+    top10_attack = result.get('top10_attack', [])
+    if top10_attack:
+        attack_names = [s['name'] for s in top10_attack]
+        lines.append(f"🎯 前10中包含的进攻型板块：{', '.join(attack_names)}")
+        lines.append("")
 
     if not has_signal:
         reason_text = f"（{skip_reason}）" if skip_reason else ""
