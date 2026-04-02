@@ -138,7 +138,7 @@ def generate_report(result):
     # 热门板块
     lines.append("🔥 今日热门板块前10：")
     for s in top_sectors[:10]:
-        pct = s.get('change_percent', 0)
+        pct = round(s.get('change_percent', 0), 2)
         lines.append(f"  • {s['name']}: {'+' if pct > 0 else ''}{pct}%")
     lines.append("")
     
