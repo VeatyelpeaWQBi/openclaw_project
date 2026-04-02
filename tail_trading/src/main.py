@@ -73,14 +73,14 @@ def generate_report(result):
                 # 根据涨跌趋势和分化系数判断市场状态
                 if sh_change > 0.3:  # 上涨趋势
                     if ratio > 1.2:
-                        desc = '🟢 中小盘领涨，赚钱效应扩散，强势上涨'
+                        desc = '🟢 权重搭台，题材唱戏，赚钱效应扩散，强势上涨'
                     elif ratio < 0.8:
-                        desc = '🟡 权重护盘，题材弱，赚钱效应差，警惕分化'
+                        desc = '🟡 权重护盘，题材走弱，赚钱效应差，警惕分化'
                     else:
                         desc = '🟢 市场同步上涨，结构健康'
                 elif sh_change < -0.3:  # 下跌趋势
                     if ratio > 1.2:
-                        desc = '🔴 中小盘恐慌抛售，亏钱效应严重'
+                        desc = '🔴 题材股恐慌抛售，亏钱效应严重'
                     elif ratio < 0.8:
                         desc = '🟡 权重补跌，题材抗跌，关注见底信号'
                     else:
