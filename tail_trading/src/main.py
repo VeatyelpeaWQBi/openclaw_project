@@ -73,23 +73,23 @@ def generate_report(result):
                 # 根据涨跌趋势和分化系数判断市场状态
                 if sh_change > 0.3:  # 上涨趋势
                     if ratio > 1.2:
-                        desc = '🟢 权重搭台，题材唱戏，赚钱效应扩散，强势上涨'
+                        desc = '🟢 权重搭台，题材唱戏（大盘股稳住，小盘股飞涨，大家都赚钱）'
                     elif ratio < 0.8:
-                        desc = '🟡 权重护盘，题材走弱，赚钱效应差，警惕分化'
+                        desc = '🟡 鳄鱼张嘴（只涨指数不涨个股，散户容易亏钱）'
                     else:
-                        desc = '🟢 市场同步上涨，结构健康'
+                        desc = '🟢 齐涨共涨（指数和个股同步上涨，健康行情）'
                 elif sh_change < -0.3:  # 下跌趋势
                     if ratio > 1.2:
-                        desc = '🔴 题材股恐慌抛售，亏钱效应严重'
+                        desc = '🔴 小票踩踏（散户恐慌抛售小盘股，亏钱效应炸裂）'
                     elif ratio < 0.8:
-                        desc = '🟡 权重补跌，题材抗跌，关注见底信号'
+                        desc = '🟡 权重补跌（大盘股在跌，小盘股企稳，可能快见底了）'
                     else:
-                        desc = '🟠 系统性下跌，市场同步调整'
+                        desc = '🟠 泥沙俱下（大小票一起跌，系统性风险）'
                 else:  # 震荡
                     if abs(ratio - 1) > 0.3:
-                        desc = '🜲 板块轮动明显，结构性行情'
+                        desc = '🜲 二八分化（板块轮动快，选对板块吃肉选错吃面）'
                     else:
-                        desc = '⚪ 市场缺乏方向，观望情绪'
+                        desc = '⚪ 横盘磨叽（多空僵持，观望为主）'
                 lines.append(f"  上证(加权): {sh_change:+.2f}% | 中证全指(等权参考): {zz_change:+.2f}%")
                 lines.append(f"  分化系数: {ratio:.2f} → {desc}")
             lines.append("")
