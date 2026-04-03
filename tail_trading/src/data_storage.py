@@ -248,7 +248,7 @@ def save_report(date_str, report_text):
     保存报告文本到共享文件夹
     """
     ensure_dirs()
-    filename = os.path.join(REPORTS_DIR, f'report_{date_str}.txt')
+    filename = os.path.join(REPORTS_DIR, f'report_{date_str}.md')
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(report_text)
     return filename
