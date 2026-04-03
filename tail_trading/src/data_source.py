@@ -501,7 +501,7 @@ def get_market_sentiment():
     获取市场情绪（上涨/下跌/涨停/跌停）
 
     返回:
-        dict: {'up': 941, 'down': 4172, 'limit_up': 22, 'limit_down': 16, 'flat': 69}
+        dict: {'up': 941, 'down': 4172, 'limit_up': 22, 'limit_down': 16, 'flat': 69, 'activity_rate': 13.48}
     """
     try:
         df = ak.stock_market_activity_legu()
@@ -523,8 +523,11 @@ def get_market_sentiment():
                 data['limit_down'] = int(value) if value else 0
             elif item == '平盘':
                 data['flat'] = int(value) if value else 0
+            elif item == '活跃度':
+                raw = str(value).replace('%', '')
+                data['activity_rate'] = float(raw) if raw else 0.0
 
-        logger.info(f"市场情绪: 上涨{data.get('up',0)}, 下跌{data.get('down',0)}, 涨停{data.get('limit_up',0)}, 跌停{data.get('limit_down',0)}")
+        logger.info(f"市场情绪: 上涨{data.get('up',0)}, 下跌{data.get('down',0)}, 涨停{data.get('limit_up',0)}, 跌停{data.get('limit_down',0)}, 活跃度{data.get('activity_rate', 0)}%")
         return data
 
     except Exception as e:
