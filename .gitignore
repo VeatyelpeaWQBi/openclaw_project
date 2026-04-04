@@ -10,31 +10,23 @@ build/
 scripts/
 
 # ==================== 数据文件（太大不提交）====================
-tail_trading/data/
-tail_trading/daily_data/
-tail_trading/minute_data/
-tail_trading/index_history/
-tail_trading/stock_list.json
-
-# ==================== 日志文件 ====================
-tail_trading/*.log
+DATA/
 
 # ==================== 临时/调试文件 ====================
-tail_trading/*.png
-tail_trading/*.jpg
+*.png
+*.jpg
 tail_trading/reports/
 
 # ==================== 运行时进度/结果文件 ====================
 *_progress.json
 *_result.json
-daily_result*.json
-download_final_result.json
 migration_progress.json
 
 # ==================== 日志文件 ====================
 *.log
 
 # ==================== 路径配置（含绝对路径）====================
+*.json
 
 # ==================== 生产环境（不提交）====================
 prod/
@@ -59,11 +51,5 @@ Thumbs.db
 *~
 
 # ==================== 运行时生成的文件（含路径信息）====================
-*_progress.json
-*_result.json
-*.log
-migration_progress.json
-EOF && echo "gitignore更新完成"
 test_scripts/
-DATA/
 tail_trading/config/paths.json
