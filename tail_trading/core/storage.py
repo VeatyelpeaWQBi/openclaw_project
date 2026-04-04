@@ -175,12 +175,51 @@ def ensure_dirs():
     os.makedirs(REPORT_SIGNAL_DIR, exist_ok=True)
 
 
-def get_daily_data_from_sqlite(stock_code):
-    """从SQLite获取单只股票日K数据"""
+
+def get_trading_day_offset(days_ago):
+    """
+    从交易日历获取N个交易日前的日期
+
+    参数:
+        days_ago: 往前推多少个交易日（0=今天或最近交易日, 1=上一交易日）
+
+    返回:
+        str: 'YYYY-MM-DD' 或 None
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        today = datetime.now().strftime('%Y-%m-%d')
+        row = conn.execute(
+            "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1 OFFSET ?",
+            (today, days_ago)
+        ).fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def get_daily_data_from_sqlite(stock_code, days=None):
+    """
+    从SQLite获取单只股票日K数据
+
+    参数:
+        stock_code: 股票代码
+        days: 最近N天的数据（None=全部）
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
-        df = pd.read_sql_query("SELECT * FROM daily_kline WHERE code = ? ORDER BY date", conn, params=[stock_code])
+        if days:
+            start_date = get_trading_day_offset(days)
+            if not start_date:
+                start_date = (datetime.now() - timedelta(days=int(days * 1.5))).strftime('%Y-%m-%d')
+            df = pd.read_sql_query(
+                "SELECT * FROM daily_kline WHERE code = ? AND date >= ? ORDER BY date",
+                conn, params=[stock_code, start_date]
+            )
+        else:
+            df = pd.read_sql_query("SELECT * FROM daily_kline WHERE code = ? ORDER BY date", conn, params=[stock_code])
         conn.close()
         return df
     except Exception:
