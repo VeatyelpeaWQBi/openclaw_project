@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 from strategies.base import BaseStrategy
-from core.storage import init_turtle_tables, get_daily_data_from_sqlite
+from core.storage import get_daily_data_from_sqlite
 from strategies.turtle.account_manager import AccountManager
 from strategies.turtle.position_manager import PositionManager
 from strategies.turtle.candidate_pool import CandidatePool
@@ -46,11 +46,7 @@ class TurtleStrategy(BaseStrategy):
         date_str = datetime.now().strftime('%Y-%m-%d')
         logger.info(f"=== 海龟交易法策略运行 — {date_str} ===")
 
-        # 1. 初始化数据库表
-        init_turtle_tables()
-        logger.info("数据库表初始化完成")
-
-        # 2. 检查冷却释放
+        # 1. 检查冷却释放
         released = self.position_manager.check_cooldown_release()
         if released:
             logger.info(f"冷却释放: {released}")
