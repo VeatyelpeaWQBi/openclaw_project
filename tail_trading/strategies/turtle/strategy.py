@@ -52,8 +52,8 @@ class TurtleStrategy(BaseStrategy):
             logger.info(f"冷却释放: {released}")
 
         # 2. 检查账户是否已初始化
-        capital = self.account_manager.get_capital()
-        if capital <= 0:
+        account_summary = self.account_manager.get_summary()
+        if account_summary.get('total', 0) <= 0:
             logger.error("账户未初始化，请先设置资金（如: 账户24万）")
             return {
                 "date_str": date_str,
@@ -116,7 +116,6 @@ class TurtleStrategy(BaseStrategy):
         logger.info(f"加载K线数据: {len(kline_data)} 只")
 
         # 6. 信号检测
-        account_summary = self.account_manager.get_summary()
         signals = self.signal_checker.check_all(
             self.position_manager,
             self.account_manager,
