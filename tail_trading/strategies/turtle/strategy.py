@@ -96,7 +96,7 @@ class TurtleStrategy(BaseStrategy):
         for code in all_codes:
             # 5a. 从API获取最近2个交易日数据，写入DB
             try:
-                market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
+                market = 'sh' if code.startswith(('6',)) else 'sz'  # 6xxxx=上证(含688科创板), 其余=深证(含30x创业板)
                 recent_df = get_stock_daily_kline_range(code, market=market, start_date=start_date, end_date=end_date)
                 if not recent_df.empty:
                     name = ''
