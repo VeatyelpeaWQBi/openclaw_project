@@ -34,20 +34,6 @@ class AccountManager:
         logger.info(f"[账户] 操作完成")
         conn.close()
 
-    def get_capital(self):
-        """
-        获取总资产
-
-        返回:
-            float: 总资金，未初始化返回0
-        """
-        conn = get_db_connection()
-        row = conn.execute("SELECT total_capital FROM turtle_account WHERE id = 1").fetchone()
-        conn.close()
-        if row:
-            return float(row['total_capital'])
-        return 0.0
-
     def get_available(self):
         """
         获取可用资金

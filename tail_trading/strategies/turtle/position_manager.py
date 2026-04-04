@@ -80,7 +80,7 @@ class PositionManager:
         """
         # 计算每单位股数
         if account_manager:
-            capital = account_manager.get_capital()
+            capital = account_manager.get_summary().get("total", 0)
         else:
             capital = 100000  # 默认10万
 
@@ -147,7 +147,7 @@ class PositionManager:
 
         # 计算加仓股数
         if account_manager:
-            capital = account_manager.get_capital()
+            capital = account_manager.get_summary().get("total", 0)
         else:
             capital = 100000
 
