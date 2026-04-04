@@ -79,14 +79,43 @@ class TurtleStrategy(BaseStrategy):
         candidate_codes = [c['code'] for c in candidates if c.get('code')]
         all_codes = list(set(holding_codes + candidate_codes))
 
+        from core.data_access import get_stock_daily_kline_range
+        from core.storage import save_daily_kline_to_sqlite, get_trading_day_offset
+
+        # 用交易日历获取上一交易日（回退2个交易日确保覆盖今天和昨天）
+        prev_trade_date = get_trading_day_offset(1)  # 上一交易日
+        if prev_trade_date:
+            start_date = prev_trade_date.replace('-', '')
+            end_date = datetime.now().strftime('%Y%m%d')
+        else:
+            # fallback
+            from datetime import timedelta
+            start_date = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
+            end_date = datetime.now().strftime('%Y%m%d')
+
         for code in all_codes:
-            df = get_daily_data_from_sqlite(code)
+            # 5a. 从API获取最近2个交易日数据，写入DB
+            try:
+                market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
+                recent_df = get_stock_daily_kline_range(code, market=market, start_date=start_date, end_date=end_date)
+                if not recent_df.empty:
+                    name = ''
+                    for c in candidates:
+                        if c.get('code') == code:
+                            name = c.get('name', '')
+                            break
+                    save_daily_kline_to_sqlite(code, name, recent_df)
+            except Exception as e:
+                logger.debug(f"[{code}] 更新日K失败: {e}")
+
+            # 5b. 从DB加载完整日K
+            df = get_daily_data_from_sqlite(code, days=350)
             if not df.empty:
                 kline_data[code] = df
 
         logger.info(f"加载K线数据: {len(kline_data)} 只")
 
-        # 7. 信号检测
+        # 6. 信号检测
         account_summary = self.account_manager.get_summary()
         signals = self.signal_checker.check_all(
             self.position_manager,
@@ -95,7 +124,7 @@ class TurtleStrategy(BaseStrategy):
             kline_data,
         )
 
-        # 8. 汇总结果
+        # 7. 汇总结果
         has_signal = len(signals) > 0
         critical_count = sum(1 for s in signals if s.get('urgency') == 'critical')
 
