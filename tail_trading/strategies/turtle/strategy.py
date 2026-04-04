@@ -4,7 +4,6 @@
 """
 
 import logging
-import random
 from datetime import datetime
 from strategies.base import BaseStrategy
 from core.storage import get_daily_data_from_sqlite
@@ -80,49 +79,42 @@ class TurtleStrategy(BaseStrategy):
         candidate_codes = [c['code'] for c in candidates if c.get('code')]
         all_codes = list(set(holding_codes + candidate_codes))
 
-        # 判断今天是否交易日
-        import sqlite3 as _sqlite3
-        from core.paths import DB_PATH as _DB_PATH
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        _conn_check = _sqlite3.connect(_DB_PATH)
-        _row = _conn_check.execute("SELECT trade_status FROM trade_calendar WHERE trade_date = ?", (today_str,)).fetchone()
-        _conn_check.close()
-        is_trading_day = bool(_row and _row[0] == 1)
+        from core.data_access import get_stock_daily_kline_range
+        from core.storage import save_daily_kline_to_sqlite, get_trading_day_offset
 
-        if is_trading_day:
-            # 交易日：直接调akshare获取实时数据（跳过封装层的sleep）
-            import akshare as ak
-            from core.storage import save_daily_kline_to_sqlite, get_trading_day_offset
-
-            prev_trade_date = get_trading_day_offset(1)
-            start_date = prev_trade_date.replace('-', '') if prev_trade_date else (datetime.now() - __import__('datetime').timedelta(days=5)).strftime('%Y%m%d')
+        # 用交易日历获取上一交易日（回退2个交易日确保覆盖今天和昨天）
+        prev_trade_date = get_trading_day_offset(1)  # 上一交易日
+        if prev_trade_date:
+            start_date = prev_trade_date.replace('-', '')
+            end_date = datetime.now().strftime('%Y%m%d')
+        else:
+            # fallback
+            from datetime import timedelta
+            start_date = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
             end_date = datetime.now().strftime('%Y%m%d')
 
-            logger.info(f"交易日：从API获取{len(all_codes)}只股票数据...")
-            for code in all_codes:
-                try:
-                    market = 'sh' if code.startswith(('6',)) else 'sz'
-                    sina_code = f'{market}{code}'
-                    df_api = ak.stock_zh_a_daily(symbol=sina_code, start_date=start_date, end_date=end_date, adjust='qfq')
-                    if df_api is not None and not df_api.empty:
-                        import pandas as _pd
-                        df_api['date'] = _pd.to_datetime(df_api['date'])
-                        name = next((c.get('name', '') for c in candidates if c.get('code') == code), '')
-                        save_daily_kline_to_sqlite(code, name, df_api)
-                except Exception as e:
-                    logger.debug(f"[{code}] API获取失败: {e}")
-                import time as _time
-                _time.sleep(random.uniform(0.6, 1.2))  # 防新浪限流
-        else:
-            logger.info("非交易日：直接从DB读取")
-
-        # 从DB加载完整日K
         for code in all_codes:
+            # 5a. 从API获取最近2个交易日数据，写入DB
+            try:
+                market = 'sh' if code.startswith(('6',)) else 'sz'  # 6xxxx=上证(含688科创板), 其余=深证(含30x创业板)
+                recent_df = get_stock_daily_kline_range(code, market=market, start_date=start_date, end_date=end_date)
+                if not recent_df.empty:
+                    name = ''
+                    for c in candidates:
+                        if c.get('code') == code:
+                            name = c.get('name', '')
+                            break
+                    save_daily_kline_to_sqlite(code, name, recent_df)
+            except Exception as e:
+                logger.debug(f"[{code}] 更新日K失败: {e}")
+
+            # 5b. 从DB加载完整日K, 需要计算最多350日均线
             df = get_daily_data_from_sqlite(code, days=350)
             if not df.empty:
                 kline_data[code] = df
 
         logger.info(f"加载K线数据: {len(kline_data)} 只")
+
         # 6. 信号检测
         signals = self.signal_checker.check_all(
             self.position_manager,
