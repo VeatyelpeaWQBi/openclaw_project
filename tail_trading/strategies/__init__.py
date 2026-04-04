@@ -3,10 +3,12 @@
 包含策略注册表和所有可用策略
 """
 from strategies.nomad_t1.strategy import NomadT1Strategy
+from strategies.turtle.strategy import TurtleStrategy
 
 # 策略注册表：名称 -> 策略类
 STRATEGY_MAP = {
     'nomad_t1': NomadT1Strategy,
+    'turtle': TurtleStrategy,
 }
 
 

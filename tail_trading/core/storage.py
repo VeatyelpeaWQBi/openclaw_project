@@ -252,3 +252,63 @@ def save_report(date_str, report_text):
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(report_text)
     return filename
+
+
+# ==================== 海龟交易法数据表 ====================
+
+def init_turtle_tables():
+    """创建海龟交易法所需的三张表"""
+    conn = get_db_connection()
+
+    # 持仓表
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS turtle_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            name TEXT,
+            status TEXT NOT NULL DEFAULT 'HOLDING',
+            units INTEGER DEFAULT 1,
+            total_shares INTEGER DEFAULT 0,
+            avg_cost REAL DEFAULT 0,
+            entry_price REAL,
+            last_add_price REAL,
+            current_stop REAL,
+            next_add_price REAL,
+            exit_price REAL,
+            atr_value REAL,
+            cooldown_until TEXT,
+            opened_at TEXT,
+            closed_at TEXT,
+            updated_at TEXT
+        )
+    """)
+
+    # 账户表（单行）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS turtle_account (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            total_capital REAL NOT NULL,
+            available_capital REAL NOT NULL,
+            realized_profit REAL DEFAULT 0,
+            updated_at TEXT,
+            note TEXT
+        )
+    """)
+
+    # 自选池表
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS turtle_watchlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT,
+            name TEXT,
+            keyword TEXT,
+            type TEXT NOT NULL,
+            note TEXT,
+            added_at TEXT,
+            active INTEGER DEFAULT 1
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+    logger.debug("海龟交易法数据表初始化完成")
