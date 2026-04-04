@@ -65,3 +65,4 @@ Thumbs.db
 migration_progress.json
 EOF && echo "gitignore更新完成"
 test_scripts/
+DATA/

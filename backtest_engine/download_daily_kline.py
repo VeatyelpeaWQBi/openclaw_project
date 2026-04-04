@@ -17,7 +17,7 @@ import logging
 from datetime import datetime
 
 # 配置
-DB_PATH = '/home/drizztbi/openclaw_project/tail_trading/data/stock_data.db'
+DB_PATH = '/home/drizztbi/openclaw_project/DATA/stock_data.db'
 BATCH_SIZE = 10  # 每次最多获取股票数
 MAX_PER_MINUTE = 2  # 每分钟最多请求数
 DELAY_BETWEEN_STOCKS = 30  # 每个股票之间的延迟（秒）
