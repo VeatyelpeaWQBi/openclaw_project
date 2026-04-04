@@ -23,7 +23,7 @@ def _load_paths():
         'minute_data_dir': os.path.join(root, 'tail_trading', 'minute_data'),
         'index_history_dir': os.path.join(root, 'tail_trading', 'index_history'),
         'reports_dir': os.path.join(root, '..', 'shares', 'reports'),
-        'db_path': os.path.join(root, 'tail_trading', 'data', 'stock_data.db')
+        'db_path': os.path.join(root, 'DATA', 'stock_data.db')
     }
 
 PATHS = _load_paths()
