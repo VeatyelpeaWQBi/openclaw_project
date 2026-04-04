@@ -363,13 +363,31 @@ class NomadT1Strategy(BaseStrategy):
     def generate_report(self, result: dict) -> str:
         """生成报告（委托 report.py）"""
         from strategies.nomad_t1.report import generate_report
+        
+        # 输出分析统计日志
+        metadata = result.get('metadata', {})
+        all_analyzed = metadata.get('all_analyzed', [])
+        if all_analyzed:
+            candidate_count = sum(1 for s in all_analyzed if s.get('is_candidate', False))
+            analyzed_count = len(all_analyzed)
+            exception_count = sum(1 for s in all_analyzed if '异常' in s.get('reason', ''))
+            logger.info(f"分析统计: 总数{analyzed_count}, 符合{candidate_count}, 不符合{analyzed_count - candidate_count - exception_count}, 异常{exception_count}")
+            reason_stats = {}
+            for s in all_analyzed:
+                if not s.get('is_candidate', False):
+                    for r in s.get('reason', '未知').split('; '):
+                        reason_stats[r] = reason_stats.get(r, 0) + 1
+            if reason_stats:
+                top = ', '.join(f"{r}({c}只)" for r, c in sorted(reason_stats.items(), key=lambda x: -x[1])[:5])
+                logger.info(f"不符合原因TOP5: {top}")
+        
         # 转换为旧格式以兼容 report.py
         legacy_result = {
             'date_str': result['date_str'],
-            'top_sectors': result.get('metadata', {}).get('top_sectors', []),
-            'top10_attack': result.get('metadata', {}).get('top10_attack', []),
+            'top_sectors': metadata.get('top_sectors', []),
+            'top10_attack': metadata.get('top10_attack', []),
             'candidates': result['candidates'],
-            'all_analyzed': result.get('metadata', {}).get('all_analyzed', []),
+            'all_analyzed': all_analyzed,
             'has_signal': result['has_signal'],
             'skip_reason': result.get('skip_reason', ''),
         }

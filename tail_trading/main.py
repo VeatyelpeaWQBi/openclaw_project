@@ -58,28 +58,6 @@ def run(strategy_name='nomad_t1'):
     signal_file = save_signal(date_str, result['candidates'])
     report_file = save_report(date_str, report)
 
-    # 5. 输出分析统计
-    metadata = result.get('metadata', {})
-    all_analyzed = metadata.get('all_analyzed', [])
-    if all_analyzed:
-        candidate_count = sum(1 for s in all_analyzed if s.get('is_candidate', False))
-        analyzed_count = len(all_analyzed)
-        exception_count = sum(1 for s in all_analyzed if '异常' in s.get('reason', ''))
-
-        logger.info(f"📊 分析统计: 总数{analyzed_count}, 符合{candidate_count}, 不符合{analyzed_count - candidate_count - exception_count}, 异常{exception_count}")
-
-        reason_stats = {}
-        for s in all_analyzed:
-            if not s.get('is_candidate', False):
-                reason = s.get('reason', '未知')
-                reasons = reason.split('; ')
-                for r in reasons:
-                    reason_stats[r] = reason_stats.get(r, 0) + 1
-
-        if reason_stats:
-            top_reasons = ', '.join(f"{r}({c}只)" for r, c in sorted(reason_stats.items(), key=lambda x: -x[1])[:5])
-            logger.info(f"不符合原因TOP5: {top_reasons}")
-
     logger.info(f"信号文件: {signal_file}")
     logger.info(f"报告文件: {report_file}")
 
