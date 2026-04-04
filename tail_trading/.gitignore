@@ -1,5 +1,0 @@
-logs/
-__pycache__/
-*.pyc
-config/paths.json
-test_case/
