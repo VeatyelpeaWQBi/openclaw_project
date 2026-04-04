@@ -4,6 +4,7 @@
 """
 
 import logging
+import random
 from datetime import datetime
 from strategies.base import BaseStrategy
 from core.storage import get_daily_data_from_sqlite
@@ -110,6 +111,8 @@ class TurtleStrategy(BaseStrategy):
                         save_daily_kline_to_sqlite(code, name, df_api)
                 except Exception as e:
                     logger.debug(f"[{code}] API获取失败: {e}")
+                import time as _time
+                _time.sleep(random.uniform(0.6, 1.2))  # 防新浪限流
         else:
             logger.info("非交易日：直接从DB读取")
 
