@@ -186,7 +186,7 @@ def get_sector_stocks(sector_label, limit=50):
         logger.warning(f"板块[{sector_label}]成分股获取失败")
         return []
 
-    time.sleep(random.uniform(0.3, 1.0))
+    time.sleep(random.uniform(0.6, 1.2))
     return stocks[:limit]
 
 
@@ -338,7 +338,7 @@ def get_etf_daily_kline(etf_code, start_date=None, end_date=None):
     df = _sina_etf_daily_kline(etf_code, start_date=start_date, end_date=end_date)
     if df.empty:
         logger.warning(f"[ETF {etf_code}] 日K数据获取为空")
-    time.sleep(random.uniform(1, 3))  # 防ban
+    time.sleep(random.uniform(0.6, 1.2))  # 防限流
     return df
 
 
@@ -365,7 +365,7 @@ def get_stock_daily_kline(stock_code, market='sh', days=60):
     if df.empty:
         logger.error(f"[{stock_code}] 日K数据获取失败")
 
-    time.sleep(random.uniform(1, 3))  # 防ban
+    time.sleep(random.uniform(0.6, 1.2))  # 防限流
     return df
 
 
@@ -396,7 +396,7 @@ def get_stock_daily_kline_range(stock_code, market='sh', start_date=None, end_da
     if df.empty:
         logger.error(f"[{stock_code}] 日K数据获取失败 (start={start_date}, end={end_date})")
 
-    time.sleep(random.uniform(1, 3))  # 防ban
+    time.sleep(random.uniform(0.6, 1.2))  # 防限流
     return df
 
 
