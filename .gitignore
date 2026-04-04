@@ -34,7 +34,6 @@ migration_progress.json
 *.log
 
 # ==================== 路径配置（含绝对路径）====================
-**/paths.json
 
 # ==================== 生产环境（不提交）====================
 prod/
@@ -66,3 +65,4 @@ migration_progress.json
 EOF && echo "gitignore更新完成"
 test_scripts/
 DATA/
+tail_trading/config/paths.json

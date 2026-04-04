@@ -17,7 +17,10 @@ import logging
 from datetime import datetime
 
 # 配置
-DB_PATH = '/home/drizztbi/openclaw_project/DATA/stock_data.db'
+import os as _os
+_SCRIPT_DIR = _os.path.dirname(_os.path.abspath(__file__))
+_PROJECT_ROOT = _os.path.dirname(_SCRIPT_DIR)
+DB_PATH = _os.path.join(_PROJECT_ROOT, 'DATA', 'stock_data.db')
 BATCH_SIZE = 10  # 每次最多获取股票数
 MAX_PER_MINUTE = 2  # 每分钟最多请求数
 DELAY_BETWEEN_STOCKS = 30  # 每个股票之间的延迟（秒）
