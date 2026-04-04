@@ -18,9 +18,6 @@ DATA/
 tail_trading/reports/
 
 # ==================== 运行时进度/结果文件 ====================
-*_progress.json
-*_result.json
-migration_progress.json
 
 # ==================== 日志文件 ====================
 *.log
@@ -35,7 +32,6 @@ prod/
 reference_project/
 
 # ==================== 本地配置（含代理等敏感信息）====================
-**/local_config.json
 
 # ==================== 敏感配置 ====================
 # 如果未来有包含token/key的配置文件，在这里排除
@@ -52,4 +48,3 @@ Thumbs.db
 
 # ==================== 运行时生成的文件（含路径信息）====================
 test_scripts/
-tail_trading/config/paths.json
