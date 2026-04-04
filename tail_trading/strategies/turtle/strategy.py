@@ -51,21 +51,29 @@ class TurtleStrategy(BaseStrategy):
         if released:
             logger.info(f"冷却释放: {released}")
 
-        # 3. 确保账户已初始化
+        # 2. 检查账户是否已初始化
         capital = self.account_manager.get_capital()
         if capital <= 0:
-            logger.warning("账户未初始化，使用默认资金100000")
-            self.account_manager.init_account(100000)
+            logger.error("账户未初始化，请先设置资金（如: 账户24万）")
+            return {
+                "date_str": date_str,
+                "candidates": [],
+                "signals": [],
+                "has_signal": False,
+                "skip_reason": "账户未初始化，请先发送 账户24万 设置资金",
+                "metadata": {},
+            }
 
-        # 4. 加载持仓
+
+        # 3. 加载持仓
         positions = self.position_manager.get_active_positions()
         logger.info(f"当前持仓: {len(positions)} 只")
 
-        # 5. 构建候选池
+        # 4. 构建候选池
         candidates = self.candidate_pool.get_candidate_list()
         logger.info(f"候选池: {len(candidates)} 只")
 
-        # 6. 加载K线数据
+        # 5. 加载K线数据
         kline_data = {}
         holding_codes = [p['code'] for p in positions]
         candidate_codes = [c['code'] for c in candidates if c.get('code')]
