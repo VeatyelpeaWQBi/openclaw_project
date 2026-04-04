@@ -108,7 +108,7 @@ class TurtleStrategy(BaseStrategy):
             except Exception as e:
                 logger.debug(f"[{code}] 更新日K失败: {e}")
 
-            # 5b. 从DB加载完整日K
+            # 5b. 从DB加载完整日K, 需要计算最多350日均线
             df = get_daily_data_from_sqlite(code, days=350)
             if not df.empty:
                 kline_data[code] = df
