@@ -1,0 +1,185 @@
+"""
+海龟交易法 — 突破检测模块
+包含：唐奇安通道突破检测、入场/退出信号
+"""
+
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def detect_donchian_high(df, period):
+    """
+    计算N日唐奇安通道上轨（N日最高价）
+
+    参数:
+        df: 日K DataFrame，需包含 high 列
+        period: 回看周期
+
+    返回:
+        float: N日最高价
+    """
+    if df is None or len(df) < period:
+        return 0.0
+
+    # 取最近period根K线的最高价（排除当前K线）
+    lookback = df.iloc[-(period + 1):-1]
+    if lookback.empty:
+        lookback = df.iloc[-period:]
+
+    return round(float(lookback['high'].max()), 2)
+
+
+def detect_donchian_low(df, period):
+    """
+    计算N日唐奇安通道下轨（N日最低价）
+
+    参数:
+        df: 日K DataFrame，需包含 low 列
+        period: 回看周期
+
+    返回:
+        float: N日最低价
+    """
+    if df is None or len(df) < period:
+        return 0.0
+
+    # 取最近period根K线的最低价（排除当前K线）
+    lookback = df.iloc[-(period + 1):-1]
+    if lookback.empty:
+        lookback = df.iloc[-period:]
+
+    return round(float(lookback['low'].min()), 2)
+
+
+def detect_breakout(df, period=20):
+    """
+    检测突破信号（当日收盘价突破N日最高/最低）
+
+    参数:
+        df: 日K DataFrame，需包含 high, low, close 列
+        period: 唐奇安通道周期
+
+    返回:
+        str: 'up'（向上突破）/ 'down'（向下突破）/ None（无突破）
+    """
+    if df is None or len(df) < period + 1:
+        return None
+
+    close_now = float(df['close'].iloc[-1])
+    high_prev = detect_donchian_high(df, period)
+    low_prev = detect_donchian_low(df, period)
+
+    if close_now > high_prev:
+        logger.info(f'[突破检测] 向上突破, 现价{close:.2f} > 高点{high:.2f}')
+        return 'up'
+    elif close_now < low_prev:
+        logger.info(f'[突破检测] 向下突破, 现价{close:.2f} < 低点{low:.2f}')
+        return 'down'
+
+    return None
+
+
+def check_entry_signal(df, short=20, long=55):
+    """
+    检查入场突破信号
+
+    短期（20日）或长期（55日）突破均可入场
+
+    参数:
+        df: 日K DataFrame
+        short: 短期突破周期，默认20
+        long: 长期突破周期，默认55
+
+    返回:
+        dict: {
+            'signal': bool,         # 是否有入场信号
+            'type': str,            # 'short_breakout' / 'long_breakout' / None
+            'break_price': float,   # 突破价格
+            'channel_high': float,  # 通道上轨
+        }
+    """
+    result = {
+        'signal': False,
+        'type': None,
+        'break_price': 0.0,
+        'channel_high': 0.0,
+    }
+
+    if df is None or len(df) < long + 1:
+        return result
+
+    close_now = float(df['close'].iloc[-1])
+
+    # 先检查长期突破（优先级更高）
+    long_high = detect_donchian_high(df, long)
+    if close_now > long_high and long_high > 0:
+        result['signal'] = True
+        result['type'] = 'long_breakout'
+        result['break_price'] = close_now
+        result['channel_high'] = long_high
+        return result
+
+    # 再检查短期突破
+    short_high = detect_donchian_high(df, short)
+    if close_now > short_high and short_high > 0:
+        result['signal'] = True
+        result['type'] = 'short_breakout'
+        result['break_price'] = close_now
+        result['channel_high'] = short_high
+        return result
+
+    return result
+
+
+def check_exit_signal(df, short=10, long=20):
+    """
+    检查退出信号（反向突破）
+
+    退出条件：收盘价跌破短期或长期唐奇安下轨
+
+    参数:
+        df: 日K DataFrame
+        short: 短期退出周期，默认10
+        long: 长期退出周期，默认20
+
+    返回:
+        dict: {
+            'signal': bool,        # 是否有退出信号
+            'type': str,           # 'short_exit' / 'long_exit' / None
+            'exit_price': float,   # 退出参考价
+            'channel_low': float,  # 通道下轨
+        }
+    """
+    result = {
+        'signal': False,
+        'type': None,
+        'exit_price': 0.0,
+        'channel_low': 0.0,
+    }
+
+    if df is None or len(df) < long + 1:
+        return result
+
+    close_now = float(df['close'].iloc[-1])
+
+    # 先检查长期退出
+    long_low = detect_donchian_low(df, long)
+    if close_now < long_low and long_low > 0:
+        result['signal'] = True
+        result['type'] = 'long_exit'
+        result['exit_price'] = close_now
+        result['channel_low'] = long_low
+        return result
+
+    # 再检查短期退出
+    short_low = detect_donchian_low(df, short)
+    if close_now < short_low and short_low > 0:
+        result['signal'] = True
+        result['type'] = 'short_exit'
+        result['exit_price'] = close_now
+        result['channel_low'] = short_low
+        return result
+
+    return result
