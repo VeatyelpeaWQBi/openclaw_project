@@ -95,7 +95,7 @@ def check_entry_signal(df, short=20, long=55):
     返回:
         dict: {
             'signal': bool,         # 是否有入场信号
-            'type': str,            # 'short_breakout' / 'long_breakout' / None
+            'type': str,            # '55日突破' / '20日突破' / None
             'break_price': float,   # 突破价格
             'channel_high': float,  # 通道上轨
         }
@@ -116,7 +116,7 @@ def check_entry_signal(df, short=20, long=55):
     long_high = detect_donchian_high(df, long)
     if close_now > long_high and long_high > 0:
         result['signal'] = True
-        result['type'] = 'long_breakout'
+        result['type'] = '20日突破'
         result['break_price'] = close_now
         result['channel_high'] = long_high
         return result
@@ -125,7 +125,7 @@ def check_entry_signal(df, short=20, long=55):
     short_high = detect_donchian_high(df, short)
     if close_now > short_high and short_high > 0:
         result['signal'] = True
-        result['type'] = 'short_breakout'
+        result['type'] = '55日突破'
         result['break_price'] = close_now
         result['channel_high'] = short_high
         return result
@@ -147,7 +147,7 @@ def check_exit_signal(df, short=10, long=20):
     返回:
         dict: {
             'signal': bool,        # 是否有退出信号
-            'type': str,           # 'short_exit' / 'long_exit' / None
+            'type': str,           # '10日退出' / '20日退出' / None
             'exit_price': float,   # 退出参考价
             'channel_low': float,  # 通道下轨
         }
@@ -168,7 +168,7 @@ def check_exit_signal(df, short=10, long=20):
     long_low = detect_donchian_low(df, long)
     if close_now < long_low and long_low > 0:
         result['signal'] = True
-        result['type'] = 'long_exit'
+        result['type'] = '20日退出'
         result['exit_price'] = close_now
         result['channel_low'] = long_low
         return result
@@ -177,7 +177,7 @@ def check_exit_signal(df, short=10, long=20):
     short_low = detect_donchian_low(df, short)
     if close_now < short_low and short_low > 0:
         result['signal'] = True
-        result['type'] = 'short_exit'
+        result['type'] = '10日退出'
         result['exit_price'] = close_now
         result['channel_low'] = short_low
         return result

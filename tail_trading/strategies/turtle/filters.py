@@ -19,17 +19,17 @@ def trend_filter(df, ma_long=350, ma_short=25):
         ma_short: 短期均线周期，默认25日
 
     返回:
-        str: 'bullish'（多头）/ 'bearish'（空头）/ 'neutral'（不明）
+        str: '多头'/ '空头'/ '不明'
     """
     if df is None or len(df) < ma_long:
-        return 'neutral'
+        return '不明'
 
     close = df['close']
     ma_l = close.rolling(window=ma_long).mean()
     ma_s = close.rolling(window=ma_short).mean()
 
     if ma_l.isna().iloc[-1] or ma_s.isna().iloc[-1]:
-        return 'neutral'
+        return '不明'
 
     current_ma_l = ma_l.iloc[-1]
     current_ma_s = ma_s.iloc[-1]
@@ -37,14 +37,14 @@ def trend_filter(df, ma_long=350, ma_short=25):
 
     # 短期均线在长期均线之上，且长期均线上升 → 多头
     if current_ma_s > current_ma_l and current_ma_l > prev_ma_l:
-        logger.debug(f'[趋势过滤] 双均线多头 → bullish')
-        return 'bullish'
+        logger.debug(f'[趋势过滤] 双均线多头 → 多头')
+        return '多头'
     # 短期均线在长期均线之下 → 空头
     elif current_ma_s < current_ma_l:
-        logger.debug(f'[趋势过滤] 双均线空头 → bearish')
-        return 'bearish'
+        logger.debug(f'[趋势过滤] 双均线空头 → 空头')
+        return '空头'
 
-    return 'neutral'
+    return '不明'
 
 
 def is_eligible(stock):
