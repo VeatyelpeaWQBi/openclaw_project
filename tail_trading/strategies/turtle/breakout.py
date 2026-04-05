@@ -81,16 +81,18 @@ def detect_breakout(df, period=20):
     return None
 
 
-def check_entry_signal(df, short=20, long=55):
+def check_entry_signal(df, short=20, long=55, s1_filtered=False):
     """
     检查入场突破信号
 
     短期（20日）或长期（55日）突破均可入场
+    S1过滤激活时跳过短期突破，只检查长期突破
 
     参数:
         df: 日K DataFrame
         short: 短期突破周期，默认20
         long: 长期突破周期，默认55
+        s1_filtered: S1过滤是否激活（True则跳过20日突破）
 
     返回:
         dict: {
@@ -122,6 +124,10 @@ def check_entry_signal(df, short=20, long=55):
         return result
 
     # 再检查短期突破
+    # S1过滤：上次S1盈利则跳过，等待55日突破
+    if s1_filtered:
+        return result
+
     short_high = detect_donchian_high(df, short)
     if close_now > short_high and short_high > 0:
         result['signal'] = True
