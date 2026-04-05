@@ -35,7 +35,7 @@ class SignalChecker:
         signals = []
 
         # === 第一部分：检查现有持仓 ===
-        positions = position_manager.get_active_positions(account_id) if account_id else position_manager.get_active_positions()
+        positions = position_manager.get_active_positions(account_id)
         for pos in positions:
             code = pos['code']
             df = kline_data.get(code)

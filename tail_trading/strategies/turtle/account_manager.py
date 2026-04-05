@@ -72,7 +72,10 @@ class AccountManager:
     """海龟交易法账户管理器"""
 
     def _row_to_dict(self, row):
-        """将sqlite3.Row转换为dict"""
+        """
+        将sqlite3.Row转换为dict
+        ⚠️ 如果 turtle_account 表新增列，需同步更新此处
+        """
         if row is None:
             return None
         return {
@@ -217,7 +220,7 @@ class AccountManager:
 
     def withdraw(self, account_id, amount):
         """
-        出金
+        出金（乐观锁扣款）
 
         参数:
             account_id: 账户ID
@@ -226,31 +229,29 @@ class AccountManager:
         返回:
             bool: 是否成功（可用资金不足则失败）
         """
-        available = self.get_available(account_id)
-        if available < amount:
-            logger.warning(f"[账户{account_id}] 出金失败：可用{available} < 请求{amount}")
-            return False
-
         conn = get_db_connection()
         try:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            conn.execute("""
+            cursor = conn.execute("""
                 UPDATE turtle_account SET
                     total_capital = total_capital - ?,
                     available_capital = available_capital - ?,
                     updated_at = ?
-                WHERE id = ? AND active = 1
-            """, (amount, amount, now, account_id))
+                WHERE id = ? AND active = 1 AND available_capital - ? >= 0
+            """, (amount, amount, now, account_id, amount))
+            if cursor.rowcount == 0:
+                logger.warning(f"[账户{account_id}] 出金失败：可用资金不足")
+                return False
             self._write_flow(conn, account_id, '出金', amount)
             conn.commit()
             logger.info(f"[账户{account_id}] 出金 {amount}")
+            return True
         finally:
             conn.close()
-        return True
 
     def on_buy(self, account_id, cost):
         """
-        买入时扣减可用资金
+        买入时扣减可用资金（乐观锁扣款）
 
         参数:
             account_id: 账户ID
@@ -259,25 +260,23 @@ class AccountManager:
         返回:
             bool: 是否成功（可用资金不足则失败）
         """
-        available = self.get_available(account_id)
-        if available < cost:
-            logger.warning(f"[账户{account_id}] 买入失败：可用{available} < 成本{cost}")
-            return False
-
         conn = get_db_connection()
         try:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            conn.execute("""
+            cursor = conn.execute("""
                 UPDATE turtle_account SET
                     available_capital = available_capital - ?,
                     updated_at = ?
-                WHERE id = ? AND active = 1
-            """, (cost, now, account_id))
+                WHERE id = ? AND active = 1 AND available_capital - ? >= 0
+            """, (cost, now, account_id, cost))
+            if cursor.rowcount == 0:
+                logger.warning(f"[账户{account_id}] 买入失败：可用资金不足")
+                return False
             conn.commit()
             logger.info(f"[账户{account_id}] 买入扣减 {cost}")
+            return True
         finally:
             conn.close()
-        return True
 
     def on_sell(self, account_id, proceeds, profit):
         """
