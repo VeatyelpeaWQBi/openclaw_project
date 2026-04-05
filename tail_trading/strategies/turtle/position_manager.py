@@ -316,6 +316,74 @@ class PositionManager:
 
         return self.get_position(account_id, code)
 
+    def reduce_position(self, account_id, code, sell_price, account_manager=None):
+        """
+        减仓（卖出1单位，仅执行一次）
+
+        海龟法则：盈利达1N时减1单位
+
+        参数:
+            account_id: 账户ID
+            code: 股票代码
+            sell_price: 卖出价
+            account_manager: AccountManager实例（可选）
+
+        返回:
+            dict or None: 减仓记录
+        """
+        self._require_account_id(account_id)
+        pos = self.get_position(account_id, code)
+        if not pos:
+            return None
+
+        # 已减过仓
+        if pos.get('has_reduced', 0):
+            logger.warning(f"[{code}] 已减过仓，跳过")
+            return None
+
+        # 至少2单位
+        if pos['units'] < 2:
+            logger.warning(f"[{code}] 仅{pos['units']}单位，无法减仓")
+            return None
+
+        # 计算减仓1单位的股数
+        shares_per_unit = pos['total_shares'] // pos['units']
+        if shares_per_unit <= 0:
+            return None
+
+        trade_amount = sell_price * shares_per_unit
+        fees = self._calc_fees(trade_amount, is_sell=True)
+        net_proceeds = trade_amount - fees['total']
+        profit = (sell_price - pos['avg_cost']) * shares_per_unit - fees['total']
+
+        new_units = pos['units'] - 1
+        new_total = pos['total_shares'] - shares_per_unit
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        conn = get_db_connection()
+        try:
+            conn.execute("""
+                UPDATE turtle_positions SET
+                    units = ?, total_shares = ?, has_reduced = 1,
+                    updated_at = ?
+                WHERE account_id = ? AND code = ? AND status = 'HOLDING'
+            """, (new_units, new_total, now, account_id, code))
+
+            self._write_flow(conn, account_id, code, pos['name'], '减仓',
+                            shares=shares_per_unit, price=sell_price, amount=trade_amount,
+                            profit=round(profit, 2), fees=fees['total'],
+                            units_before=pos['units'], units_after=new_units)
+
+            conn.commit()
+            logger.info(f"[{code}] 减仓1单位: {shares_per_unit}股@{sell_price} 净盈亏={profit:.2f}")
+        finally:
+            conn.close()
+
+        if account_manager:
+            account_manager.on_sell(account_id, net_proceeds, profit)
+
+        return self.get_position(account_id, code)
+
     def close_position(self, account_id, code, reason, sell_price, account_manager=None):
         """
         平仓
