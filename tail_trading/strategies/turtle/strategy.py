@@ -156,16 +156,14 @@ class TurtleStrategy(BaseStrategy):
         candidate_codes = [c['code'] for c in candidates if c.get('code')]
         all_codes = list(set(holding_codes + candidate_codes))
 
-        # 获取最近2个交易日
-        prev_trade_date = get_trading_day_offset(1)   # 上一交易日
-        prev2_trade_date = get_trading_day_offset(2)  # 上上交易日
-        if prev_trade_date:
-            check_date = prev2_trade_date or prev_trade_date
-        else:
+        # end_date = 最近交易日（含今天，如果是交易日）
+        # check_date = end_date的前一交易日（最近2个交易日中的较早者）
+        end_date = get_trading_day_offset(0)
+        check_date = get_trading_day_offset(1)
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not check_date:
             check_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
-
-        import sqlite3 as _sqlite3
-        from core.paths import DB_PATH
 
         kline_data = {}
         skip_api = 0
@@ -186,15 +184,12 @@ class TurtleStrategy(BaseStrategy):
             # 数据不足时才调API
             if need_fetch:
                 try:
-                    if prev_trade_date:
-                        start_date = prev_trade_date.replace('-', '')
-                        end_date = datetime.now().strftime('%Y%m%d')
-                    else:
-                        start_date = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
-                        end_date = datetime.now().strftime('%Y%m%d')
-
                     market = 'sh' if code.startswith(('6',)) else 'sz'
-                    recent_df = get_stock_daily_kline_range(code, market=market, start_date=start_date, end_date=end_date)
+                    recent_df = get_stock_daily_kline_range(
+                        code, market=market,
+                        start_date=check_date.replace('-', ''),
+                        end_date=end_date.replace('-', '')
+                    )
                     if not recent_df.empty:
                         name = ''
                         for c in candidates:
