@@ -316,7 +316,7 @@ class SignalChecker:
         if position.get('units', 0) < 2:
             return None
 
-        entry_price = position.get('avg_cost', 0)
+        entry_price = position.get('entry_price', 0)  # 首次入场价，不随加仓变化
         atr = position.get('atr_value', 0)
         if entry_price <= 0 or atr <= 0:
             return None
