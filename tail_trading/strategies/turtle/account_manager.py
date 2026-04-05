@@ -86,6 +86,7 @@ class AccountManager:
             'active': row['active'],
             'bind_id': row['bind_id'],
             'nickname': row['nickname'],
+            'simulator': row['simulator'],
             'updated_at': row['updated_at'],
             'note': row['note'],
         }
@@ -118,7 +119,7 @@ class AccountManager:
             UPDATE turtle_account SET note = ? WHERE id = ?
         """, (f"{flow_type} {amount} ({now})", account_id))
 
-    def init_account(self, account_id, capital, nickname=None):
+    def init_account(self, account_id, capital, nickname=None, simulator=0):
         """
         初始化账户（如已存在则更新总资产）
 
@@ -126,24 +127,26 @@ class AccountManager:
             account_id: 账户ID
             capital: 初始资金
             nickname: 用户昵称（可选）
+            simulator: 0=真人手工账户, 1=机器模拟账户
         """
         conn = get_db_connection()
         try:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
-                INSERT INTO turtle_account (id, total_capital, available_capital, realized_profit, active, nickname, updated_at, note)
-                VALUES (?, ?, ?, 0, 1, ?, ?, '初始化')
+                INSERT INTO turtle_account (id, total_capital, available_capital, realized_profit, active, nickname, simulator, updated_at, note)
+                VALUES (?, ?, ?, 0, 1, ?, ?, ?, '初始化')
                 ON CONFLICT(id) DO UPDATE SET
                     total_capital = excluded.total_capital,
                     nickname = COALESCE(excluded.nickname, nickname),
+                    simulator = excluded.simulator,
                     updated_at = excluded.updated_at
-            """, (account_id, capital, capital, nickname, now))
+            """, (account_id, capital, capital, nickname, simulator, now))
             conn.commit()
             logger.info(f"[账户{account_id}] 初始化完成，资金: {capital}")
         finally:
             conn.close()
 
-    def init_account_by_bind_id(self, bind_id, capital, nickname=None):
+    def init_account_by_bind_id(self, bind_id, capital, nickname=None, simulator=0):
         """
         通过bind_id初始化账户
         如bind_id已绑定，返回已有账户；否则使用雪花ID自动创建
@@ -152,6 +155,7 @@ class AccountManager:
             bind_id: 社交ID（如QQ的sender_id）
             capital: 初始资金
             nickname: 用户昵称（可选）
+            simulator: 0=真人手工账户, 1=机器模拟账户
 
         返回:
             dict: 账户信息
@@ -166,7 +170,7 @@ class AccountManager:
         new_id = generate_snowflake_id()
 
         # 创建账户并绑定
-        self.init_account(new_id, capital, nickname)
+        self.init_account(new_id, capital, nickname, simulator)
         self.bind_social_id(new_id, bind_id)
 
         logger.info(f"[bind_id={bind_id}] 新建账户{new_id}，资金: {capital}")
@@ -380,6 +384,40 @@ class AccountManager:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM turtle_account WHERE active = 0 ORDER BY id"
+            ).fetchall()
+            return [self._row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_manual_accounts(self):
+        """
+        查询所有手工账户（simulator=0, active=1）
+
+        返回:
+            list[dict]: 手工账户列表
+        """
+        conn = get_db_connection()
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM turtle_account WHERE simulator = 0 AND active = 1 ORDER BY id"
+            ).fetchall()
+            return [self._row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_simulator_accounts(self):
+        """
+        查询所有机器模拟账户（simulator=1, active=1）
+
+        返回:
+            list[dict]: 机器模拟账户列表
+        """
+        conn = get_db_connection()
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM turtle_account WHERE simulator = 1 AND active = 1 ORDER BY id"
             ).fetchall()
             return [self._row_to_dict(r) for r in rows]
         finally:
