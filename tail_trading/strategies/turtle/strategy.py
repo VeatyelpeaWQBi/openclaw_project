@@ -97,16 +97,6 @@ class TurtleStrategy(BaseStrategy):
                 'metadata': {},
             }
 
-        if not account.get('active'):
-            logger.warning(f"[{nickname}] 账户未激活，跳过")
-            return {
-                'account_id': account_id,
-                'nickname': nickname,
-                'has_signal': False,
-                'skip_reason': '账户未激活',
-                'metadata': {},
-            }
-
         # Step 2: 检查冷却释放
         released = self.position_manager.check_cooldown_release(account_id)
         if released:
