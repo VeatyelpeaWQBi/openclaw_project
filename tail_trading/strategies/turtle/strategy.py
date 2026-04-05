@@ -123,32 +123,55 @@ class TurtleStrategy(BaseStrategy):
         )
 
         # Step 7: 汇总结果
-        has_signal = len(signals) > 0
-        critical_count = sum(1 for s in signals if s.get('urgency') == 'critical')
+        is_simulator = account.get('simulator') == 0
 
-        logger.info(f"[{nickname}] 完成: 持仓{len(positions)}只, 信号{len(signals)}个")
-
-        return {
-            'account_id': account_id,
-            'nickname': nickname,
-            'candidates': [
-                {'code': c.get('code', ''), 'name': c.get('name', ''), 'source': c.get('source', '')}
-                for c in candidates
-            ],
-            'signals': signals,
-            'has_signal': has_signal,
-            'skip_reason': '' if has_signal else '无交易信号',
-            'metadata': {
-                'positions': positions,
-                'account': account,
-                'candidates': candidates,
-                'holding_count': len(positions),
-                'candidate_count': len(candidates),
-                'signal_count': len(signals),
-                'critical_count': critical_count,
-                'released_cooldown': released,
-            },
-        }
+        if is_simulator:
+            # 模拟账户：signals 此时是动作队列
+            action_queue = signals
+            robot_result = self._execute_robot(account_id, nickname, action_queue)
+            has_signal = len(action_queue) > 0
+            logger.info(f"[{nickname}] 模拟执行: {len(action_queue)} 个动作")
+            return {
+                'account_id': account_id,
+                'nickname': nickname,
+                'simulator': 0,
+                'action_queue': action_queue,
+                'robot_result': robot_result,
+                'has_signal': has_signal,
+                'skip_reason': '' if has_signal else '无交易信号',
+                'metadata': {
+                    'positions': positions,
+                    'account': account,
+                    'released_cooldown': released,
+                },
+            }
+        else:
+            # 手工账户：signals 是信号列表
+            has_signal = len(signals) > 0
+            critical_count = sum(1 for s in signals if s.get('urgency') == 'critical')
+            logger.info(f"[{nickname}] 完成: 持仓{len(positions)}只, 信号{len(signals)}个")
+            return {
+                'account_id': account_id,
+                'nickname': nickname,
+                'simulator': 1,
+                'candidates': [
+                    {'code': c.get('code', ''), 'name': c.get('name', ''), 'source': c.get('source', '')}
+                    for c in candidates
+                ],
+                'signals': signals,
+                'has_signal': has_signal,
+                'skip_reason': '' if has_signal else '无交易信号',
+                'metadata': {
+                    'positions': positions,
+                    'account': account,
+                    'candidates': candidates,
+                    'holding_count': len(positions),
+                    'candidate_count': len(candidates),
+                    'signal_count': len(signals),
+                    'critical_count': critical_count,
+                    'released_cooldown': released,
+                },
+            }
 
     def _load_kline_data(self, positions, candidates):
         """加载K线数据（共用逻辑，不区分账户）"""
@@ -208,6 +231,29 @@ class TurtleStrategy(BaseStrategy):
 
         logger.info(f"加载K线数据: {len(kline_data)} 只 (DB缓存命中{skip_api}, API调用{fetch_api})")
         return kline_data
+
+    def _execute_robot(self, account_id, nickname, action_queue):
+        """
+        机器人账户：执行交易动作队列
+
+        ⚠️ 当前为空接口，待实现
+        后续需实现：
+          - 两阶段执行（先平仓后开仓）
+          - 涨跌停检测
+          - pending止损机制
+          - 执行结果记录
+
+        参数:
+            account_id: 账户ID
+            nickname: 账户昵称
+            action_queue: 动作队列
+
+        返回:
+            list[dict]: 执行结果列表
+        """
+        # TODO: 实现机器人自动执行逻辑
+        logger.info(f"[{nickname}] 机器人执行: {len(action_queue)} 个动作（暂未实现，仅记录）")
+        return []
 
     def generate_report(self, result: dict) -> str:
         """
