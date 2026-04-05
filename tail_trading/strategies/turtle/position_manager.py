@@ -280,24 +280,35 @@ class PositionManager:
             logger.warning(f"[账户{account_id}] 加仓失败：资金不足 (需要{total_cost:.2f})")
             return None
 
-        # 更新持仓
+        # 更新持仓（原子SQL计算，防止并发问题）
         old_units = pos['units']
         new_units = old_units + 1
-        new_total = pos['total_shares'] + shares_per_unit
-        new_avg = (pos['avg_cost'] * pos['total_shares'] + new_price * shares_per_unit) / new_total
-        new_stop = calc_stop_price(new_avg, atr)
-        next_add = calc_add_price(new_price, atr)
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db_connection()
         try:
-            conn.execute("""
+            row = conn.execute("""
                 UPDATE turtle_positions SET
-                    units = ?, total_shares = ?, avg_cost = ?,
-                    last_add_price = ?, current_stop = ?, next_add_price = ?,
+                    units = units + 1,
+                    total_shares = total_shares + ?,
+                    avg_cost = (avg_cost * total_shares + ? * ?) / (total_shares + ?),
+                    last_add_price = ?,
+                    current_stop = (avg_cost * total_shares + ? * ?) / (total_shares + ?) - ? * ?,
+                    next_add_price = ? + ? * ?,
                     atr_value = ?, last_buy_date = ?, last_buy_shares = ?, updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
-            """, (new_units, new_total, round(new_avg, 2), new_price, new_stop, next_add, atr, now[:10], shares_per_unit, now, account_id, code))
+                RETURNING units, total_shares, avg_cost, current_stop, next_add_price
+            """, (
+                shares_per_unit, new_price, shares_per_unit, shares_per_unit,
+                new_price,
+                new_price, shares_per_unit, shares_per_unit, 2.0, atr,
+                new_price, 0.5, atr,
+                atr, now[:10], shares_per_unit, now, account_id, code
+            )).fetchone()
+
+            new_units = row['units']
+            new_stop = row['current_stop']
+            new_avg = row['avg_cost']
 
             # 写持仓流水
             self._write_flow(conn, account_id, code, pos['name'], '加仓',
@@ -356,19 +367,20 @@ class PositionManager:
         net_proceeds = trade_amount - fees['total']
         profit = (sell_price - pos['avg_cost']) * shares_per_unit - fees['total']
 
-        new_units = pos['units'] - 1
-        new_total = pos['total_shares'] - shares_per_unit
-
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db_connection()
         try:
             conn.execute("""
                 UPDATE turtle_positions SET
-                    units = ?, total_shares = ?, has_reduced = 1,
+                    units = units - 1,
+                    total_shares = total_shares - ?,
+                    has_reduced = 1,
                     updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
-            """, (new_units, new_total, now, account_id, code))
+            """, (shares_per_unit, now, account_id, code))
 
+            new_units = pos['units'] - 1
+            new_total = pos['total_shares'] - shares_per_unit
             self._write_flow(conn, account_id, code, pos['name'], '减仓',
                             shares=shares_per_unit, price=sell_price, amount=trade_amount,
                             profit=round(profit, 2), fees=fees['total'],

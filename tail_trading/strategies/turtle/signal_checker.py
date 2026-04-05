@@ -91,10 +91,15 @@ class SignalChecker:
                 signals.append(add_sig)
 
         # === 第二部分：检查候选池入场信号 ===
+        # 排除：持仓中 + 冷却中
         holding_codes = {p['code'] for p in positions}
+        cooling_positions = position_manager.get_cooling_positions(account_id)
+        cooling_codes = {p['code'] for p in cooling_positions}
+        exclude_codes = holding_codes | cooling_codes
+
         for stock in (candidate_pool.merged_pool if hasattr(candidate_pool, 'merged_pool') else []):
             code = stock.get('code', '')
-            if not code or code in holding_codes:
+            if not code or code in exclude_codes:
                 continue
 
             df = kline_data.get(code)
