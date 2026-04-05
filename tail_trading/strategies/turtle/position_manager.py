@@ -461,6 +461,10 @@ class PositionManager:
             # S2盈利平仓 → 清除S1过滤
             if pos.get('system_type') == 'S2' and net_profit > 0 and account_manager:
                 account_manager.clear_s1_filter(account_id)
+
+            # S1盈利平仓 → 激活S1过滤
+            if pos.get('system_type') == 'S1' and net_profit > 0 and account_manager:
+                account_manager.set_s1_filter(account_id)
         finally:
             conn.close()
 
