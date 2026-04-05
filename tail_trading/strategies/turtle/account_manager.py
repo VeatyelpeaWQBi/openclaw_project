@@ -159,3 +159,34 @@ class AccountManager:
                 'realized_profit': float(row['realized_profit']),
             }
         return {'total': 0.0, 'available': 0.0, 'realized_profit': 0.0}
+
+    def get_account_by_bind_id(self, bind_id):
+        """
+        通过社交绑定ID查询账户全量信息
+
+        参数:
+            bind_id: 社交ID（如QQ的sender_id）
+
+        返回:
+            dict or None: 账户全量信息，未找到返回None
+        """
+        conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM turtle_account WHERE bind_id = ? AND active = 1",
+            (bind_id,)
+        ).fetchone()
+        conn.close()
+
+        if row:
+            return {
+                'id': row['id'],
+                'total_capital': float(row['total_capital']),
+                'available_capital': float(row['available_capital']),
+                'realized_profit': float(row['realized_profit']),
+                'active': row['active'],
+                'bind_id': row['bind_id'],
+                'updated_at': row['updated_at'],
+                'note': row['note'],
+            }
+        return None
