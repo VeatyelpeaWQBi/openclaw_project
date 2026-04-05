@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 class PositionManager:
     """海龟交易法持仓管理器"""
 
+    @staticmethod
+    def _require_account_id(account_id):
+        """校验account_id必须传入"""
+        if account_id is None:
+            raise ValueError("account_id 不能为空，请传入账户ID")
+
     # 费率常量
     COMMISSION_RATE = 0.00012    # 佣金费率 万1.2
     COMMISSION_MIN = 5.0         # 佣金最低5元
@@ -94,6 +100,7 @@ class PositionManager:
         返回:
             list: 持仓记录列表（dict）
         """
+        self._require_account_id(account_id)
         conn = get_db_connection()
         try:
             rows = conn.execute(
@@ -114,6 +121,7 @@ class PositionManager:
         返回:
             list: 冷却中持仓列表
         """
+        self._require_account_id(account_id)
         conn = get_db_connection()
         try:
             rows = conn.execute(
@@ -135,6 +143,7 @@ class PositionManager:
         返回:
             dict or None: 持仓记录
         """
+        self._require_account_id(account_id)
         conn = get_db_connection()
         try:
             row = conn.execute(
@@ -163,6 +172,8 @@ class PositionManager:
         返回:
             dict: 新建的持仓记录
         """
+        self._require_account_id(account_id)
+
         # 计算每单位股数
         if account_manager:
             summary = account_manager.get_summary(account_id)
@@ -243,6 +254,8 @@ class PositionManager:
         返回:
             dict or None: 更新后的持仓记录
         """
+        self._require_account_id(account_id)
+
         pos = self.get_position(account_id, code)
         if not pos:
             return None
@@ -316,6 +329,7 @@ class PositionManager:
         返回:
             dict or None: 平仓记录
         """
+        self._require_account_id(account_id)
         pos = self.get_position(account_id, code)
         if not pos:
             return None
@@ -382,43 +396,32 @@ class PositionManager:
             'cooldown_until': cooldown_until,
         }
 
-    def check_cooldown_release(self, account_id=None):
+    def check_cooldown_release(self, account_id):
         """
         检查并释放到期冷却持仓（状态改为CLOSED）
 
         参数:
-            account_id: 账户ID（None则检查所有账户）
+            account_id: 账户ID（必须）
 
         返回:
             list: 已释放的持仓代码列表
         """
+        self._require_account_id(account_id)
         today = datetime.now().strftime('%Y-%m-%d')
         conn = get_db_connection()
         try:
-            if account_id is not None:
-                rows = conn.execute("""
-                    SELECT code FROM turtle_positions
-                    WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
-                """, (account_id, today)).fetchall()
-            else:
-                rows = conn.execute("""
-                    SELECT code FROM turtle_positions
-                    WHERE status = 'COOLING' AND cooldown_until <= ?
-                """, (today,)).fetchall()
+            rows = conn.execute("""
+                SELECT code FROM turtle_positions
+                WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
+            """, (account_id, today)).fetchall()
 
             released = [r['code'] for r in rows]
 
             if released:
-                if account_id is not None:
-                    conn.execute("""
-                        UPDATE turtle_positions SET status = 'CLOSED', updated_at = ?
-                        WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
-                    """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), account_id, today))
-                else:
-                    conn.execute("""
-                        UPDATE turtle_positions SET status = 'CLOSED', updated_at = ?
-                        WHERE status = 'COOLING' AND cooldown_until <= ?
-                    """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), today))
+                conn.execute("""
+                    UPDATE turtle_positions SET status = 'CLOSED', updated_at = ?
+                    WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
+                """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), account_id, today))
                 conn.commit()
 
             return released
@@ -435,6 +438,7 @@ class PositionManager:
         返回:
             int: 该账户所有HOLDING持仓的units之和
         """
+        self._require_account_id(account_id)
         conn = get_db_connection()
         try:
             row = conn.execute(
@@ -457,6 +461,7 @@ class PositionManager:
         返回:
             list[dict]: 流水记录列表（最新在前）
         """
+        self._require_account_id(account_id)
         conn = get_db_connection()
         try:
             conn.row_factory = sqlite3.Row
