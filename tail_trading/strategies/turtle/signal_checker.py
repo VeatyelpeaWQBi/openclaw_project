@@ -21,17 +21,21 @@ logger = logging.getLogger(__name__)
 class SignalChecker:
     """海龟交易法信号检测器"""
 
-    def check_all(self, position_manager, account_manager, candidate_pool, kline_data):
+    def check_all(self, position_manager, account_manager, candidate_pool, kline_data, account_id=None):
         """
         主入口：按优先级检查所有信号
 
-        海龟法则：止损优先于一切，退出优先于加仓
-        代码实现：用 continue 跳过后续低优先级检查
+        参数:
+            position_manager: 持仓管理器
+            account_manager: 账户管理器
+            candidate_pool: 候选池
+            kline_data: K线数据
+            account_id: 账户ID
         """
         signals = []
 
         # === 第一部分：检查现有持仓 ===
-        positions = position_manager.get_active_positions()
+        positions = position_manager.get_active_positions(account_id) if account_id else position_manager.get_active_positions()
         for pos in positions:
             code = pos['code']
             df = kline_data.get(code)
