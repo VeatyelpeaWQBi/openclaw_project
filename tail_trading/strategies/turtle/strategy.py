@@ -23,51 +23,98 @@ class TurtleStrategy(BaseStrategy):
     def name(self) -> str:
         return 'turtle'
 
-    def __init__(self):
+    def __init__(self, account_id=None):
+        """
+        参数:
+            account_id: 账户ID（None则遍历所有活跃账户）
+        """
         self.account_manager = AccountManager()
         self.position_manager = PositionManager()
         self.candidate_pool = CandidatePool()
         self.signal_checker = SignalChecker()
+        self.account_id = account_id
 
-    def run(self) -> dict:
+    def _get_target_accounts(self):
+        """获取目标账户列表"""
+        if self.account_id is not None:
+            account = self.account_manager.get_summary(self.account_id)
+            if account:
+                return [account]
+            return []
+        return self.account_manager.get_all_active_accounts()
+
+    def run(self, account_id=None) -> dict:
         """
         执行海龟交易法策略主流程
+
+        参数:
+            account_id: 覆盖实例的account_id（可选）
 
         返回:
             dict: {
                 'date_str': str,
-                'candidates': list,
-                'signals': list,
+                'accounts': list,  # 各账户运行结果
                 'has_signal': bool,
-                'skip_reason': str,
-                'metadata': dict,
             }
         """
+        target_id = account_id or self.account_id
         date_str = datetime.now().strftime('%Y-%m-%d')
         logger.info(f"=== 海龟交易法策略运行 — {date_str} ===")
 
-        # 1. 检查冷却释放
-        released = self.position_manager.check_cooldown_release()
-        if released:
-            logger.info(f"冷却释放: {released}")
+        # 确定目标账户
+        if target_id is not None:
+            accounts = [self.account_manager.get_summary(target_id)]
+            accounts = [a for a in accounts if a is not None]
+        else:
+            accounts = self.account_manager.get_all_active_accounts()
 
-        # 2. 检查账户是否已初始化
-        account_summary = self.account_manager.get_summary()
-        if account_summary.get('total', 0) <= 0:
-            logger.error("账户未初始化，请先设置资金（如: 账户24万）")
+        if not accounts:
+            logger.warning("无活跃账户，跳过")
             return {
                 "date_str": date_str,
-                "candidates": [],
-                "signals": [],
+                "accounts": [],
                 "has_signal": False,
-                "skip_reason": "账户未初始化，请先发送 账户24万 设置资金",
+                "skip_reason": "无活跃账户",
+            }
+
+        # 逐账户执行
+        all_results = []
+        for account in accounts:
+            aid = account['id']
+            result = self._run_for_account(aid, date_str)
+            all_results.append(result)
+
+        has_signal = any(r.get('has_signal', False) for r in all_results)
+
+        return {
+            'date_str': date_str,
+            'accounts': all_results,
+            'has_signal': has_signal,
+        }
+
+    def _run_for_account(self, account_id, date_str):
+        """单账户执行逻辑"""
+        logger.info(f"[账户{account_id}] 开始运行")
+
+        # 1. 检查冷却释放
+        released = self.position_manager.check_cooldown_release(account_id)
+        if released:
+            logger.info(f"[账户{account_id}] 冷却释放: {released}")
+
+        # 2. 检查账户
+        account_summary = self.account_manager.get_summary(account_id)
+        if not account_summary or account_summary.get('total', 0) <= 0:
+            logger.error(f"[账户{account_id}] 账户异常")
+            return {
+                "account_id": account_id,
+                "has_signal": False,
+                "skip_reason": "账户异常",
                 "metadata": {},
             }
 
-
         # 3. 加载持仓
-        positions = self.position_manager.get_active_positions()
-        logger.info(f"当前持仓: {len(positions)} 只")
+        positions = self.position_manager.get_active_positions(account_id)
+        logger.info(f"[账户{account_id}] 当前持仓: {len(positions)} 只")
 
         # 4. 构建候选池
         candidates = self.candidate_pool.get_candidate_list()
@@ -82,21 +129,18 @@ class TurtleStrategy(BaseStrategy):
         from core.data_access import get_stock_daily_kline_range
         from core.storage import save_daily_kline_to_sqlite, get_trading_day_offset
 
-        # 用交易日历获取上一交易日（回退2个交易日确保覆盖今天和昨天）
-        prev_trade_date = get_trading_day_offset(1)  # 上一交易日
+        prev_trade_date = get_trading_day_offset(1)
         if prev_trade_date:
             start_date = prev_trade_date.replace('-', '')
             end_date = datetime.now().strftime('%Y%m%d')
         else:
-            # fallback
             from datetime import timedelta
             start_date = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
             end_date = datetime.now().strftime('%Y%m%d')
 
         for code in all_codes:
-            # 5a. 从API获取最近2个交易日数据，写入DB
             try:
-                market = 'sh' if code.startswith(('6',)) else 'sz'  # 6xxxx=上证(含688科创板), 其余=深证(含30x创业板)
+                market = 'sh' if code.startswith(('6',)) else 'sz'
                 recent_df = get_stock_daily_kline_range(code, market=market, start_date=start_date, end_date=end_date)
                 if not recent_df.empty:
                     name = ''
@@ -108,12 +152,11 @@ class TurtleStrategy(BaseStrategy):
             except Exception as e:
                 logger.debug(f"[{code}] 更新日K失败: {e}")
 
-            # 5b. 从DB加载完整日K, 需要计算最多350日均线
             df = get_daily_data_from_sqlite(code, days=350)
             if not df.empty:
                 kline_data[code] = df
 
-        logger.info(f"加载K线数据: {len(kline_data)} 只")
+        logger.info(f"[账户{account_id}] 加载K线数据: {len(kline_data)} 只")
 
         # 6. 信号检测
         signals = self.signal_checker.check_all(
@@ -121,14 +164,16 @@ class TurtleStrategy(BaseStrategy):
             self.account_manager,
             self.candidate_pool,
             kline_data,
+            account_id,
         )
 
         # 7. 汇总结果
         has_signal = len(signals) > 0
         critical_count = sum(1 for s in signals if s.get('urgency') == 'critical')
 
-        result = {
-            'date_str': date_str,
+        return {
+            'account_id': account_id,
+            'nickname': account_summary.get('nickname', ''),
             'candidates': [
                 {'code': c.get('code', ''), 'name': c.get('name', ''), 'source': c.get('source', '')}
                 for c in candidates
@@ -148,9 +193,6 @@ class TurtleStrategy(BaseStrategy):
             },
         }
 
-        logger.info(f"策略运行完成: 持仓{len(positions)}只, 候选{len(candidates)}只, 信号{len(signals)}个")
-        return result
-
     def generate_report(self, result: dict) -> str:
         """
         生成海龟交易法日报
@@ -161,13 +203,28 @@ class TurtleStrategy(BaseStrategy):
         返回:
             str: 日报文本
         """
-        metadata = result.get('metadata', {})
+        accounts = result.get('accounts', [])
+        if not accounts:
+            return f"📊 海龟交易法 — {result.get('date_str', '')}\n无活跃账户"
 
-        report = _generate_report(
-            signals=result.get('signals', []),
-            positions=metadata.get('positions', []),
-            account=metadata.get('account', {}),
-            candidates=result.get('candidates', []),
-        )
+        # 多账户报告
+        lines = [f"📊 海龟交易法 — {result.get('date_str', '')}"]
+        lines.append("")
 
-        return report
+        for acc_result in accounts:
+            aid = acc_result.get('account_id', '')
+            nickname = acc_result.get('nickname', f'账户{aid}')
+            metadata = acc_result.get('metadata', {})
+
+            lines.append(f"=== {nickname} (ID:{aid}) ===")
+
+            report = _generate_report(
+                signals=acc_result.get('signals', []),
+                positions=metadata.get('positions', []),
+                account=metadata.get('account', {}),
+                candidates=acc_result.get('candidates', []),
+            )
+            lines.append(report)
+            lines.append("")
+
+        return '\n'.join(lines)
