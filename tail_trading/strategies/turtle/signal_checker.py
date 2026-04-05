@@ -173,6 +173,23 @@ class SignalChecker:
             return 'S2'
         return 'S1'
 
+    @staticmethod
+    def _format_shares_status(position):
+        """格式化持仓状态（可卖/锁定）"""
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        total = position.get('total_shares', 0)
+        last_buy_date = position.get('last_buy_date', '')
+        last_buy_shares = position.get('last_buy_shares', 0)
+        if last_buy_date and str(last_buy_date)[:10] == today:
+            locked = last_buy_shares
+        else:
+            locked = 0
+        available = total - locked
+        if locked > 0:
+            return f"持仓{total}股(可卖{available}/锁定{locked})"
+        return f"持仓{total}股"
+
     def check_stop_loss(self, position, latest_price):
         """
         止损检查
@@ -197,7 +214,7 @@ class SignalChecker:
                 'type': 'stop_loss',
                 'code': position['code'],
                 'name': position.get('name', ''),
-                'detail': f"现价{latest_price:.2f} 触及止损价{stop_price:.2f}，需立即卖出",
+                'detail': f"现价{latest_price:.2f} 触及止损价{stop_price:.2f}，需立即卖出 [{self._format_shares_status(position)}]",
                 'urgency': 'critical',
                 'price': latest_price,
             }
@@ -221,7 +238,7 @@ class SignalChecker:
                 'type': 'exit',
                 'code': position['code'],
                 'name': position.get('name', ''),
-                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破{exit_point}日通道下轨{exit_sig['channel_low']:.2f}",
+                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破{exit_point}日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position)}]",
                 'urgency': 'high',
                 'price': exit_sig['exit_price'],
             }
@@ -330,7 +347,7 @@ class SignalChecker:
                 'type': 'reduce',
                 'code': position['code'],
                 'name': position.get('name', ''),
-                'detail': f"现价{latest_price:.2f} 达到减仓价{reduce_trigger:.2f}(1N)，当前{position.get('units', 0)}单位→减1单位",
+                'detail': f"现价{latest_price:.2f} 达到减仓价{reduce_trigger:.2f}(1N)，当前{position.get('units', 0)}单位→减1单位 [{self._format_shares_status(position)}]",
                 'urgency': 'medium',
                 'price': latest_price,
             }

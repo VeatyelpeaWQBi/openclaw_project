@@ -207,9 +207,9 @@ class PositionManager:
                 INSERT INTO turtle_positions
                 (account_id, code, name, status, units, total_shares, avg_cost, entry_price,
                  last_add_price, current_stop, next_add_price, exit_price, atr_value,
-                 system_type, opened_at, updated_at)
-                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (account_id, code, name, units, total_shares, price, price, price, stop_price, next_add, exit_p, atr, system_type, now, now))
+                 system_type, last_buy_date, last_buy_shares, opened_at, updated_at)
+                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (account_id, code, name, units, total_shares, price, price, price, stop_price, next_add, exit_p, atr, system_type, now[:10], total_shares, now, now))
             pos_id = cursor.lastrowid
 
             # 写持仓流水
@@ -295,9 +295,9 @@ class PositionManager:
                 UPDATE turtle_positions SET
                     units = ?, total_shares = ?, avg_cost = ?,
                     last_add_price = ?, current_stop = ?, next_add_price = ?,
-                    atr_value = ?, updated_at = ?
+                    atr_value = ?, last_buy_date = ?, last_buy_shares = ?, updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
-            """, (new_units, new_total, round(new_avg, 2), new_price, new_stop, next_add, atr, now, account_id, code))
+            """, (new_units, new_total, round(new_avg, 2), new_price, new_stop, next_add, atr, now[:10], shares_per_unit, now, account_id, code))
 
             # 写持仓流水
             self._write_flow(conn, account_id, code, pos['name'], '加仓',
@@ -517,6 +517,48 @@ class PositionManager:
             return int(row[0]) if row else 0
         finally:
             conn.close()
+
+    def get_position_status(self, account_id, code):
+        """
+        获取持仓状态（含T+1锁仓信息）
+
+        参数:
+            account_id: 账户ID
+            code: 股票代码
+
+        返回:
+            dict: {
+                'total_shares': 总股数,
+                'available_shares': 可卖股数,
+                'locked_shares': 锁定股数（今日买入）,
+                'last_buy_date': 最近买入日期,
+                'last_buy_shares': 最近买入股数,
+            }
+        """
+        pos = self.get_position(account_id, code)
+        if not pos:
+            return None
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        total = pos.get('total_shares', 0)
+        last_buy_date = pos.get('last_buy_date', '')
+        last_buy_shares = pos.get('last_buy_shares', 0)
+
+        # 今天买入的部分锁定（T+1）
+        if last_buy_date and last_buy_date[:10] == today:
+            locked = last_buy_shares
+        else:
+            locked = 0
+
+        available = total - locked
+
+        return {
+            'total_shares': total,
+            'available_shares': max(available, 0),
+            'locked_shares': locked,
+            'last_buy_date': last_buy_date,
+            'last_buy_shares': last_buy_shares,
+        }
 
     def get_position_flow(self, account_id, code=None, limit=20):
         """
