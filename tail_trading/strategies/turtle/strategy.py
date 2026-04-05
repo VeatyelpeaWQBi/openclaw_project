@@ -4,9 +4,10 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from strategies.base import BaseStrategy
-from core.storage import get_daily_data_from_sqlite
+from core.storage import get_daily_data_from_sqlite, save_daily_kline_to_sqlite, get_trading_day_offset
+from core.data_access import get_stock_daily_kline_range
 from strategies.turtle.account_manager import AccountManager
 from strategies.turtle.position_manager import PositionManager
 from strategies.turtle.candidate_pool import CandidatePool
@@ -31,72 +32,154 @@ class TurtleStrategy(BaseStrategy):
 
     def run(self) -> dict:
         """
-        执行海龟交易法策略主流程
+        执行海龟交易法策略主流程（遍历所有活跃账户）
 
         返回:
             dict: {
                 'date_str': str,
-                'candidates': list,
-                'signals': list,
-                'has_signal': bool,
-                'skip_reason': str,
-                'metadata': dict,
+                'accounts': list,   # 各账户运行结果
+                'has_signal': bool, # 是否有任何账户产生信号
             }
         """
         date_str = datetime.now().strftime('%Y-%m-%d')
         logger.info(f"=== 海龟交易法策略运行 — {date_str} ===")
 
-        # 1. 检查冷却释放
-        released = self.position_manager.check_cooldown_release()
-        if released:
-            logger.info(f"冷却释放: {released}")
+        # Step 0: 查询所有活跃账户
+        active_accounts = self.account_manager.get_all_active_accounts()
+        logger.info(f"活跃账户: {len(active_accounts)} 个")
 
-        # 2. 检查账户是否已初始化
-        account_summary = self.account_manager.get_summary()
-        if account_summary.get('total', 0) <= 0:
-            logger.error("账户未初始化，请先设置资金（如: 账户24万）")
+        if not active_accounts:
+            logger.warning("无活跃账户，跳过")
             return {
-                "date_str": date_str,
-                "candidates": [],
-                "signals": [],
-                "has_signal": False,
-                "skip_reason": "账户未初始化，请先发送 账户24万 设置资金",
-                "metadata": {},
+                'date_str': date_str,
+                'accounts': [],
+                'has_signal': False,
+                'skip_reason': '无活跃账户',
             }
 
+        # 逐账户执行
+        all_results = []
+        for account in active_accounts:
+            result = self._run_for_account(account, date_str)
+            all_results.append(result)
 
-        # 3. 加载持仓
-        positions = self.position_manager.get_active_positions()
-        logger.info(f"当前持仓: {len(positions)} 只")
+        has_signal = any(r.get('has_signal', False) for r in all_results)
 
-        # 4. 构建候选池
+        return {
+            'date_str': date_str,
+            'accounts': all_results,
+            'has_signal': has_signal,
+        }
+
+    def _run_for_account(self, account, date_str):
+        """
+        单账户执行逻辑
+
+        参数:
+            account: 账户信息dict
+            date_str: 日期字符串
+
+        返回:
+            dict: 该账户的运行结果
+        """
+        account_id = account['id']
+        nickname = account.get('nickname', f'账户{account_id}')
+        logger.info(f"[{nickname}({account_id})] 开始运行")
+
+        # Step 1: 检查账户初始化
+        if account.get('total_capital', 0) <= 0:
+            logger.warning(f"[{nickname}] 账户资金为0，跳过")
+            return {
+                'account_id': account_id,
+                'nickname': nickname,
+                'has_signal': False,
+                'skip_reason': '账户资金为0',
+                'metadata': {},
+            }
+
+        if not account.get('active'):
+            logger.warning(f"[{nickname}] 账户未激活，跳过")
+            return {
+                'account_id': account_id,
+                'nickname': nickname,
+                'has_signal': False,
+                'skip_reason': '账户未激活',
+                'metadata': {},
+            }
+
+        # Step 2: 检查冷却释放
+        released = self.position_manager.check_cooldown_release(account_id)
+        if released:
+            logger.info(f"[{nickname}] 冷却释放: {released}")
+
+        # Step 3: 加载持仓
+        positions = self.position_manager.get_active_positions(account_id)
+        logger.info(f"[{nickname}] 当前持仓: {len(positions)} 只")
+
+        # Step 4: 构建候选池
         candidates = self.candidate_pool.get_candidate_list()
-        logger.info(f"候选池: {len(candidates)} 只")
+        logger.info(f"[{nickname}] 候选池: {len(candidates)} 只")
 
-        # 5. 加载K线数据
-        kline_data = {}
+        # Step 5: 加载K线数据
+        kline_data = self._load_kline_data(positions, candidates)
+
+        # Step 6: 信号检测
+        signals = self.signal_checker.check_all(
+            self.position_manager,
+            self.account_manager,
+            self.candidate_pool,
+            kline_data,
+            account_id,
+        )
+
+        # Step 7: 汇总结果
+        has_signal = len(signals) > 0
+        critical_count = sum(1 for s in signals if s.get('urgency') == 'critical')
+
+        logger.info(f"[{nickname}] 完成: 持仓{len(positions)}只, 信号{len(signals)}个")
+
+        return {
+            'account_id': account_id,
+            'nickname': nickname,
+            'candidates': [
+                {'code': c.get('code', ''), 'name': c.get('name', ''), 'source': c.get('source', '')}
+                for c in candidates
+            ],
+            'signals': signals,
+            'has_signal': has_signal,
+            'skip_reason': '' if has_signal else '无交易信号',
+            'metadata': {
+                'positions': positions,
+                'account': account,
+                'candidates': candidates,
+                'holding_count': len(positions),
+                'candidate_count': len(candidates),
+                'signal_count': len(signals),
+                'critical_count': critical_count,
+                'released_cooldown': released,
+            },
+        }
+
+    def _load_kline_data(self, positions, candidates):
+        """加载K线数据（共用逻辑，不区分账户）"""
         holding_codes = [p['code'] for p in positions]
         candidate_codes = [c['code'] for c in candidates if c.get('code')]
         all_codes = list(set(holding_codes + candidate_codes))
 
-        from core.data_access import get_stock_daily_kline_range
-        from core.storage import save_daily_kline_to_sqlite, get_trading_day_offset
-
-        # 用交易日历获取上一交易日（回退2个交易日确保覆盖今天和昨天）
-        prev_trade_date = get_trading_day_offset(1)  # 上一交易日
+        # 获取上一交易日
+        prev_trade_date = get_trading_day_offset(1)
         if prev_trade_date:
             start_date = prev_trade_date.replace('-', '')
             end_date = datetime.now().strftime('%Y%m%d')
         else:
-            # fallback
-            from datetime import timedelta
             start_date = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
             end_date = datetime.now().strftime('%Y%m%d')
 
+        kline_data = {}
         for code in all_codes:
-            # 5a. 从API获取最近2个交易日数据，写入DB
+            # 从API获取最近数据
             try:
-                market = 'sh' if code.startswith(('6',)) else 'sz'  # 6xxxx=上证(含688科创板), 其余=深证(含30x创业板)
+                market = 'sh' if code.startswith(('6',)) else 'sz'
                 recent_df = get_stock_daily_kline_range(code, market=market, start_date=start_date, end_date=end_date)
                 if not recent_df.empty:
                     name = ''
@@ -108,52 +191,17 @@ class TurtleStrategy(BaseStrategy):
             except Exception as e:
                 logger.debug(f"[{code}] 更新日K失败: {e}")
 
-            # 5b. 从DB加载完整日K, 需要计算最多350日均线
+            # 从DB加载完整日K
             df = get_daily_data_from_sqlite(code, days=350)
             if not df.empty:
                 kline_data[code] = df
 
         logger.info(f"加载K线数据: {len(kline_data)} 只")
-
-        # 6. 信号检测
-        signals = self.signal_checker.check_all(
-            self.position_manager,
-            self.account_manager,
-            self.candidate_pool,
-            kline_data,
-        )
-
-        # 7. 汇总结果
-        has_signal = len(signals) > 0
-        critical_count = sum(1 for s in signals if s.get('urgency') == 'critical')
-
-        result = {
-            'date_str': date_str,
-            'candidates': [
-                {'code': c.get('code', ''), 'name': c.get('name', ''), 'source': c.get('source', '')}
-                for c in candidates
-            ],
-            'signals': signals,
-            'has_signal': has_signal,
-            'skip_reason': '' if has_signal else '无交易信号',
-            'metadata': {
-                'positions': positions,
-                'account': account_summary,
-                'candidates': candidates,
-                'holding_count': len(positions),
-                'candidate_count': len(candidates),
-                'signal_count': len(signals),
-                'critical_count': critical_count,
-                'released_cooldown': released,
-            },
-        }
-
-        logger.info(f"策略运行完成: 持仓{len(positions)}只, 候选{len(candidates)}只, 信号{len(signals)}个")
-        return result
+        return kline_data
 
     def generate_report(self, result: dict) -> str:
         """
-        生成海龟交易法日报
+        生成海龟交易法日报（多账户）
 
         参数:
             result: run() 的返回值
@@ -161,13 +209,28 @@ class TurtleStrategy(BaseStrategy):
         返回:
             str: 日报文本
         """
-        metadata = result.get('metadata', {})
+        date_str = result.get('date_str', '')
+        accounts = result.get('accounts', [])
 
-        report = _generate_report(
-            signals=result.get('signals', []),
-            positions=metadata.get('positions', []),
-            account=metadata.get('account', {}),
-            candidates=result.get('candidates', []),
-        )
+        if not accounts:
+            return f"📊 海龟交易法 — {date_str}\n无活跃账户"
 
-        return report
+        lines = [f"📊 海龟交易法 — {date_str}", ""]
+
+        for acc_result in accounts:
+            nickname = acc_result.get('nickname', '')
+            account_id = acc_result.get('account_id', '')
+            metadata = acc_result.get('metadata', {})
+
+            lines.append(f"=== {nickname} (ID:{account_id}) ===")
+
+            report = _generate_report(
+                signals=acc_result.get('signals', []),
+                positions=metadata.get('positions', []),
+                account=metadata.get('account', {}),
+                candidates=acc_result.get('candidates', []),
+            )
+            lines.append(report)
+            lines.append("")
+
+        return '\n'.join(lines)
