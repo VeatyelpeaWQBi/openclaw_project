@@ -152,10 +152,18 @@ class SignalChecker:
                 'reason': sig_type if action == '平仓' else None,
                 'signal_type': sig_type,
                 'urgency': sig.get('urgency', ''),
+                'system_type': self._to_system_type(sig.get('breakout_type', '')),
             })
 
         logger.info(f"交易动作队列: {len(queue)} 个动作")
         return queue
+
+    @staticmethod
+    def _to_system_type(breakout_type):
+        """将突破类型转换为系统类型"""
+        if '55' in str(breakout_type):
+            return 'S2'
+        return 'S1'
 
     def check_stop_loss(self, position, latest_price):
         """
@@ -189,27 +197,40 @@ class SignalChecker:
 
     def check_exit(self, position, df):
         """
-        趋势退出检查
+        趋势退出检查（S1/S2配对）
 
         海龟法则：
-          System1: 收盘价 < 过去10日最低价（10日唐奇安通道下轨）→ 退出
-          System2: 收盘价 < 过去20日最低价（20日唐奇安通道下轨）→ 退出
-
-        设计依据：
-          反向突破 = 趋势可能反转的信号
-          用通道下轨（而非固定百分比）让退出点随价格波动自适应
+          S1(20日突破入场): 收盘价 < 过去10日最低价 → 退出
+          S2(55日突破入场): 收盘价 < 过去20日最低价 → 退出
         """
-        exit_sig = check_exit_signal(df, short=10, long=20)
-        if exit_sig['signal']:
-            logger.info(f"[{position['code']}] 触发退出信号: {exit_sig['type']}")
-            return {
-                'type': 'exit',
-                'code': position['code'],
-                'name': position.get('name', ''),
-                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破{exit_sig['type']}通道下轨{exit_sig['channel_low']:.2f}",
-                'urgency': 'high',
-                'price': exit_sig['exit_price'],
-            }
+        system_type = position.get('system_type')
+
+        if system_type == 'S2':
+            # S2配对20日退出
+            exit_sig = check_exit_signal(df, short=10, long=20)
+            if exit_sig['signal'] and '20日' in exit_sig['type']:
+                logger.info(f"[{position['code']}] S2触发退出: {exit_sig['type']}")
+                return {
+                    'type': 'exit',
+                    'code': position['code'],
+                    'name': position.get('name', ''),
+                    'detail': f"S2退出: 收盘价{exit_sig['exit_price']:.2f} 跌破20日通道下轨{exit_sig['channel_low']:.2f}",
+                    'urgency': 'high',
+                    'price': exit_sig['exit_price'],
+                }
+        else:
+            # S1或未指定，配对10日退出
+            exit_sig = check_exit_signal(df, short=10, long=20)
+            if exit_sig['signal'] and '10日' in exit_sig['type']:
+                logger.info(f"[{position['code']}] S1触发退出: {exit_sig['type']}")
+                return {
+                    'type': 'exit',
+                    'code': position['code'],
+                    'name': position.get('name', ''),
+                    'detail': f"S1退出: 收盘价{exit_sig['exit_price']:.2f} 跌破10日通道下轨{exit_sig['channel_low']:.2f}",
+                    'urgency': 'high',
+                    'price': exit_sig['exit_price'],
+                }
         return None
 
     def check_risk_warning(self, position, latest_price):
