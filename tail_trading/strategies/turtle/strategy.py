@@ -232,7 +232,7 @@ class TurtleStrategy(BaseStrategy):
             account_id = acc_result.get('account_id', '')
             metadata = acc_result.get('metadata', {})
 
-            lines.append(f"=== {nickname} (ID:{account_id}) ===")
+            lines.append(f"=== {nickname} ===")
 
             report = _generate_report(
                 signals=acc_result.get('signals', []),
