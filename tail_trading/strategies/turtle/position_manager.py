@@ -291,17 +291,13 @@ class PositionManager:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db_connection()
         try:
-            cursor = conn.execute("""
+            conn.execute("""
                 UPDATE turtle_positions SET
                     units = ?, total_shares = ?, avg_cost = ?,
                     last_add_price = ?, current_stop = ?, next_add_price = ?,
                     atr_value = ?, last_buy_date = ?, last_buy_shares = ?, updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
             """, (new_units, new_total, round(new_avg, 2), new_price, new_stop, next_add, atr, now[:10], shares_per_unit, now, account_id, code))
-            if cursor.rowcount != 1:
-                conn.rollback()
-                logger.error(f"[{code}] 加仓乐观锁失败: 影响{cursor.rowcount}行")
-                return None
 
             # 写持仓流水
             self._write_flow(conn, account_id, code, pos['name'], '加仓',
@@ -366,16 +362,12 @@ class PositionManager:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db_connection()
         try:
-            cursor = conn.execute("""
+            conn.execute("""
                 UPDATE turtle_positions SET
                     units = ?, total_shares = ?, has_reduced = 1,
                     updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
             """, (new_units, new_total, now, account_id, code))
-            if cursor.rowcount != 1:
-                conn.rollback()
-                logger.error(f"[{code}] 减仓乐观锁失败: 影响{cursor.rowcount}行")
-                return None
 
             self._write_flow(conn, account_id, code, pos['name'], '减仓',
                             shares=shares_per_unit, price=sell_price, amount=trade_amount,
@@ -435,7 +427,7 @@ class PositionManager:
 
         conn = get_db_connection()
         try:
-            cursor = conn.execute("""
+            conn.execute("""
                 UPDATE turtle_positions SET
                     status = 'COOLING',
                     cooldown_until = ?,
@@ -443,10 +435,6 @@ class PositionManager:
                     updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
             """, (cooldown_until, now, now, account_id, code))
-            if cursor.rowcount != 1:
-                conn.rollback()
-                logger.error(f"[{code}] 平仓乐观锁失败: 影响{cursor.rowcount}行")
-                return None
 
             # 写持仓流水
             self._write_flow(conn, account_id, code, pos['name'], flow_action,
@@ -499,14 +487,10 @@ class PositionManager:
             released = [r['code'] for r in rows]
 
             if released:
-                cursor = conn.execute("""
+                conn.execute("""
                     UPDATE turtle_positions SET status = 'CLOSED', updated_at = ?
                     WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
                 """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), account_id, today))
-                if cursor.rowcount != len(released):
-                    conn.rollback()
-                    logger.error(f"冷却释放乐观锁失败: 预期{len(released)}行, 实际{cursor.rowcount}行")
-                    return []
                 conn.commit()
 
             return released
