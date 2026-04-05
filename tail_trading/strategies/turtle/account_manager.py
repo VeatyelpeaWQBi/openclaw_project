@@ -87,6 +87,7 @@ class AccountManager:
             'bind_id': row['bind_id'],
             'nickname': row['nickname'],
             'simulator': row['simulator'],
+            's1_filter_active': row['s1_filter_active'],
             'updated_at': row['updated_at'],
             'note': row['note'],
         }
