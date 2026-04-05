@@ -457,6 +457,10 @@ class PositionManager:
 
             conn.commit()
             logger.info(f"[账户{account_id}] {flow_action} {code} 毛利={gross_profit:.2f} 费用={fees['total']:.2f} 净利={net_profit:.2f}")
+
+            # S2盈利平仓 → 清除S1过滤
+            if pos.get('system_type') == 'S2' and net_profit > 0 and account_manager:
+                account_manager.clear_s1_filter(account_id)
         finally:
             conn.close()
 
