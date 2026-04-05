@@ -127,7 +127,7 @@ class AccountManager:
             account_id: 账户ID
             capital: 初始资金
             nickname: 用户昵称（可选）
-            simulator: 0=真人手工账户, 1=机器模拟账户
+            simulator: 0=机器模拟账户, 1=否(手工账户)
         """
         conn = get_db_connection()
         try:
@@ -155,7 +155,7 @@ class AccountManager:
             bind_id: 社交ID（如QQ的sender_id）
             capital: 初始资金
             nickname: 用户昵称（可选）
-            simulator: 0=真人手工账户, 1=机器模拟账户
+            simulator: 0=机器模拟账户, 1=否(手工账户)
 
         返回:
             dict: 账户信息
@@ -391,7 +391,7 @@ class AccountManager:
 
     def get_manual_accounts(self):
         """
-        查询所有手工账户（simulator=0, active=1）
+        查询所有手工账户（simulator=1, active=1）
 
         返回:
             list[dict]: 手工账户列表
@@ -400,7 +400,7 @@ class AccountManager:
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM turtle_account WHERE simulator = 0 AND active = 1 ORDER BY id"
+                "SELECT * FROM turtle_account WHERE simulator = 1 AND active = 1 ORDER BY id"
             ).fetchall()
             return [self._row_to_dict(r) for r in rows]
         finally:
@@ -408,7 +408,7 @@ class AccountManager:
 
     def get_simulator_accounts(self):
         """
-        查询所有机器模拟账户（simulator=1, active=1）
+        查询所有机器模拟账户（simulator=0, active=1）
 
         返回:
             list[dict]: 机器模拟账户列表
@@ -417,7 +417,7 @@ class AccountManager:
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM turtle_account WHERE simulator = 1 AND active = 1 ORDER BY id"
+                "SELECT * FROM turtle_account WHERE simulator = 0 AND active = 1 ORDER BY id"
             ).fetchall()
             return [self._row_to_dict(r) for r in rows]
         finally:
