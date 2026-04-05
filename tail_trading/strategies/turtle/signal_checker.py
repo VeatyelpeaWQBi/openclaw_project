@@ -27,18 +27,18 @@ class SignalChecker:
 
         参数:
             position_manager: 持仓管理器
-            account_manager: 账户管理器
+            account: 账户对象（含id/simulator/s1_filter_active等）
             candidate_pool: 候选池
             kline_data: K线数据
-            account_id: 账户ID
 
         返回:
             手工账户(simulator=1): list[dict] 信号列表
             模拟账户(simulator=0): list[dict] 交易动作队列
         """
-        # 查询账户类型
-        account = account_manager.get_summary(account_id)
-        is_simulator = account and account.get('simulator') == 0
+        account_id = account['id']
+        self.account = account
+        self.account_id = account_id
+        is_simulator = account.get('simulator') == 0
         signals = []
 
         # === 第一部分：检查现有持仓 ===
@@ -108,7 +108,7 @@ class SignalChecker:
 
             # ⑤ 建仓检查
             # 海龟法则：突破 + 均线多头过滤 → 入场
-            entry_sig = self.check_entry(stock, df, account_manager, account_id)
+            entry_sig = self.check_entry(stock, df)
             if entry_sig:
                 signals.append(entry_sig)
 
@@ -358,7 +358,7 @@ class SignalChecker:
             }
         return None
 
-    def check_entry(self, stock, df, account_manager=None, account_id=None):
+    def check_entry(self, stock, df):
         """
         建仓检查
 
@@ -384,7 +384,7 @@ class SignalChecker:
             return None
 
         # 海龟条件②：突破信号（20日/55日唐奇安通道上轨）
-        s1_filtered = account_manager and account_id and account_manager.is_s1_filtered(account_id)
+        s1_filtered = self.account.get('s1_filter_active', 1) == 0
         entry = check_entry_signal(df, short=20, long=55, s1_filtered=s1_filtered)
         if not entry['signal']:
             return None
