@@ -116,10 +116,9 @@ class TurtleStrategy(BaseStrategy):
         # Step 6: 信号检测
         signals = self.signal_checker.check_all(
             self.position_manager,
-            self.account_manager,
+            account,
             self.candidate_pool,
             kline_data,
-            account_id,
         )
 
         # Step 7: 汇总结果
