@@ -133,23 +133,22 @@ def check_entry_signal(df, short=20, long=55):
     return result
 
 
-def check_exit_signal(df, short=10, long=20):
+def check_exit_signal(df, exit_point=10):
     """
     检查退出信号（反向突破）
 
-    退出条件：收盘价跌破短期或长期唐奇安下轨
+    退出条件：收盘价跌破N日唐奇安下轨
 
     参数:
         df: 日K DataFrame
-        short: 短期退出周期，默认10
-        long: 长期退出周期，默认20
+        exit_point: 退出周期，10=S1退出，20=S2退出
 
     返回:
         dict: {
-            'signal': bool,        # 是否有退出信号
-            'type': str,           # '10日退出' / '20日退出' / None
-            'exit_price': float,   # 退出参考价
-            'channel_low': float,  # 通道下轨
+            'signal': bool,
+            'type': str,
+            'exit_price': float,
+            'channel_low': float,
         }
     """
     result = {
@@ -159,27 +158,16 @@ def check_exit_signal(df, short=10, long=20):
         'channel_low': 0.0,
     }
 
-    if df is None or len(df) < long + 1:
+    if df is None or len(df) < exit_point + 1:
         return result
 
     close_now = float(df['close'].iloc[-1])
+    channel_low = detect_donchian_low(df, exit_point)
 
-    # 先检查长期退出
-    long_low = detect_donchian_low(df, long)
-    if close_now < long_low and long_low > 0:
+    if close_now < channel_low and channel_low > 0:
         result['signal'] = True
-        result['type'] = '20日退出'
+        result['type'] = f'{exit_point}日退出'
         result['exit_price'] = close_now
-        result['channel_low'] = long_low
-        return result
-
-    # 再检查短期退出
-    short_low = detect_donchian_low(df, short)
-    if close_now < short_low and short_low > 0:
-        result['signal'] = True
-        result['type'] = '10日退出'
-        result['exit_price'] = close_now
-        result['channel_low'] = short_low
-        return result
+        result['channel_low'] = channel_low
 
     return result
