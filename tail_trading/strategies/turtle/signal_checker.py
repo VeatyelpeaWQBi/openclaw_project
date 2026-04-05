@@ -108,7 +108,7 @@ class SignalChecker:
 
             # ⑤ 建仓检查
             # 海龟法则：突破 + 均线多头过滤 → 入场
-            entry_sig = self.check_entry(stock, df)
+            entry_sig = self.check_entry(stock, df, account_manager, account_id)
             if entry_sig:
                 signals.append(entry_sig)
 
@@ -358,7 +358,7 @@ class SignalChecker:
             }
         return None
 
-    def check_entry(self, stock, df):
+    def check_entry(self, stock, df, account_manager=None, account_id=None):
         """
         建仓检查
 
@@ -384,7 +384,13 @@ class SignalChecker:
             return None
 
         # 海龟条件②：突破信号（20日/55日唐奇安通道上轨）
-        entry = check_entry_signal(df, short=20, long=55)
+        # S1过滤：上次S1盈利则跳过，只等S2
+        s1_filtered = account_manager and account_id and account_manager.is_s1_filtered(account_id)
+        if s1_filtered:
+            # S1过滤激活 → 只检查55日突破
+            entry = check_entry_signal(df, short=55, long=99999)
+        else:
+            entry = check_entry_signal(df, short=20, long=55)
         if not entry['signal']:
             return None
 
