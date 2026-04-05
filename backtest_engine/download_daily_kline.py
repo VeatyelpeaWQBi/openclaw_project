@@ -4,7 +4,7 @@
 - 数据源：新浪（akshare）前复权
 - 单线程，每分钟最多2个股票
 - 支持断点续传
-- 每次最多获取10个股票
+- 每次最多获取20个股票
 - 同时获取行业和板块信息
 """
 
@@ -21,9 +21,9 @@ import os as _os
 _SCRIPT_DIR = _os.path.dirname(_os.path.abspath(__file__))
 _PROJECT_ROOT = _os.path.dirname(_SCRIPT_DIR)
 DB_PATH = _os.path.join(_PROJECT_ROOT, 'DATA', 'stock_data.db')
-BATCH_SIZE = 10  # 每次最多获取股票数
+BATCH_SIZE = 20  # 每次最多获取股票数
 MAX_PER_MINUTE = 2  # 每分钟最多请求数
-DELAY_BETWEEN_STOCKS = 30  # 每个股票之间的延迟（秒）
+DELAY_BETWEEN_STOCKS = 10  # 每个股票之间的延迟（秒）
 START_DATE = '20140101'  # 数据起始日期
 
 # 日志配置
@@ -38,7 +38,7 @@ for _k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
     os.environ.pop(_k, None)
 
 
-def get_pending_stocks(limit=10):
+def get_pending_stocks(limit=20):
     """获取待下载的股票列表"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
