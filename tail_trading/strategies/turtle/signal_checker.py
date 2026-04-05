@@ -384,7 +384,7 @@ class SignalChecker:
             return None
 
         # 海龟条件②：突破信号（20日/55日唐奇安通道上轨）
-        entry = check_entry_signal(df, short=20, long=55, s1_filtered=self.account['s1_filter_active'] == 0)
+        entry = check_entry_signal(df, short=20, long=55, self.account['s1_filter_active'])
         if not entry['signal']:
             return None
 
