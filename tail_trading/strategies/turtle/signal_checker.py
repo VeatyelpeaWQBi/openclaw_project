@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class SignalChecker:
     """海龟交易法信号检测器"""
 
-    def check_all(self, position_manager, account_manager, candidate_pool, kline_data, account_id=None):
+    def check_all(self, position_manager, account, candidate_pool, kline_data):
         """
         主入口：按优先级检查所有信号
 
