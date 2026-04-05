@@ -81,7 +81,7 @@ def detect_breakout(df, period=20):
     return None
 
 
-def check_entry_signal(df, short=20, long=55, s1_filtered=False):
+def check_entry_signal(df, short=20, long=55, s1_filtered):
     """
     检查入场突破信号
 
@@ -125,7 +125,7 @@ def check_entry_signal(df, short=20, long=55, s1_filtered=False):
 
     # 再检查短期突破
     # S1过滤：上次S1盈利则跳过，等待55日突破
-    if s1_filtered:
+    if s1_filtered == 1:
         return result
 
     short_high = detect_donchian_high(df, short)
