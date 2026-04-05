@@ -548,8 +548,8 @@ class AccountManager:
         conn = get_db_connection()
         try:
             cursor = conn.execute("""
-                UPDATE turtle_account SET s1_filter_active = 1
-                WHERE account_id = ? AND s1_filter_active = 0
+                UPDATE turtle_account SET s1_filter_active = 0
+                WHERE account_id = ? AND s1_filter_active = 1
             """, (account_id,))
             conn.commit()
             if cursor.rowcount > 0:
@@ -562,8 +562,8 @@ class AccountManager:
         conn = get_db_connection()
         try:
             cursor = conn.execute("""
-                UPDATE turtle_account SET s1_filter_active = 0
-                WHERE account_id = ? AND s1_filter_active = 1
+                UPDATE turtle_account SET s1_filter_active = 1
+                WHERE account_id = ? AND s1_filter_active = 0
             """, (account_id,))
             conn.commit()
             if cursor.rowcount > 0:
@@ -579,6 +579,6 @@ class AccountManager:
                 SELECT s1_filter_active FROM turtle_account
                 WHERE account_id = ?
             """, (account_id,)).fetchone()
-            return row and row['s1_filter_active'] == 1
+            return row and row['s1_filter_active'] == 0
         finally:
             conn.close()
