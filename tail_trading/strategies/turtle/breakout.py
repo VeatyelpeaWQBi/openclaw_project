@@ -114,26 +114,24 @@ def check_entry_signal(df, short=20, long=55, s1_filtered=1):
 
     close_now = float(df['close'].iloc[-1])
 
-    # 先检查长期突破（优先级更高）
+    # 先检查短期突破
+    # S1过滤：上次S1盈利则跳过，等待55日突破
+    if s1_filtered == 1:
+        short_high = detect_donchian_high(df, short)
+        if close_now > short_high and short_high > 0:
+            result['signal'] = True
+            result['type'] = '20日突破'
+            result['break_price'] = close_now
+            result['channel_high'] = short_high
+            return result
+
+    # 再检查长期突破
     long_high = detect_donchian_high(df, long)
     if close_now > long_high and long_high > 0:
         result['signal'] = True
         result['type'] = '55日突破'
         result['break_price'] = close_now
         result['channel_high'] = long_high
-        return result
-
-    # 再检查短期突破
-    # S1过滤：上次S1盈利则跳过，等待55日突破
-    if s1_filtered == 0:
-        return result
-
-    short_high = detect_donchian_high(df, short)
-    if close_now > short_high and short_high > 0:
-        result['signal'] = True
-        result['type'] = '20日突破'
-        result['break_price'] = close_now
-        result['channel_high'] = short_high
         return result
 
     return result
