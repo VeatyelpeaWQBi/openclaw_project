@@ -116,7 +116,7 @@ def check_entry_signal(df, short=20, long=55):
     long_high = detect_donchian_high(df, long)
     if close_now > long_high and long_high > 0:
         result['signal'] = True
-        result['type'] = '20日突破'
+        result['type'] = '55日突破'
         result['break_price'] = close_now
         result['channel_high'] = long_high
         return result
@@ -125,7 +125,7 @@ def check_entry_signal(df, short=20, long=55):
     short_high = detect_donchian_high(df, short)
     if close_now > short_high and short_high > 0:
         result['signal'] = True
-        result['type'] = '55日突破'
+        result['type'] = '20日突破'
         result['break_price'] = close_now
         result['channel_high'] = short_high
         return result
