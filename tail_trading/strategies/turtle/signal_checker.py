@@ -384,13 +384,8 @@ class SignalChecker:
             return None
 
         # 海龟条件②：突破信号（20日/55日唐奇安通道上轨）
-        # S1过滤：上次S1盈利则跳过，只等S2
         s1_filtered = account_manager and account_id and account_manager.is_s1_filtered(account_id)
-        if s1_filtered:
-            # S1过滤激活 → 只检查55日突破
-            entry = check_entry_signal(df, short=55, long=99999)
-        else:
-            entry = check_entry_signal(df, short=20, long=55)
+        entry = check_entry_signal(df, short=20, long=55, s1_filtered=s1_filtered)
         if not entry['signal']:
             return None
 
