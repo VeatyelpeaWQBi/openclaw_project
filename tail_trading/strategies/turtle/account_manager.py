@@ -542,3 +542,43 @@ class AccountManager:
             } for r in rows]
         finally:
             conn.close()
+
+    def set_s1_filter(self, account_id):
+        """设置S1过滤（S1交易盈利时调用）"""
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute("""
+                UPDATE turtle_account SET s1_filter_active = 1
+                WHERE account_id = ? AND s1_filter_active = 0
+            """, (account_id,))
+            conn.commit()
+            if cursor.rowcount > 0:
+                logger.info(f"[账户{account_id}] S1过滤已激活")
+        finally:
+            conn.close()
+
+    def clear_s1_filter(self, account_id):
+        """清除S1过滤（S2开仓成功时调用）"""
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute("""
+                UPDATE turtle_account SET s1_filter_active = 0
+                WHERE account_id = ? AND s1_filter_active = 1
+            """, (account_id,))
+            conn.commit()
+            if cursor.rowcount > 0:
+                logger.info(f"[账户{account_id}] S1过滤已清除")
+        finally:
+            conn.close()
+
+    def is_s1_filtered(self, account_id):
+        """查询S1过滤状态"""
+        conn = get_db_connection()
+        try:
+            row = conn.execute("""
+                SELECT s1_filter_active FROM turtle_account
+                WHERE account_id = ?
+            """, (account_id,)).fetchone()
+            return row and row['s1_filter_active'] == 1
+        finally:
+            conn.close()
