@@ -156,7 +156,7 @@ class PositionManager:
         finally:
             conn.close()
 
-    def open_position(self, account_id, code, name, price, atr, units=1, account_manager=None):
+    def open_position(self, account_id, code, name, price, atr, units=1, account_manager=None, system_type=None):
         """
         开仓
 
@@ -168,6 +168,7 @@ class PositionManager:
             atr: ATR值
             units: 买入单位数，默认1
             account_manager: AccountManager实例（可选）
+            system_type: 'S1'(20日突破) 或 'S2'(55日突破)
 
         返回:
             dict: 新建的持仓记录
@@ -206,9 +207,9 @@ class PositionManager:
                 INSERT INTO turtle_positions
                 (account_id, code, name, status, units, total_shares, avg_cost, entry_price,
                  last_add_price, current_stop, next_add_price, exit_price, atr_value,
-                 opened_at, updated_at)
-                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (account_id, code, name, units, total_shares, price, price, price, stop_price, next_add, exit_p, atr, now, now))
+                 system_type, opened_at, updated_at)
+                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (account_id, code, name, units, total_shares, price, price, price, stop_price, next_add, exit_p, atr, system_type, now, now))
             pos_id = cursor.lastrowid
 
             # 写持仓流水
