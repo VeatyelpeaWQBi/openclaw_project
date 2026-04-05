@@ -55,7 +55,16 @@ def run(strategy_name='nomad_t1'):
     report = strategy.generate_report(result)
 
     # 4. 保存信号和报告
-    signal_file = save_signal(date_str, result['candidates'])
+    # 兼容：nomad_t1返回candidates，turtle返回accounts
+    if 'candidates' in result:
+        signal_file = save_signal(date_str, result['candidates'])
+    elif 'accounts' in result:
+        all_candidates = []
+        for acc in result.get('accounts', []):
+            all_candidates.extend(acc.get('candidates', []))
+        signal_file = save_signal(date_str, all_candidates)
+    else:
+        signal_file = ''
     report_file = save_report(date_str, report)
 
     logger.info(f"信号文件: {signal_file}")
