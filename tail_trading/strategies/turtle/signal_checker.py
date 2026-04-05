@@ -31,7 +31,14 @@ class SignalChecker:
             candidate_pool: 候选池
             kline_data: K线数据
             account_id: 账户ID
+
+        返回:
+            手工账户(simulator=1): list[dict] 信号列表
+            模拟账户(simulator=0): list[dict] 交易动作队列
         """
+        # 查询账户类型
+        account = account_manager.get_summary(account_id)
+        is_simulator = account and account.get('simulator') == 0
         signals = []
 
         # === 第一部分：检查现有持仓 ===
@@ -98,7 +105,57 @@ class SignalChecker:
         signals.sort(key=lambda s: urgency_order.get(s.get('urgency', 'low'), 3))
 
         logger.info(f"信号检测完成: 共{len(signals)}个信号")
+
+        # 模拟账户：转换为交易动作队列
+        if is_simulator:
+            return self._to_action_queue(signals)
+
+        # 手工账户：返回信号列表
         return signals
+
+    def _to_action_queue(self, signals):
+        """
+        将信号列表转换为模拟账户的交易动作队列
+
+        信号类型 → 动作映射:
+          stop_loss → 平仓(止损)
+          exit      → 平仓(退出)
+          add       → 加仓
+          entry     → 开仓
+          warning   → 忽略
+
+        返回:
+            list[dict]: 交易动作队列
+        """
+        action_map = {
+            'stop_loss': '平仓',
+            'exit': '平仓',
+            'add': '加仓',
+            'entry': '开仓',
+        }
+
+        queue = []
+        for sig in signals:
+            sig_type = sig.get('type', '')
+            action = action_map.get(sig_type)
+
+            if action is None:
+                # warning 等不需要执行的信号，跳过
+                continue
+
+            queue.append({
+                'action': action,
+                'code': sig.get('code', ''),
+                'name': sig.get('name', ''),
+                'price': sig.get('price', 0),
+                'atr': sig.get('atr', 0),
+                'reason': sig_type if action == '平仓' else None,
+                'signal_type': sig_type,
+                'urgency': sig.get('urgency', ''),
+            })
+
+        logger.info(f"交易动作队列: {len(queue)} 个动作")
+        return queue
 
     def check_stop_loss(self, position, latest_price):
         """
