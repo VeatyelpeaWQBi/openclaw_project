@@ -214,7 +214,7 @@ class SignalChecker:
         system_type = position.get('system_type')
 
         if system_type == 'S2':
-            # S2配对20日退出
+            # S2: 只检查20日退出
             exit_sig = check_exit_signal(df, short=10, long=20)
             if exit_sig['signal'] and '20日' in exit_sig['type']:
                 logger.info(f"[{position['code']}] S2触发退出: {exit_sig['type']}")
@@ -227,17 +227,29 @@ class SignalChecker:
                     'price': exit_sig['exit_price'],
                 }
         else:
-            # S1或未指定，配对10日退出
-            exit_sig = check_exit_signal(df, short=10, long=20)
-            if exit_sig['signal'] and '10日' in exit_sig['type']:
-                logger.info(f"[{position['code']}] S1触发退出: {exit_sig['type']}")
+            # S1: 先检查10日退出，不触发再检查20日退出（兜底）
+            exit_sig_10 = check_exit_signal(df, short=10, long=10)  # 只检查10日
+            if exit_sig_10['signal'] and '10日' in exit_sig_10['type']:
+                logger.info(f"[{position['code']}] S1触发退出: {exit_sig_10['type']}")
                 return {
                     'type': 'exit',
                     'code': position['code'],
                     'name': position.get('name', ''),
-                    'detail': f"S1退出: 收盘价{exit_sig['exit_price']:.2f} 跌破10日通道下轨{exit_sig['channel_low']:.2f}",
+                    'detail': f"S1退出: 收盘价{exit_sig_10['exit_price']:.2f} 跌破10日通道下轨{exit_sig_10['channel_low']:.2f}",
                     'urgency': 'high',
-                    'price': exit_sig['exit_price'],
+                    'price': exit_sig_10['exit_price'],
+                }
+            # 10日未触发，检查20日兜底
+            exit_sig_20 = check_exit_signal(df, short=10, long=20)
+            if exit_sig_20['signal'] and '20日' in exit_sig_20['type']:
+                logger.info(f"[{position['code']}] S1兜底退出: {exit_sig_20['type']}")
+                return {
+                    'type': 'exit',
+                    'code': position['code'],
+                    'name': position.get('name', ''),
+                    'detail': f"S1兜底: 收盘价{exit_sig_20['exit_price']:.2f} 跌破20日通道下轨{exit_sig_20['channel_low']:.2f}",
+                    'urgency': 'high',
+                    'price': exit_sig_20['exit_price'],
                 }
         return None
 
