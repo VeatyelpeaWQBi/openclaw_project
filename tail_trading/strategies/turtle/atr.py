@@ -37,7 +37,7 @@ def calc_unit_size(capital, atr, price):
     if shares < 100:
         shares = 100
 
-    # 额外检查：买入金额不应超过总资金的5%（凯利公式）
+    # 额外检查：买入金额不应超过总资金的5%（凯利公式）,最高4单位不超过总仓位20%,刚好略超凯利公式
     max_shares_by_cap = int((capital * 0.05) / price / 100) * 100
     if max_shares_by_cap < shares:
         shares = max(max_shares_by_cap, 100)
