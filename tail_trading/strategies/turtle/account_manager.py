@@ -90,6 +90,7 @@ class AccountManager:
             's1_filter_active': row['s1_filter_active'],
             'unit_pct': float(row['unit_pct']) if row['unit_pct'] else 5.0,
             'max_holdings': int(row['max_holdings']) if row['max_holdings'] else 5,
+            'max_daily_open': int(row['max_daily_open']) if row['max_daily_open'] else 2,
             'updated_at': row['updated_at'],
             'note': row['note'],
         }
@@ -598,18 +599,19 @@ class AccountManager:
         conn = get_db_connection()
         try:
             row = conn.execute("""
-                SELECT unit_pct, max_holdings FROM turtle_account WHERE id = ?
+                SELECT unit_pct, max_holdings, max_daily_open FROM turtle_account WHERE id = ?
             """, (account_id,)).fetchone()
             if row:
                 return {
                     'unit_pct': float(row['unit_pct']) if row['unit_pct'] else 5.0,
                     'max_holdings': int(row['max_holdings']) if row['max_holdings'] else 5,
+                    'max_daily_open': int(row['max_daily_open']) if row['max_daily_open'] else 2,
                 }
-            return {'unit_pct': 5.0, 'max_holdings': 5}
+            return {'unit_pct': 5.0, 'max_holdings': 5, 'max_daily_open': 2}
         finally:
             conn.close()
 
-    def update_position_config(self, account_id, unit_pct=None, max_holdings=None):
+    def update_position_config(self, account_id, unit_pct=None, max_holdings=None, max_daily_open=None):
         """
         更新账户仓位控制配置
 
@@ -626,6 +628,9 @@ class AccountManager:
         if max_holdings is not None:
             updates.append('max_holdings = ?')
             params.append(max_holdings)
+        if max_daily_open is not None:
+            updates.append('max_daily_open = ?')
+            params.append(max_daily_open)
         if not updates:
             return
 

@@ -9,7 +9,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
-def generate_report(signals, positions, account, candidates):
+def generate_report(signals, positions, account, candidates, today_opens=None):
     """
     生成海龟交易法日报
 
@@ -52,6 +52,11 @@ def generate_report(signals, positions, account, candidates):
         # 标的数超限警告
         if holding_count > max_holdings:
             lines.append(f"  🚨 警告: 持仓标的数({holding_count})超出计划上限({max_holdings})！")
+
+        # 单日开仓信息
+        max_daily_open = account.get('max_daily_open', 2)
+        # 需要从外部传入今日开仓数（这里先显示配置）
+        lines.append(f"  单日开仓上限: {max_daily_open}个")
 
         # 各标的仓位预警 + 整除检查
         for pos in positions:

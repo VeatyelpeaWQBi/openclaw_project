@@ -146,9 +146,16 @@ class TradeExecutor:
         will_exceed = False
 
         # 检查1：开仓时检查持仓标的数上限
-        if is_new_position and holding_count >= max_holdings:
-            will_exceed = True
-            warnings.append(f"持仓标的数({holding_count})已达上限({max_holdings})，不可开新仓")
+        max_daily_open = config.get('max_daily_open', 2)
+        if is_new_position:
+            if holding_count >= max_holdings:
+                will_exceed = True
+                warnings.append(f"持仓标的数({holding_count})已达上限({max_holdings})，不可开新仓")
+            # 单日开仓数检查
+            today_opens = self.position_manager.count_today_opens(account_id)
+            if today_opens >= max_daily_open:
+                will_exceed = True
+                warnings.append(f"今日已开仓{today_opens}个标的，达到单日上限({max_daily_open})")
 
         # 检查2：加仓时检查目标标的的 unit 上限（海龟最大4单位）
         if target_code:
