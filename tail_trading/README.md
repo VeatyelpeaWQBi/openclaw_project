@@ -156,8 +156,46 @@ robot.add_position(account_id, '000001', 13.00, atr=0.85)
 ## ⚙️ 环境要求
 
 - Python 3.10+
-- SQLite 3
-- 妙想金融API Key（环境变量 `MX_APIKEY`）
+- SQLite 3（系统自带）
+- Python依赖：`pandas`, `numpy`, `matplotlib`
+- 数据源：akshare, adata（通过pip安装）
+
+### 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 数据库初始化
+
+首次使用需初始化SQLite数据库。建表SQL在 `db_init/` 目录下：
+
+```bash
+# 创建数据库并建表
+mkdir -p data
+sqlite3 data/stock_data.db < db_init/init_all.sql
+```
+
+或在代码中调用（仅创建海龟交易法相关表）：
+
+```python
+from core.storage import init_turtle_tables
+init_turtle_tables()
+```
+
+`db_init/init_all.sql` 包含全部9张表：
+
+| 表名 | 说明 |
+|------|------|
+| daily_kline | 日K线数据 |
+| minute_kline | 分钟线数据 |
+| index_kline | 指数K线数据 |
+| trade_calendar | 交易日历 |
+| turtle_account | 海龟账户（多账户） |
+| turtle_account_flow | 资金流水 |
+| turtle_positions | 持仓（多账户） |
+| turtle_position_flow | 持仓流水 |
+| turtle_watchlist | 自选池 |
 
 ## ⚠️ 免责声明
 
