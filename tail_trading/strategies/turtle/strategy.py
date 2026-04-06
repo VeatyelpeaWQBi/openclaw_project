@@ -280,11 +280,20 @@ class TurtleStrategy(BaseStrategy):
 
             lines.append(f"=== {nickname} ===")
 
+            # 获取今日开仓数（用于报告）
+            try:
+                from strategies.turtle.position_manager import PositionManager
+                pm = PositionManager()
+                today_opens = pm.count_today_opens(account_id)
+            except Exception:
+                today_opens = None
+
             report = _generate_report(
                 signals=acc_result.get('signals', []),
                 positions=metadata.get('positions', []),
                 account=metadata.get('account', {}),
                 candidates=acc_result.get('candidates', []),
+                today_opens=today_opens,
             )
             lines.append(report)
             lines.append("")

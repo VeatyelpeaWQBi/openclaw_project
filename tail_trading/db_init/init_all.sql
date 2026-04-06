@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS turtle_account (
     s1_filter_active INTEGER DEFAULT 1, -- 1=不过滤, 0=S1过滤激活
     unit_pct REAL DEFAULT 5.0,          -- 单标的1单位仓位占总资金百分比
     max_holdings INTEGER DEFAULT 5,   -- 账户最大持仓标的数
+    max_daily_open INTEGER DEFAULT 2,  -- 单日最大开仓标的数
     updated_at TEXT,
     note TEXT
 );

@@ -313,6 +313,7 @@ def init_turtle_tables():
             s1_filter_active INTEGER DEFAULT 1,
             unit_pct REAL DEFAULT 5.0,
             max_holdings INTEGER DEFAULT 5,
+            max_daily_open INTEGER DEFAULT 2,
             updated_at TEXT,
             note TEXT
         )

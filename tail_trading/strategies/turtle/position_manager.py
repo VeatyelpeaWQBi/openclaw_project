@@ -486,6 +486,28 @@ class PositionManager:
             'cooldown_until': cooldown_until,
         }
 
+    def count_today_opens(self, account_id):
+        """
+        查询今日已开仓标的数
+
+        参数:
+            account_id: 账户ID
+
+        返回:
+            int: 今日开仓次数
+        """
+        self._require_account_id(account_id)
+        today = datetime.now().strftime('%Y-%m-%d')
+        conn = get_db_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM turtle_position_flow WHERE account_id = ? AND action = '开仓' AND created_at LIKE ?",
+                (account_id, today + '%')
+            ).fetchone()
+            return int(row['cnt']) if row else 0
+        finally:
+            conn.close()
+
     def check_cooldown_release(self, account_id):
         """
         检查并释放到期冷却持仓（状态改为CLOSED）
