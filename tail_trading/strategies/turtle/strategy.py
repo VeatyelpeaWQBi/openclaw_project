@@ -235,24 +235,25 @@ class TurtleStrategy(BaseStrategy):
         """
         机器人账户：执行交易动作队列
 
-        ⚠️ 当前为空接口，待实现
-        后续需实现：
-          - 两阶段执行（先平仓后开仓）
-          - 涨跌停检测
-          - pending止损机制
+        通过 RobotExecutor 执行：
+          - 自动按优先级排序（平仓 > 减仓 > 加仓 > 开仓）
+          - 调用 TradeExecutor 进行底层交易执行
+          - T+1锁定处理
           - 执行结果记录
 
         参数:
             account_id: 账户ID
             nickname: 账户昵称
-            action_queue: 动作队列
+            action_queue: 动作队列（来自 SignalChecker._to_action_queue）
 
         返回:
-            list[dict]: 执行结果列表
+            dict: 执行结果汇总
         """
-        # TODO: 实现机器人自动执行逻辑
-        logger.info(f"[{nickname}] 机器人执行: {len(action_queue)} 个动作（暂未实现，仅记录）")
-        return []
+        from executor.robot_executor import RobotExecutor
+        robot = RobotExecutor()
+        result = robot.execute_signals(account_id, action_queue)
+        logger.info(f"[{nickname}] 机器人执行完成: {result['summary']}")
+        return result
 
     def generate_report(self, result: dict) -> str:
         """
