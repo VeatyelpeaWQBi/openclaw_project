@@ -88,6 +88,8 @@ class AccountManager:
             'nickname': row['nickname'],
             'simulator': row['simulator'],
             's1_filter_active': row['s1_filter_active'],
+            'unit_pct': float(row['unit_pct']) if row['unit_pct'] else 5.0,
+            'max_holdings': int(row['max_holdings']) if row['max_holdings'] else 5,
             'updated_at': row['updated_at'],
             'note': row['note'],
         }
@@ -581,5 +583,62 @@ class AccountManager:
                 WHERE account_id = ?
             """, (account_id,)).fetchone()
             return row and row['s1_filter_active'] == 0
+        finally:
+            conn.close()
+
+    # ==================== 仓位控制配置 ====================
+
+    def get_position_config(self, account_id):
+        """
+        获取账户仓位控制配置
+
+        返回:
+            dict: {'unit_pct': 5.0, 'max_holdings': 5}
+        """
+        conn = get_db_connection()
+        try:
+            row = conn.execute("""
+                SELECT unit_pct, max_holdings FROM turtle_account WHERE id = ?
+            """, (account_id,)).fetchone()
+            if row:
+                return {
+                    'unit_pct': float(row['unit_pct']) if row['unit_pct'] else 5.0,
+                    'max_holdings': int(row['max_holdings']) if row['max_holdings'] else 5,
+                }
+            return {'unit_pct': 5.0, 'max_holdings': 5}
+        finally:
+            conn.close()
+
+    def update_position_config(self, account_id, unit_pct=None, max_holdings=None):
+        """
+        更新账户仓位控制配置
+
+        参数:
+            account_id: 账户ID
+            unit_pct: 单标的1单位仓位百分比（如5.0表示5%）
+            max_holdings: 账户最大持仓标的数
+        """
+        updates = []
+        params = []
+        if unit_pct is not None:
+            updates.append('unit_pct = ?')
+            params.append(unit_pct)
+        if max_holdings is not None:
+            updates.append('max_holdings = ?')
+            params.append(max_holdings)
+        if not updates:
+            return
+
+        updates.append('updated_at = ?')
+        params.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        params.append(account_id)
+
+        conn = get_db_connection()
+        try:
+            conn.execute(f"""
+                UPDATE turtle_account SET {', '.join(updates)} WHERE id = ?
+            """, params)
+            conn.commit()
+            logger.info(f"[账户{account_id}] 仓位配置更新: unit_pct={unit_pct}, max_holdings={max_holdings}")
         finally:
             conn.close()
