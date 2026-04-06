@@ -296,13 +296,44 @@ def save_report(date_str, report_text):
 # ==================== 海龟交易法数据表 ====================
 
 def init_turtle_tables():
-    """创建海龟交易法所需的三张表"""
+    """创建海龟交易法所需的全部表（多账户版本）"""
     conn = get_db_connection()
+
+    # 账户表
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS turtle_account (
+            id INTEGER PRIMARY KEY,
+            total_capital REAL NOT NULL,
+            available_capital REAL NOT NULL,
+            realized_profit REAL DEFAULT 0,
+            active INTEGER DEFAULT 1,
+            bind_id TEXT,
+            nickname TEXT,
+            simulator INTEGER DEFAULT 1,
+            s1_filter_active INTEGER DEFAULT 1,
+            updated_at TEXT,
+            note TEXT
+        )
+    """)
+
+    # 资金流水表
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS turtle_account_flow (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            balance_after REAL,
+            created_at TEXT,
+            FOREIGN KEY (account_id) REFERENCES turtle_account(id)
+        )
+    """)
 
     # 持仓表
     conn.execute("""
         CREATE TABLE IF NOT EXISTS turtle_positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
             code TEXT NOT NULL,
             name TEXT,
             status TEXT NOT NULL DEFAULT 'HOLDING',
@@ -315,22 +346,37 @@ def init_turtle_tables():
             next_add_price REAL,
             exit_price REAL,
             atr_value REAL,
+            has_reduced INTEGER DEFAULT 0,
+            system_type TEXT,
+            last_buy_date TEXT,
+            last_buy_shares INTEGER DEFAULT 0,
             cooldown_until TEXT,
             opened_at TEXT,
             closed_at TEXT,
-            updated_at TEXT
+            updated_at TEXT,
+            FOREIGN KEY (account_id) REFERENCES turtle_account(id)
         )
     """)
 
-    # 账户表（单行）
+    # 持仓流水表
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS turtle_account (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            total_capital REAL NOT NULL,
-            available_capital REAL NOT NULL,
-            realized_profit REAL DEFAULT 0,
-            updated_at TEXT,
-            note TEXT
+        CREATE TABLE IF NOT EXISTS turtle_position_flow (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            code TEXT NOT NULL,
+            name TEXT,
+            action TEXT NOT NULL,
+            shares INTEGER DEFAULT 0,
+            price REAL DEFAULT 0,
+            amount REAL DEFAULT 0,
+            profit REAL DEFAULT 0,
+            fees REAL DEFAULT 0,
+            units_before INTEGER DEFAULT 0,
+            units_after INTEGER DEFAULT 0,
+            stop_price REAL DEFAULT 0,
+            reason TEXT,
+            created_at TEXT,
+            FOREIGN KEY (account_id) REFERENCES turtle_account(id)
         )
     """)
 
@@ -350,4 +396,4 @@ def init_turtle_tables():
 
     conn.commit()
     conn.close()
-    logger.debug("海龟交易法数据表初始化完成")
+    logger.debug("海龟交易法数据表初始化完成（5张表）")
