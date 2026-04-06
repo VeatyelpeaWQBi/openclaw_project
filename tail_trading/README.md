@@ -1,109 +1,164 @@
-# 尾盘T+1量化选股系统
+# 📈 tail_trading — A股量化交易系统
 
-> 每日14:50自动运行，筛选热门板块进攻型个股/ETF，通过QQ通知
+包含两个策略（Nomad T1 尾盘选股 + 海龟交易法趋势跟踪）和一套通用交易执行引擎。
 
-## 📊 功能概览
+## 🚀 快速开始
 
-### 市场概况
-- **主要指数**：上证、深证、创业板、沪深300、中证500、中证1000
-- **市场分化**：分化系数分析（加权vs等权），专业术语+白话解读
-- **市场情绪**：涨跌家数、涨跌停、涨跌比
-- **成交量**：今日vs昨日成交额对比，放量/缩量判断
+### 安装依赖
 
-### 选股策略
-- **板块筛选**：热门板块TOP10，识别进攻型板块
-- **个股筛选**：涨幅3%-7%、换手率5%-15%、量比>1.2、SuperTrend多头
-- **ETF筛选**：涨幅1%-10%，作为板块无个股时的替代
-
-### 分化系数解读
-
-| 条件 | 术语 | 白话 |
-|------|------|------|
-| 分化系数<0，上证涨+中证跌 | 🐊 鳄鱼张嘴 | 指数红个股跌，主力拉指数掩护出货，危险！ |
-| 分化系数<0，上证跌+中证涨 | 🦅 题材先行 | 权重跌，题材涨，风格可能在切换 |
-| 上涨，分化系数>1.2 | 🟢 权重搭台，题材唱戏 | 大盘稳，题材涨，赚钱效应明显 |
-| 上涨，分化系数<0.8 | 🟡 只赚指数不赚钱 | 涨指数不涨题材，赚钱效应弱 |
-| 下跌，分化系数>1.2 | 🔴 题材踩踏 | 散户恐慌抛售题材股，亏钱效应炸裂 |
-| 下跌，分化系数<0.8 | 🟡 权重补跌 | 大盘跌，题材稳，可能见底 |
-
-## 🚀 运行方式
-
-### 手动运行
 ```bash
-cd /path/to/tail_trading
-python3 src/main.py
+pip install -r requirements.txt
 ```
 
-### 自动运行（Cron）
-- 工作日 14:50 自动运行
-- 通过QQ推送报告
+依赖：`pandas`, `numpy`, `matplotlib`
+
+### 运行
+
+```bash
+# 直接运行主程序
+python3 main.py
+```
+
+### 配置
+
+路径配置在 `config/paths.json`（不提交Git，首次需自行创建）：
+
+```json
+{
+  "project_root": "/path/to/tail_trading",
+  "data_dir": "/path/to/tail_trading/data",
+  "db_path": "/path/to/tail_trading/data/stock_data.db",
+  "reports_dir": "/path/to/reports"
+}
+```
 
 ## 📁 项目结构
 
 ```
 tail_trading/
-├── src/
-│   ├── main.py           # 主程序入口
-│   ├── strategy.py       # 策略逻辑
-│   ├── data_source.py    # 数据源（板块、指数、情绪）
-│   ├── data_storage.py   # 数据存储
-│   ├── supertrend.py     # SuperTrend指标
-│   ├── stock_filter.py   # 股票筛选
-│   └── sector_data.py    # 板块数据
-├── config/
-│   ├── sectors.py        # 板块配置
-│   └── paths.json        # 路径配置
-├── data/                 # 数据库
-└── reports/              # 报告输出
+├── main.py                          # 主程序入口
+├── requirements.txt                 # Python依赖
+│
+├── config/                          # 配置
+│   ├── paths.json                   # 路径配置（不提交）
+│   ├── sectors.py                   # 板块配置
+│   └── sectors_config.yaml          # 板块详细配置
+│
+├── core/                            # 核心层（数据/指标/存储）
+│   ├── data_access.py               # 数据访问（API调用封装）
+│   ├── storage.py                   # SQLite存储 + 海龟交易表初始化
+│   ├── indicators.py                # 技术指标计算
+│   ├── log_setup.py                 # 日志配置
+│   └── paths.py                     # 路径加载
+│
+├── executor/                        # 🔹 交易执行器（新）
+│   ├── models.py                    #   TradeCommand / TradeResult 数据模型
+│   ├── trade_executor.py            #   通用交易执行器（底层，不绑定账户类型）
+│   └── robot_executor.py            #   海龟机器人执行器（业务调度层）
+│
+├── strategies/                      # 策略层
+│   ├── base.py                      #   策略基类
+│   ├── nomad_t1/                    #   Nomad T1 尾盘T+1策略
+│   │   ├── strategy.py              #     策略主逻辑
+│   │   ├── filters.py               #     选股过滤条件
+│   │   └── report.py                #     报告生成
+│   └── turtle/                      #   海龟交易法策略
+│       ├── strategy.py              #     策略主逻辑（遍历账户，调度信号+执行）
+│       ├── signal_checker.py        #     信号检测（止损/退出/加仓/开仓）
+│       ├── position_manager.py      #     持仓管理（CRUD + 流水）
+│       ├── account_manager.py       #     账户管理（资金/入出金/绑定）
+│       ├── candidate_pool.py        #     候选池管理
+│       ├── breakout.py              #     唐奇安通道突破检测
+│       ├── atr.py                   #     ATR计算与仓位管理
+│       ├── filters.py               #     趋势过滤（均线多头）
+│       ├── report.py                #     海龟报告生成
+│       └── message_parser.py        #     QQ消息解析
+│
+├── job/                             # 定时任务
+│   └── update_daily_kline.py        #   日K数据更新
+│
+├── test_case/                       # 测试用例
+├── data/                            # SQLite数据库（不提交）
+├── reports/                         # 报告输出（不提交）
+├── logs/                            # 运行日志（不提交）
+└── output/                          # 其他输出（不提交）
 ```
 
-## 📈 报告示例
+## 🏗️ 架构说明
+
+### 三层架构
 
 ```
-📊 尾盘T+1信号 — 2026-04-02
-
-【主要指数】
-  上证指数: 3918.55 (-0.76%)
-  深证成指: 13494.65 (-1.55%)
-  创业板指: 3172.26 (-2.32%)
-
-【市场分化】
-  上证(加权): -0.76% | 中证全指(等权参考): -1.42%
-  分化系数: 1.87 → 🔴 题材踩踏（散户恐慌抛售题材股，亏钱效应炸裂）
-
-【市场情绪】
-  上涨: 899只(27涨停) | 下跌: 4218只(14跌停)
-  涨跌比: 1:4.7  情绪: 🔴偏空
-
-🔥 今日热门板块前10：
-  • 油气改革: +4.09%
-  • ...
-
-🎯 前10中包含的进攻型板块：创新药
-
-⚠️ 发现买入信号（3只）：
-  🔺 1. XXXXXX (000000)
-     板块：XXX
-     ...
+┌─────────────────────────────────────────────┐
+│  Strategies（策略层）                         │
+│  Nomad T1 / Turtle                           │
+│  负责：什么时候做、做什么                       │
+├─────────────────────────────────────────────┤
+│  Executor（执行层）                           │
+│  RobotExecutor / TradeExecutor               │
+│  负责：怎么做、能不能做                         │
+├─────────────────────────────────────────────┤
+│  Core（基础层）                               │
+│  data_access / storage / indicators          │
+│  负责：数据获取、存储、指标计算                  │
+└─────────────────────────────────────────────┘
 ```
 
-## ⚙️ 依赖
+### TradeExecutor（通用交易执行器）
+
+独立模块，不绑定账户类型。人工账户和机器账户均可调用。
+
+```python
+from executor.trade_executor import TradeExecutor
+from executor.models import TradeCommand, TradeAction
+
+executor = TradeExecutor()
+cmd = TradeCommand(action=TradeAction.CLOSE, code='000001', price=12.50, reason='止损')
+result = executor.execute(account_id, cmd)
+```
+
+支持操作：`OPEN(开仓)` / `ADD(加仓)` / `REDUCE(减仓)` / `CLOSE(平仓)`
+
+内含前置校验：资金检查、持仓存在性、T+1锁定、单位数上限、冷却期
+
+### RobotExecutor（机器人执行器）
+
+调用 TradeExecutor 执行海龟交易法业务逻辑。
+
+```python
+from executor.robot_executor import RobotExecutor
+
+robot = RobotExecutor()
+# 批量执行信号队列
+result = robot.execute_signals(account_id, action_queue)
+# 单笔操作
+robot.close_position(account_id, '000001', 12.50, reason='stop_loss')
+robot.add_position(account_id, '000001', 13.00, atr=0.85)
+```
+
+### 海龟交易法信号优先级
+
+1. **止损**：收盘价 ≤ 入场价 - 2×ATR → 立即退出
+2. **退出**：收盘价 < N日唐奇安通道下轨 → 趋势结束
+3. **减仓**：盈利达1N → 减1单位（仅执行一次）
+4. **加仓**：收盘价 ≥ 上次加仓价 + 0.5×ATR → 加1单位（最多4单位）
+5. **开仓**：N日突破 + 均线多头 → 入场
+
+### 多账户体系
+
+| 账户类型 | simulator值 | 说明 |
+|---------|------------|------|
+| 机器模拟 | 0 | 信号自动执行，通过 RobotExecutor |
+| 手工账户 | 1 | 仅生成信号，人工手动操作 |
+
+支持多账户并行运行，每账户独立资金、持仓、冷却状态。
+
+## ⚙️ 环境要求
 
 - Python 3.10+
-- akshare
-- pandas
-- requests
+- SQLite 3
+- 妙想金融API Key（环境变量 `MX_APIKEY`）
 
-安装依赖：
-```bash
-pip install -r requirements.txt
-```
+## ⚠️ 免责声明
 
-## 📝 更新日志
-
-### 2026-04-02
-- 新增市场概况功能（指数、分化、情绪、成交量）
-- 分化系数专业术语+白话解读
-- 优化运行时长显示（<1秒显示毫秒）
-- 个股筛选TOP5→TOP10
-- 热门板块前5→前10
+本项目仅供学习研究使用，不构成任何投资建议。股市有风险，投资需谨慎。
