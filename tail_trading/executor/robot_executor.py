@@ -82,9 +82,25 @@ class RobotExecutor:
         # Step 2: 按优先级排序执行
         sorted_commands = self._prioritize(commands)
 
-        # Step 3: 执行
+        # Step 3: 执行（含仓位控制校验）
         results = []
         for cmd in sorted_commands:
+            # 机器人账户：严格执行仓位控制
+            if cmd.action in (TradeAction.OPEN, TradeAction.ADD):
+                is_new = cmd.action == TradeAction.OPEN
+                target = cmd.code if cmd.action == TradeAction.ADD else None
+                limit_check = self.trade_executor.check_position_limits(account_id, is_new_position=is_new, target_code=target)
+                if limit_check['will_exceed']:
+                    warning_msg = '; '.join(limit_check['warnings'])
+                    logger.warning(f"[账户{account_id}] 仓位控制拦截: {cmd.code} - {warning_msg}")
+                    results.append(TradeResult(
+                        success=False,
+                        status=TradeStatus.SKIPPED,
+                        command=cmd,
+                        message=f"仓位控制: {warning_msg}",
+                    ))
+                    continue
+
             result = self.trade_executor.execute(account_id, cmd)
             results.append(result)
             logger.info(f"  → {result}")

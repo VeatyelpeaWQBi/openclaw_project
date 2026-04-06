@@ -207,9 +207,9 @@ class PositionManager:
                 INSERT INTO turtle_positions
                 (account_id, code, name, status, units, total_shares, avg_cost, entry_price,
                  last_add_price, current_stop, next_add_price, exit_price, atr_value,
-                 system_type, last_buy_date, last_buy_shares, opened_at, updated_at)
-                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (account_id, code, name, units, total_shares, price, price, price, stop_price, next_add, exit_p, atr, system_type, now[:10], total_shares, now, now))
+                 shares_per_unit, system_type, last_buy_date, last_buy_shares, opened_at, updated_at)
+                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (account_id, code, name, units, total_shares, price, price, price, stop_price, next_add, exit_p, atr, shares_per_unit, system_type, now[:10], total_shares, now, now))
             pos_id = cursor.lastrowid
 
             # 写持仓流水
@@ -238,6 +238,7 @@ class PositionManager:
             'current_stop': stop_price,
             'next_add_price': next_add,
             'atr_value': atr,
+            'shares_per_unit': shares_per_unit,
             'fees': fees,
         }
 
@@ -261,14 +262,11 @@ class PositionManager:
         if not pos:
             return None
 
-        # 计算加仓股数
-        if account_manager:
-            summary = account_manager.get_summary(account_id)
-            capital = summary.get("total", 0) if summary else 100000
-        else:
-            capital = 100000
-
-        shares_per_unit = calc_unit_size(capital, atr, new_price)
+        # 使用开仓时固定的 shares_per_unit（原著规则：加仓用相同单位大小）
+        shares_per_unit = pos.get('shares_per_unit', 0)
+        if shares_per_unit <= 0:
+            # 兼容旧数据：用 total_shares // units 推算
+            shares_per_unit = pos['total_shares'] // pos['units'] if pos['units'] > 0 else 0
         trade_amount = new_price * shares_per_unit
 
         # 计算买入费用
@@ -357,8 +355,11 @@ class PositionManager:
             logger.warning(f"[{code}] 仅{pos['units']}单位，无法减仓")
             return None
 
-        # 计算减仓1单位的股数
-        shares_per_unit = pos['total_shares'] // pos['units']
+        # 使用开仓时固定的 shares_per_unit
+        shares_per_unit = pos.get('shares_per_unit', 0)
+        if shares_per_unit <= 0:
+            # 兼容旧数据
+            shares_per_unit = pos['total_shares'] // pos['units']
         if shares_per_unit <= 0:
             return None
 

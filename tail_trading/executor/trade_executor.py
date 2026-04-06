@@ -113,6 +113,96 @@ class TradeExecutor:
 
         return results
 
+
+    # ==================== 仓位控制 ====================
+
+    def check_position_limits(self, account_id, is_new_position=False, target_code=None):
+        """
+        检查账户仓位控制状态
+
+        参数:
+            account_id: 账户ID
+            is_new_position: 是否为新开仓（增加持仓标的数）
+            target_code: 加仓时的目标标的代码（检查该标的unit上限）
+
+        返回:
+            dict: {
+                'holding_count': 当前持仓标的数,
+                'max_holdings': 最大持仓标的数,
+                'unit_pct': 单位仓位百分比,
+                'will_exceed': 本次操作后是否超限,
+                'warnings': list[str] 警告信息列表,
+            }
+        """
+        config = self.account_manager.get_position_config(account_id)
+        unit_pct = config['unit_pct']
+        max_holdings = config['max_holdings']
+
+        # 当前持仓标的数
+        positions = self.position_manager.get_active_positions(account_id)
+        holding_count = len(positions)
+
+        warnings = []
+        will_exceed = False
+
+        # 检查1：开仓时检查持仓标的数上限
+        if is_new_position and holding_count >= max_holdings:
+            will_exceed = True
+            warnings.append(f"持仓标的数({holding_count})已达上限({max_holdings})，不可开新仓")
+
+        # 检查2：加仓时检查目标标的的 unit 上限（海龟最大4单位）
+        if target_code:
+            target_pos = None
+            for p in positions:
+                if p['code'] == target_code:
+                    target_pos = p
+                    break
+            if target_pos:
+                current_units = target_pos.get('units', 0)
+                if current_units >= 4:
+                    will_exceed = True
+                    warnings.append(f"[{target_code}]已{current_units}单位，已达上限(4)，不可加仓")
+                elif current_units >= 3:
+                    warnings.append(f"[{target_code}]已{current_units}单位，接近上限(4)")
+
+        # 检查3：各持仓整除检查 + 实际仓位占比预警
+        account_summary = self.account_manager.get_summary(account_id)
+        total_capital = account_summary.get('total', 0) if account_summary else 0
+
+        for pos in positions:
+            units = pos.get('units', 0)
+            code = pos.get('code', '')
+            name = pos.get('name', '')
+            total_shares = pos.get('total_shares', 0)
+            avg_cost = pos.get('avg_cost', 0)
+
+            # 实际持仓金额占比
+            position_value = total_shares * avg_cost
+            actual_pct = (position_value / total_capital * 100) if total_capital > 0 else 0
+            planned_pct = units * unit_pct
+            over_pct = actual_pct - planned_pct
+
+            if abs(over_pct) > 1:
+                sign = "+" if over_pct > 0 else ""
+                warnings.append(f"[{code}]{name} {units}单位{total_shares}股，{actual_pct:.1f}%({sign}{over_pct:.1f}%vs计划{planned_pct:.1f}%)")
+
+            # 整除检查
+            spu = pos.get('shares_per_unit', 0)
+            if not spu and units > 0:
+                spu = total_shares // units
+            if spu > 0 and total_shares > 0:
+                remainder = total_shares % spu
+                if remainder != 0:
+                    warnings.append(f"[{code}]{name} 持仓{total_shares}股/{spu}股/单位，余{remainder}股不整除")
+
+        return {
+            'holding_count': holding_count,
+            'max_holdings': max_holdings,
+            'unit_pct': unit_pct,
+            'will_exceed': will_exceed,
+            'warnings': warnings,
+        }
+
     # ==================== 开仓 ====================
 
     def _execute_open(self, account_id, command: TradeCommand) -> TradeResult:

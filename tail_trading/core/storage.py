@@ -311,6 +311,8 @@ def init_turtle_tables():
             nickname TEXT,
             simulator INTEGER DEFAULT 1,
             s1_filter_active INTEGER DEFAULT 1,
+            unit_pct REAL DEFAULT 5.0,
+            max_holdings INTEGER DEFAULT 5,
             updated_at TEXT,
             note TEXT
         )
@@ -346,6 +348,7 @@ def init_turtle_tables():
             next_add_price REAL,
             exit_price REAL,
             atr_value REAL,
+            shares_per_unit INTEGER DEFAULT 0,
             has_reduced INTEGER DEFAULT 0,
             system_type TEXT,
             last_buy_date TEXT,

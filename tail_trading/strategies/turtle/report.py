@@ -40,6 +40,53 @@ def generate_report(signals, positions, account, candidates):
     lines.append(f"  可用资金: {available:,.0f} 元 ({100 - used_pct:.1f}%)")
     lines.append(f"  已实现盈亏: {realized:+,.0f} 元")
 
+    # === 仓位控制状态 ===
+    unit_pct = account.get('unit_pct', 5.0)
+    max_holdings = account.get('max_holdings', 5)
+    if positions:
+        holding_count = len(positions)
+        lines.append(f"")
+        lines.append(f"📐 仓位控制: 单位{unit_pct}% | 最多{max_holdings}个标的")
+        lines.append(f"  当前持仓: {holding_count}个标的")
+
+        # 标的数超限警告
+        if holding_count > max_holdings:
+            lines.append(f"  🚨 警告: 持仓标的数({holding_count})超出计划上限({max_holdings})！")
+
+        # 各标的仓位预警 + 整除检查
+        for pos in positions:
+            units = pos.get('units', 0)
+            code = pos.get('code', '')
+            name = pos.get('name', '')
+            total_shares = pos.get('total_shares', 0)
+            avg_cost = pos.get('avg_cost', 0)
+
+            # 实际持仓金额占比（用成本价估算）
+            position_value = total_shares * avg_cost
+            actual_pct = (position_value / total * 100) if total > 0 else 0
+            # 计划占比
+            planned_pct = units * unit_pct
+            # 超出
+            over_pct = actual_pct - planned_pct
+
+            # 仓位预警
+            if units > 4:
+                lines.append(f"  🚨 [{code}]{name} {units}单位{total_shares}股，{actual_pct:.1f}%超出上限")
+            elif abs(over_pct) > 1:  # 实际与计划偏差>1%
+                sign = "+" if over_pct > 0 else ""
+                lines.append(f"  ⚠️ [{code}]{name} {units}单位{total_shares}股，{actual_pct:.1f}%({sign}{over_pct:.1f}%)")
+            elif units >= 3:
+                lines.append(f"  ⚠️ [{code}]{name} {units}单位{total_shares}股，{actual_pct:.1f}%")
+
+            # 整除检查
+            spu = pos.get('shares_per_unit', 0)
+            if not spu and units > 0:
+                spu = total_shares // units
+            if spu > 0 and total_shares > 0:
+                remainder = total_shares % spu
+                if remainder != 0:
+                    lines.append(f"  🚨 [{code}]{name} 持仓{total_shares}股，{spu}股/单位，余{remainder}股不整除！")
+
     # === 持仓监控 ===
     lines.append("")
     lines.append("📊 持仓监控")

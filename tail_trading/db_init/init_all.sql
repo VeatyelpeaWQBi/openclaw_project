@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS turtle_account (
     nickname TEXT,
     simulator INTEGER DEFAULT 1,        -- 0=机器模拟, 1=手工账户
     s1_filter_active INTEGER DEFAULT 1, -- 1=不过滤, 0=S1过滤激活
+    unit_pct REAL DEFAULT 5.0,          -- 单标的1单位仓位占总资金百分比
+    max_holdings INTEGER DEFAULT 5,   -- 账户最大持仓标的数
     updated_at TEXT,
     note TEXT
 );
@@ -133,6 +135,7 @@ CREATE TABLE IF NOT EXISTS turtle_positions (
     next_add_price REAL,
     exit_price REAL,
     atr_value REAL,
+    shares_per_unit INTEGER DEFAULT 0,  -- 开仓时固定的一单位手数
     has_reduced INTEGER DEFAULT 0,  -- 0=未减仓, 1=已减仓
     system_type TEXT,               -- 'S1' 或 'S2'
     last_buy_date TEXT,
