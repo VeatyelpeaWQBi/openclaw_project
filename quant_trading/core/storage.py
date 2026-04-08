@@ -226,6 +226,31 @@ def get_daily_data_from_sqlite(stock_code, days=None):
         return pd.DataFrame()
 
 
+def get_daily_data_range(stock_code, start_date, end_date):
+    """
+    从SQLite获取指定日期范围内的日K数据
+
+    参数:
+        stock_code: 股票代码
+        start_date: 起始日期 'YYYY-MM-DD'
+        end_date: 结束日期 'YYYY-MM-DD'
+
+    返回:
+        DataFrame: 日K数据（date升序）
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        df = pd.read_sql_query(
+            "SELECT * FROM daily_kline WHERE code = ? AND date >= ? AND date <= ? ORDER BY date",
+            conn, params=[stock_code, start_date, end_date]
+        )
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
 def merge_and_save_kline(stock_code, new_df, month_str=None, stock_name='', sector_name=''):
     """
     合并新数据到SQLite（增量更新）
