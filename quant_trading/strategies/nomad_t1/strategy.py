@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from strategies.base import BaseStrategy
 from core.data_access import (
     get_sector_ranking, get_sector_stocks,
-    get_stock_daily_kline_range, get_etf_daily_kline,
+    get_etf_daily_kline,
 )
 from core.indicators import is_supertrend_bullish, calculate_volume_ratio
 from core.storage import merge_and_save_kline, get_daily_data_from_sqlite, INITIAL_FETCH_DAYS
@@ -55,8 +55,9 @@ def get_last_trading_date():
 
 def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
     """
-    加载已有日K数据，不足时增量获取
-    自动识别ETF代码并使用对应的ETF日K接口
+    加载日K数据
+    - 非ETF：直接从SQLite读取（日K Job已批量更新）
+    - ETF：调API获取（暂无ETF日K Job）
 
     参数:
         stock_code: 股票/ETF代码
@@ -65,36 +66,39 @@ def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
         sector_name: 所属板块
 
     返回:
-        DataFrame: 日K数据（SuperTrend最低需要15条）
+        DataFrame: 日K数据
     """
-    existing = get_daily_data_from_sqlite(stock_code)
-
-    if existing.empty:
-        start_date = (datetime.now() - timedelta(days=INITIAL_FETCH_DAYS)).strftime('%Y%m%d')
-    else:
-        last_date = pd.to_datetime(existing['date']).max()
-        start_date = (last_date - timedelta(days=1)).strftime('%Y%m%d')
-
-    end_date = datetime.now().strftime('%Y%m%d')
-
     # 判断是否为ETF代码
     is_etf = stock_code.startswith(('51', '159', '56', '58'))
 
     if is_etf:
+        # ETF暂无批量更新Job，走API
+        existing = get_daily_data_from_sqlite(stock_code)
+        if existing.empty:
+            start_date = (datetime.now() - timedelta(days=INITIAL_FETCH_DAYS)).strftime('%Y%m%d')
+        else:
+            last_date = pd.to_datetime(existing['date']).max()
+            start_date = (last_date - timedelta(days=1)).strftime('%Y%m%d')
+        end_date = datetime.now().strftime('%Y%m%d')
         new_df = get_etf_daily_kline(stock_code, start_date=start_date, end_date=end_date)
-    else:
-        new_df = get_stock_daily_kline_range(stock_code, market=market,
-                                              start_date=start_date, end_date=end_date)
-
-    if new_df.empty:
-        logger.warning(f"[{stock_code}] 日K数据获取为空 (start={start_date}, end={end_date})")
-    else:
-        logger.debug(f"[{stock_code}] 获取日K {len(new_df)} 条 (start={start_date}, end={end_date}), 最新: {new_df.iloc[-1].to_dict()}")
-
-    if not new_df.empty:
-        return merge_and_save_kline(stock_code, new_df, stock_name=stock_name, sector_name=sector_name)
-    else:
+        if not new_df.empty:
+            return merge_and_save_kline(stock_code, new_df, stock_name=stock_name, sector_name=sector_name)
         return existing
+    else:
+        # 个股：优先从SQLite读取
+        df = get_daily_data_from_sqlite(stock_code)
+        if df.empty:
+            logger.warning(f"[{stock_code}] SQLite无数据，尝试API获取")
+            existing = get_daily_data_from_sqlite(stock_code)
+            start_date = (datetime.now() - timedelta(days=INITIAL_FETCH_DAYS)).strftime('%Y%m%d')
+            end_date = datetime.now().strftime('%Y%m%d')
+            from core.data_access import get_stock_daily_kline_range
+            new_df = get_stock_daily_kline_range(stock_code, market=market,
+                                                  start_date=start_date, end_date=end_date)
+            if not new_df.empty:
+                return merge_and_save_kline(stock_code, new_df, stock_name=stock_name, sector_name=sector_name)
+            return pd.DataFrame()
+        return df
 
 
 class NomadT1Strategy(BaseStrategy):
