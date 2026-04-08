@@ -9,24 +9,24 @@
 -- ============================================
 CREATE TABLE IF NOT EXISTS daily_kline (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL,
-    name TEXT,
-    date TEXT NOT NULL,
-    open REAL,
-    high REAL,
-    low REAL,
-    close REAL,
-    volume INTEGER,
-    amount REAL,
-    turnover REAL,
-    pe_ratio REAL,
-    pb_ratio REAL,
-    ps_ratio REAL,
-    pcf_ratio REAL,
-    volume_ratio REAL,
-    mktcap REAL,
-    nmc REAL,
-    outstanding_share REAL,
+    code TEXT NOT NULL,                  -- 股票代码（如 000001）
+    name TEXT,                           -- 股票名称
+    date TEXT NOT NULL,                  -- 交易日期（YYYY-MM-DD）
+    open REAL,                           -- 开盘价
+    high REAL,                           -- 最高价
+    low REAL,                            -- 最低价
+    close REAL,                          -- 收盘价
+    volume INTEGER,                      -- 成交量（股）
+    amount REAL,                         -- 成交额（元）
+    turnover REAL,                       -- 换手率（%）
+    pe_ratio REAL,                       -- 市盈率（PE TTM）
+    pb_ratio REAL,                       -- 市净率（PB）
+    ps_ratio REAL,                       -- 市销率（PS）
+    pcf_ratio REAL,                      -- 市现率（PCF）
+    volume_ratio REAL,                   -- 量比（当日成交量/前5日均量）
+    mktcap REAL,                         -- 总市值（元）
+    nmc REAL,                            -- 流通市值（元）
+    outstanding_share REAL,              -- 流通股本（股）
     UNIQUE(code, date)
 );
 
@@ -38,16 +38,16 @@ CREATE INDEX IF NOT EXISTS idx_daily_kline_date ON daily_kline(date);
 -- ============================================
 CREATE TABLE IF NOT EXISTS minute_kline (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL,
-    name TEXT,
-    date TEXT,
-    datetime TEXT NOT NULL,
-    open REAL,
-    high REAL,
-    low REAL,
-    close REAL,
-    volume INTEGER,
-    amount REAL,
+    code TEXT NOT NULL,                  -- 股票代码
+    name TEXT,                           -- 股票名称
+    date TEXT,                           -- 交易日期（YYYY-MM-DD）
+    datetime TEXT NOT NULL,              -- 分钟时间戳（YYYY-MM-DD HH:MM）
+    open REAL,                           -- 分钟开盘价
+    high REAL,                           -- 分钟最高价
+    low REAL,                            -- 分钟最低价
+    close REAL,                          -- 分钟收盘价
+    volume INTEGER,                      -- 分钟成交量
+    amount REAL,                         -- 分钟成交额
     UNIQUE(code, datetime)
 );
 
@@ -248,13 +248,15 @@ CREATE INDEX IF NOT EXISTS idx_position_flow_code ON position_flow(code);
 -- ============================================
 CREATE TABLE IF NOT EXISTS watchlist (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT,
-    name TEXT,
-    keyword TEXT,
-    type TEXT NOT NULL,
-    note TEXT,
-    added_at TEXT,
-    active INTEGER DEFAULT 1
+    code TEXT,                          -- 股票/ETF代码（如 000001）
+    name TEXT,                          -- 名称（如 平安银行）
+    keyword TEXT,                       -- 来源标识（如 中证A500/华为概念/自选）
+    type TEXT NOT NULL,                 -- 标的类型：stock=个股, etf=ETF
+    note TEXT,                          -- 备注信息
+    added_at TEXT,                      -- 入池时间（YYYY-MM-DD HH:MM:SS）
+    active INTEGER DEFAULT 1,           -- 是否启用：1=启用, 0=停用
+    pool_type TEXT DEFAULT 'manual',    -- 池类型：candidate=候选池, manual=自选池, hotspot=热点池
+    account_id INTEGER DEFAULT NULL     -- 账户ID（多账户隔离，NULL=全局）
 );
 
 -- ============================================
