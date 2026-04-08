@@ -279,7 +279,8 @@ def merge_and_save_kline(stock_code, new_df, month_str=None, stock_name='', sect
         return new_df
 
     # 合并：按日期去重
-    combined = pd.concat([existing_df, new_df], ignore_index=True)
+    common_cols = existing_df.columns.intersection(new_df.columns)
+    combined = pd.concat([existing_df[common_cols], new_df[common_cols]], ignore_index=True)
     combined['date'] = pd.to_datetime(combined['date'])
     combined = combined.drop_duplicates(subset='date', keep='last')
     combined = combined.sort_values('date').reset_index(drop=True)

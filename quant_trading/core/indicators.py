@@ -288,30 +288,31 @@ def calculate_volume_ratio(df, days=5):
 
 # ==================== 周K转换 ====================
 
-def daily_to_weekly(df):
+def get_weekly_kline(daily_df):
     """
     将日K数据转换为周K数据
 
     参数:
-        df: DataFrame，需要包含 date, open, high, low, close, volume 列
+        daily_df: 日K DataFrame，需要包含 date, open, high, low, close, volume 列
 
     返回:
         DataFrame: 周K数据
     """
-    if df.empty:
-        return df
+    if daily_df.empty:
+        return pd.DataFrame()
 
-    df = df.copy()
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.set_index('date')
+    df = daily_df.copy()
+    df['week'] = df['date'].dt.isocalendar().week
+    df['year'] = df['date'].dt.year
 
-    weekly = df.resample('W').agg({
+    weekly = df.groupby(['year', 'week']).agg({
+        'date': 'last',
         'open': 'first',
         'high': 'max',
         'low': 'min',
         'close': 'last',
-        'volume': 'sum'
-    }).dropna()
+        'volume': 'sum',
+        'amount': 'sum'
+    }).reset_index(drop=True)
 
-    weekly = weekly.reset_index()
     return weekly
