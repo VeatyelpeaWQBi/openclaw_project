@@ -4,7 +4,8 @@
 """
 
 import logging
-from core.data_access import get_stock_daily_kline, get_etf_daily_kline
+from core.data_access import get_etf_daily_kline
+from core.storage import get_daily_data_from_sqlite
 from core.indicators import is_supertrend_bullish, get_weekly_kline, calculate_volume_ratio
 import pandas as pd
 import numpy as np
@@ -41,9 +42,8 @@ def filter_stocks(stocks, sector_name):
         if turnover < 5 or turnover > 15:
             continue
 
-        # 3. 获取日K数据进行技术分析
-        market = 'sh' if code.startswith('6') else 'sz'
-        df = get_stock_daily_kline(code, market=market, days=120)
+        # 3. 从数据库获取日K数据（最近120个交易日）
+        df = get_daily_data_from_sqlite(code, days=120)
 
         if df.empty or len(df) < 30:
             continue
