@@ -16,3 +16,6 @@ __pycache__/
 
 # 配置文件（含敏感信息）
 config/paths.json
+
+# 测试用例
+test_case/
