@@ -402,12 +402,16 @@ class SignalChecker:
         if atr <= 0:
             return None
 
+        # 所属池标识
+        pool_label = stock.get('keyword', '') or stock.get('pool_type', '')
+        display_name = f"{stock.get('name', '')}（{pool_label}）" if pool_label else stock.get('name', '')
+
         logger.info(f"[{code}] 入场信号! 突破类型={entry['type']}，趋势={trend}，{st_status}")
         return {
             'type': 'entry',
             'code': code,
-            'name': stock.get('name', ''),
-            'detail': f"{entry['type']}突破，收盘{entry['break_price']:.2f} 突破通道{entry['channel_high']:.2f}，趋势{trend}，{st_status}，ATR={atr:.2f}",
+            'name': display_name,
+            'detail': f"{entry['type']}，收盘{entry['break_price']:.2f} 突破通道{entry['channel_high']:.2f}，趋势{trend}，{st_status}，ATR={atr:.2f}",
             'urgency': 'medium',
             'price': entry['break_price'],
             'atr': atr,
