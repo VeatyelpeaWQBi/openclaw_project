@@ -43,7 +43,7 @@ def filter_stocks(stocks, sector_name):
 
         # 3. 获取日K数据进行技术分析
         market = 'sh' if code.startswith('6') else 'sz'
-        df = get_stock_daily_kline(code, market=market, days=60)
+        df = get_stock_daily_kline(code, market=market, days=120)
 
         if df.empty or len(df) < 30:
             continue
