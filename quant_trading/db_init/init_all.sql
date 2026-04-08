@@ -55,9 +55,9 @@ CREATE INDEX IF NOT EXISTS idx_minute_kline_code ON minute_kline(code);
 CREATE INDEX IF NOT EXISTS idx_minute_kline_date ON minute_kline(date);
 
 -- ============================================
--- 3. 指数K线数据
+-- 3. 指数日K线数据
 -- ============================================
-CREATE TABLE IF NOT EXISTS index_kline (
+CREATE TABLE IF NOT EXISTS index_daily_kline (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     index_code TEXT NOT NULL,
     index_name TEXT,
@@ -68,10 +68,73 @@ CREATE TABLE IF NOT EXISTS index_kline (
     close REAL,
     volume INTEGER,
     amount REAL,
+    change REAL,                   -- 涨跌点数
+    change_pct REAL,               -- 涨跌幅(%)
+    constituent_count INTEGER,     -- 成分股数量
+    pe_ttm REAL,                   -- 滚动市盈率
     UNIQUE(index_code, date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_index_kline_code ON index_kline(index_code);
+CREATE INDEX IF NOT EXISTS idx_index_daily_kline_code ON index_daily_kline(index_code);
+
+-- ============================================
+-- 3c. RS Score历史表
+-- ============================================
+CREATE TABLE IF NOT EXISTS rs_score (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,                 -- 个股代码
+    benchmark_code TEXT NOT NULL,       -- 基准指数代码
+    calc_date TEXT NOT NULL,            -- 计算日期
+    rs_ratio REAL,                      -- RS比率: (1+个股涨跌幅)/(1+基准涨跌幅)
+    rs_score REAL,                      -- RS Score（转换后评分）
+    rs_rank INTEGER,                    -- RS排名百分位（1-99）
+    stock_return REAL,                  -- 个股N日涨跌幅
+    benchmark_return REAL,              -- 基准N日涨跌幅
+    lookback_days INTEGER DEFAULT 250,  -- 回看天数
+    write_at TEXT,                       -- 写入时间
+    UNIQUE(code, benchmark_code, calc_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rs_score_code ON rs_score(code);
+CREATE INDEX IF NOT EXISTS idx_rs_score_date ON rs_score(calc_date);
+CREATE INDEX IF NOT EXISTS idx_rs_score_composite ON rs_score(code, benchmark_code, calc_date);
+
+-- ============================================
+-- 3b. 指数基础信息表
+-- ============================================
+CREATE TABLE IF NOT EXISTS index_info (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,                  -- 指数代码（如 000001, 399001）
+    name TEXT,                           -- 指数名称
+    type TEXT,                           -- 指数类型: exchange/csindex/cnindex/sw/concept/custom
+    constituent_count INTEGER,           -- 成分股数量
+    publish_date TEXT,                   -- 发布日期
+    daily_kline_done INTEGER DEFAULT 0,  -- 是否已下载日K记录
+    median_daily_volume REAL,            -- 成分股日均成交量中位数（股）
+    median_daily_amount REAL,            -- 成分股日均成交额中位数（元）
+    created_at TEXT,                     -- 记录创建时间
+    last_update_at TEXT,                 -- 最后更新时间
+    UNIQUE(code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_index_info_code ON index_info(code);
+
+-- ============================================
+-- 3c. 指数成分股关系表
+-- ============================================
+CREATE TABLE IF NOT EXISTS index_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    index_code TEXT NOT NULL,            -- 指数代码（关联 index_info.code）
+    stock_code TEXT NOT NULL,            -- 成分股代码（关联 stock_info.code）
+    stock_name TEXT,                     -- 成分股名称（冗余，方便查询）
+    weight REAL,                         -- 权重（百分比，部分指数提供）
+    snapshot_date TEXT NOT NULL,         -- 快照日期（成分股定期调整，记录是哪天的名单）
+    created_at TEXT,                     -- 记录创建时间
+    UNIQUE(index_code, stock_code, snapshot_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_index_members_index ON index_members(index_code);
+CREATE INDEX IF NOT EXISTS idx_index_members_stock ON index_members(stock_code);
 
 -- ============================================
 -- 4. 交易日历
@@ -193,3 +256,20 @@ CREATE TABLE IF NOT EXISTS watchlist (
     added_at TEXT,
     active INTEGER DEFAULT 1
 );
+
+-- ============================================
+-- 9. 股票基础信息表
+-- ============================================
+CREATE TABLE IF NOT EXISTS stock_info (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,                  -- 股票代码
+    name TEXT,                           -- 股票名称
+    daily_kline_done INTEGER DEFAULT 0,  -- 是否已下载日K记录 (0=未完成, 1=已完成)
+    industry TEXT,                       -- 所属行业（三级分类，逗号分隔）
+    concept TEXT,                        -- 所属概念题材（全部概念，逗号分隔）
+    created_at TEXT,                     -- 记录创建时间
+    last_update_at TEXT,                 -- 最后更新时间
+    UNIQUE(code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_info_code ON stock_info(code);
