@@ -145,9 +145,6 @@ def generate_report(signals, positions, account, candidates, today_opens=None):
         lines.append("  暂无新信号")
 
     # === 候选池 ===
-    lines.append("")
-    lines.append(f"🎯 候选池: {len(candidates)} 只")
-
     # 按来源分组
     sources = {}
     for c in candidates:
