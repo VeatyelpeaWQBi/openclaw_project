@@ -342,7 +342,7 @@ def get_etf_daily_kline(etf_code, start_date=None, end_date=None):
     return df
 
 
-def get_stock_daily_kline(stock_code, market='sh', days=60):
+def get_stock_daily_kline(stock_code, market='sh', days=120):
     """
     获取个股日K数据（最近N天）
 
