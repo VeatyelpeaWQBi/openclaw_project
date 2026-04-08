@@ -1,7 +1,6 @@
 -- ============================================
--- quant_trading 数据库初始化脚本
--- 数据库: SQLite (stock_data.db)
--- 用法: sqlite3 stock_data.db < init_all.sql
+-- quant_trading 数据库初始化
+-- 最后更新: 2026-04-09
 -- ============================================
 
 -- ============================================
@@ -24,6 +23,7 @@ CREATE TABLE IF NOT EXISTS daily_kline (
     ps_ratio REAL,                       -- 市销率（PS）
     pcf_ratio REAL,                      -- 市现率（PCF）
     volume_ratio REAL,                   -- 量比（当日成交量/前5日均量）
+    change_pct REAL,                     -- 涨跌幅（%）
     mktcap REAL,                         -- 总市值（元）
     nmc REAL,                            -- 流通市值（元）
     outstanding_share REAL,              -- 流通股本（股）
@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_kline_code ON daily_kline(code);
 CREATE INDEX IF NOT EXISTS idx_daily_kline_date ON daily_kline(date);
 
 -- ============================================
--- 2. 分钟线数据
+-- 2. 分钟K线数据
 -- ============================================
 CREATE TABLE IF NOT EXISTS minute_kline (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,219 +59,218 @@ CREATE INDEX IF NOT EXISTS idx_minute_kline_date ON minute_kline(date);
 -- ============================================
 CREATE TABLE IF NOT EXISTS index_daily_kline (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    index_code TEXT NOT NULL,
-    index_name TEXT,
-    date TEXT NOT NULL,
-    open REAL,
-    high REAL,
-    low REAL,
-    close REAL,
-    volume INTEGER,
-    amount REAL,
-    change REAL,                   -- 涨跌点数
-    change_pct REAL,               -- 涨跌幅(%)
-    constituent_count INTEGER,     -- 成分股数量
-    pe_ttm REAL,                   -- 滚动市盈率
+    index_code TEXT NOT NULL,            -- 指数代码（如 000300）
+    index_name TEXT,                     -- 指数名称
+    date TEXT NOT NULL,                  -- 交易日期
+    open REAL,                           -- 开盘点位
+    high REAL,                           -- 最高点位
+    low REAL,                            -- 最低点位
+    close REAL,                          -- 收盘点位
+    volume INTEGER,                      -- 成交量
+    amount REAL,                         -- 成交额
+    change REAL,                         -- 涨跌点数
+    change_pct REAL,                     -- 涨跌幅（%）
+    constituent_count INTEGER,           -- 成分股数量
+    pe_ttm REAL,                         -- 滚动市盈率
     UNIQUE(index_code, date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_index_daily_kline_code ON index_daily_kline(index_code);
 
 -- ============================================
--- 3c. RS Score历史表
+-- 4. RS Score 评分历史
 -- ============================================
 CREATE TABLE IF NOT EXISTS rs_score (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL,                 -- 个股代码
-    benchmark_code TEXT NOT NULL,       -- 基准指数代码
-    calc_date TEXT NOT NULL,            -- 计算日期
-    rs_ratio REAL,                      -- RS比率: (1+个股涨跌幅)/(1+基准涨跌幅)
-    rs_score REAL,                      -- RS Score（转换后评分）
-    rs_rank INTEGER,                    -- RS排名百分位（1-99）
-    stock_return REAL,                  -- 个股N日涨跌幅
-    benchmark_return REAL,              -- 基准N日涨跌幅
-    lookback_days INTEGER DEFAULT 250,  -- 回看天数
+    code TEXT NOT NULL,                  -- 个股代码
+    benchmark_code TEXT NOT NULL,        -- 基准指数代码
+    calc_date TEXT NOT NULL,             -- 计算日期
+    rs_ratio REAL,                       -- RS比率
+    rs_score REAL,                       -- RS评分（0-100）
+    rs_rank INTEGER,                     -- RS排名
+    stock_return REAL,                   -- 个股涨跌幅
+    benchmark_return REAL,               -- 基准涨跌幅
+    lookback_days INTEGER DEFAULT 250,   -- 回溯天数
     write_at TEXT,                       -- 写入时间
     UNIQUE(code, benchmark_code, calc_date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_rs_score_code ON rs_score(code);
-CREATE INDEX IF NOT EXISTS idx_rs_score_date ON rs_score(calc_date);
-CREATE INDEX IF NOT EXISTS idx_rs_score_composite ON rs_score(code, benchmark_code, calc_date);
+CREATE INDEX IF NOT EXISTS idx_rs_code ON rs_score(code);
+CREATE INDEX IF NOT EXISTS idx_rs_date ON rs_score(calc_date);
+CREATE INDEX IF NOT EXISTS idx_rs_composite ON rs_score(code, benchmark_code, calc_date);
 
 -- ============================================
--- 3b. 指数基础信息表
+-- 5. 指数元数据
 -- ============================================
 CREATE TABLE IF NOT EXISTS index_info (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL,                  -- 指数代码（如 000001, 399001）
-    name TEXT,                           -- 指数名称
-    type TEXT,                           -- 指数类型: exchange/csindex/cnindex/sw/concept/custom
+    code TEXT NOT NULL UNIQUE,           -- 指数代码
+    name TEXT,                           -- 指数全称
+    type TEXT,                           -- 类型
     constituent_count INTEGER,           -- 成分股数量
     publish_date TEXT,                   -- 发布日期
-    daily_kline_done INTEGER DEFAULT 0,  -- 是否已下载日K记录
-    median_daily_volume REAL,            -- 成分股日均成交量中位数（股）
-    median_daily_amount REAL,            -- 成分股日均成交额中位数（元）
-    created_at TEXT,                     -- 记录创建时间
-    last_update_at TEXT,                 -- 最后更新时间
-    UNIQUE(code)
+    daily_kline_done INTEGER DEFAULT 0,  -- 日K是否已下载
+    created_at TEXT,                     -- 入库时间
+    last_update_at TEXT,                 -- 最后更新
+    median_daily_volume REAL,            -- 成分股日均成交量中位数
+    median_daily_amount REAL,            -- 成分股日均成交额中位数
+    base_date TEXT,                      -- 基日
+    short_name TEXT                      -- 简称
 );
 
-CREATE INDEX IF NOT EXISTS idx_index_info_code ON index_info(code);
-
 -- ============================================
--- 3c. 指数成分股关系表
+-- 6. 指数成分股
 -- ============================================
 CREATE TABLE IF NOT EXISTS index_members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    index_code TEXT NOT NULL,            -- 指数代码（关联 index_info.code）
-    stock_code TEXT NOT NULL,            -- 成分股代码（关联 stock_info.code）
-    stock_name TEXT,                     -- 成分股名称（冗余，方便查询）
-    weight REAL,                         -- 权重（百分比，部分指数提供）
-    snapshot_date TEXT NOT NULL,         -- 快照日期（成分股定期调整，记录是哪天的名单）
-    created_at TEXT,                     -- 记录创建时间
-    UNIQUE(index_code, stock_code, snapshot_date)
+    index_code TEXT NOT NULL,            -- 指数代码
+    stock_code TEXT NOT NULL,            -- 成分股代码
+    stock_name TEXT,                     -- 成分股名称
+    weight REAL,                         -- 权重（%）
+    snapshot_date TEXT NOT NULL,         -- 快照日期
+    created_at TEXT                      -- 入库时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_index_members_index ON index_members(index_code);
-CREATE INDEX IF NOT EXISTS idx_index_members_stock ON index_members(stock_code);
+CREATE INDEX IF NOT EXISTS idx_index_members_code ON index_members(index_code);
 
 -- ============================================
--- 4. 交易日历
+-- 7. 交易日历
 -- ============================================
 CREATE TABLE IF NOT EXISTS trade_calendar (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    trade_date TEXT NOT NULL UNIQUE,
-    trade_status INTEGER DEFAULT 1  -- 1=交易日, 0=休市
+    trade_date TEXT NOT NULL PRIMARY KEY, -- 日期（YYYY-MM-DD）
+    trade_status INTEGER NOT NULL,       -- 1=交易日, 0=非交易日
+    day_week INTEGER NOT NULL            -- 星期几（1-7）
 );
 
-CREATE INDEX IF NOT EXISTS idx_trade_calendar_date ON trade_calendar(trade_date);
-
 -- ============================================
--- 5. 海龟交易法 — 账户表（多账户）
+-- 8. 账户表
 -- ============================================
 CREATE TABLE IF NOT EXISTS account (
     id INTEGER PRIMARY KEY,
-    total_capital REAL NOT NULL,
-    available_capital REAL NOT NULL,
-    realized_profit REAL DEFAULT 0,
-    active INTEGER DEFAULT 1,
-    bind_id TEXT,
-    nickname TEXT,
-    simulator INTEGER DEFAULT 1,        -- 0=机器模拟, 1=手工账户
-    turtle_s1_filter_active INTEGER DEFAULT 1, -- 1=不过滤, 0=S1过滤激活
-    unit_pct REAL DEFAULT 5.0,          -- 单标的1单位仓位占总资金百分比
-    max_holdings INTEGER DEFAULT 5,   -- 账户最大持仓标的数
-    max_daily_open INTEGER DEFAULT 2,  -- 单日最大开仓标的数
-    updated_at TEXT,
-    note TEXT
+    total_capital REAL NOT NULL,         -- 总资金
+    available_capital REAL NOT NULL,     -- 可用资金
+    realized_profit REAL DEFAULT 0,      -- 已实现盈亏
+    active INTEGER DEFAULT 1,            -- 是否启用
+    updated_at TEXT,                     -- 更新时间
+    note TEXT,                           -- 备注
+    bind_id TEXT,                        -- 绑定ID
+    nickname TEXT,                       -- 账户昵称
+    simulator INTEGER DEFAULT 0,        -- 0=机器, 1=手工
+    turtle_s1_filter_active INTEGER DEFAULT 0, -- S1过滤器
+    unit_pct REAL DEFAULT 5.0,          -- 单位仓位比例（%）
+    max_holdings INTEGER DEFAULT 5,      -- 最大持仓数
+    max_daily_open INTEGER DEFAULT 2     -- 每日最大开仓数
 );
 
-CREATE INDEX IF NOT EXISTS idx_account_bind ON account(bind_id);
-
 -- ============================================
--- 6. 海龟交易法 — 资金流水表
+-- 9. 资金流水
 -- ============================================
 CREATE TABLE IF NOT EXISTS account_flow (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id INTEGER NOT NULL,
-    type TEXT NOT NULL,             -- 入金/出金/买入/卖出
-    amount REAL NOT NULL,
-    balance_after REAL,
-    created_at TEXT,
-    FOREIGN KEY (account_id) REFERENCES account(id)
+    account_id INTEGER NOT NULL,         -- 账户ID
+    type TEXT NOT NULL,                  -- 类型（入金/出金/盈利/亏损）
+    amount REAL NOT NULL,                -- 金额
+    balance_after REAL,                  -- 操作后余额
+    created_at TEXT                      -- 操作时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_account_flow_account ON account_flow(account_id);
-
 -- ============================================
--- 7. 海龟交易法 — 持仓表（多账户）
+-- 10. 持仓表
 -- ============================================
 CREATE TABLE IF NOT EXISTS positions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id INTEGER NOT NULL,
-    code TEXT NOT NULL,
-    name TEXT,
-    status TEXT NOT NULL DEFAULT 'HOLDING',  -- HOLDING/COOLING/CLOSED
-    turtle_units INTEGER DEFAULT 1,
-    total_shares INTEGER DEFAULT 0,
-    avg_cost REAL DEFAULT 0,
-    entry_price REAL,
-    last_add_price REAL,
-    current_stop REAL,
-    next_add_price REAL,
-    exit_price REAL,
-    turtle_atr_value REAL,
-    shares_per_unit INTEGER DEFAULT 0,  -- 开仓时固定的一单位手数
-    has_reduced INTEGER DEFAULT 0,  -- 0=未减仓, 1=已减仓
-    turtle_entry_system TEXT,               -- 'S1' 或 'S2'
-    last_buy_date TEXT,
-    last_buy_shares INTEGER DEFAULT 0,
-    cooldown_until TEXT,
-    opened_at TEXT,
-    closed_at TEXT,
-    updated_at TEXT,
-    FOREIGN KEY (account_id) REFERENCES account(id)
+    account_id INTEGER NOT NULL,         -- 账户ID
+    code TEXT NOT NULL,                  -- 股票代码
+    name TEXT,                           -- 股票名称
+    status TEXT NOT NULL DEFAULT 'HOLDING', -- 状态
+    turtle_units INTEGER DEFAULT 1,      -- 当前单位数
+    total_shares INTEGER DEFAULT 0,      -- 总持股数
+    avg_cost REAL DEFAULT 0,             -- 平均成本
+    entry_price REAL,                    -- 入场价
+    last_add_price REAL,                 -- 上次加仓价
+    current_stop REAL,                   -- 当前止损价
+    next_add_price REAL,                 -- 下次加仓价
+    exit_price REAL,                     -- 退出价
+    turtle_atr_value REAL,               -- ATR值
+    cooldown_until TEXT,                 -- 冷却截止日
+    opened_at TEXT,                      -- 开仓时间
+    closed_at TEXT,                      -- 平仓时间
+    updated_at TEXT,                     -- 更新时间
+    turtle_entry_system TEXT,            -- 入场系统（S1/S2）
+    has_reduced INTEGER DEFAULT 0,       -- 是否已减仓
+    last_buy_date TEXT,                  -- 最后买入日
+    last_buy_shares INTEGER DEFAULT 0,   -- 最后买入股数
+    shares_per_unit INTEGER DEFAULT 0    -- 每单位股数
 );
 
-CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_id);
-CREATE INDEX IF NOT EXISTS idx_positions_code ON positions(code);
-CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
-
 -- ============================================
--- 8. 海龟交易法 — 持仓流水表
+-- 11. 持仓流水
 -- ============================================
 CREATE TABLE IF NOT EXISTS position_flow (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id INTEGER NOT NULL,
-    code TEXT NOT NULL,
-    name TEXT,
-    action TEXT NOT NULL,           -- 开仓/加仓/减仓/清仓止损/清仓止盈/部分平仓
-    shares INTEGER DEFAULT 0,
-    price REAL DEFAULT 0,
-    amount REAL DEFAULT 0,
-    profit REAL DEFAULT 0,
-    fees REAL DEFAULT 0,
-    units_before INTEGER DEFAULT 0,
-    units_after INTEGER DEFAULT 0,
-    stop_price REAL DEFAULT 0,
-    reason TEXT,
-    created_at TEXT,
-    FOREIGN KEY (account_id) REFERENCES account(id)
+    account_id INTEGER NOT NULL,         -- 账户ID
+    code TEXT NOT NULL,                  -- 股票代码
+    name TEXT,                           -- 股票名称
+    action TEXT NOT NULL,                -- 操作（开仓/加仓/减仓/清仓）
+    shares INTEGER DEFAULT 0,            -- 股数
+    price REAL DEFAULT 0,                -- 价格
+    amount REAL DEFAULT 0,               -- 金额
+    profit REAL DEFAULT 0,               -- 盈亏
+    fees REAL DEFAULT 0,                 -- 手续费
+    units_before INTEGER DEFAULT 0,      -- 操作前单位数
+    units_after INTEGER DEFAULT 0,       -- 操作后单位数
+    stop_price REAL DEFAULT 0,           -- 止损价
+    reason TEXT,                         -- 操作原因
+    created_at TEXT                      -- 操作时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_position_flow_account ON position_flow(account_id);
-CREATE INDEX IF NOT EXISTS idx_position_flow_code ON position_flow(code);
-
 -- ============================================
--- 9. 海龟交易法 — 自选池表
+-- 12. 候选池（关注列表）
 -- ============================================
 CREATE TABLE IF NOT EXISTS watchlist (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT,                          -- 股票/ETF代码（如 000001）
-    name TEXT,                          -- 名称（如 平安银行）
-    keyword TEXT,                       -- 来源标识（如 中证A500/华为概念/自选）
-    type TEXT NOT NULL,                 -- 标的类型：stock=个股, etf=ETF
-    note TEXT,                          -- 备注信息
-    added_at TEXT,                      -- 入池时间（YYYY-MM-DD HH:MM:SS）
-    active INTEGER DEFAULT 1,           -- 是否启用：1=启用, 0=停用
-    pool_type TEXT DEFAULT 'manual',    -- 池类型：candidate=候选池, manual=自选池, hotspot=热点池
-    account_id INTEGER DEFAULT NULL     -- 账户ID（多账户隔离，NULL=全局）
+    code TEXT,                           -- 股票/ETF代码
+    name TEXT,                           -- 名称
+    keyword TEXT,                        -- 来源标识（如 中证A500/自选）
+    type TEXT NOT NULL,                  -- 标的类型：stock/etf
+    note TEXT,                           -- 备注（行业|主营）
+    added_at TEXT,                       -- 入池时间
+    active INTEGER DEFAULT 1,            -- 是否启用
+    pool_type TEXT DEFAULT 'manual',     -- 池类型：candidate/manual/hotspot
+    account_id INTEGER DEFAULT NULL,     -- 账户ID（多账户隔离）
+    index_code TEXT DEFAULT NULL         -- 基准指数代码（RS评分用）
 );
 
 -- ============================================
--- 9. 股票基础信息表
+-- 13. 股票基础信息
 -- ============================================
 CREATE TABLE IF NOT EXISTS stock_info (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL,                  -- 股票代码
+    code TEXT NOT NULL UNIQUE,           -- 股票代码
     name TEXT,                           -- 股票名称
-    daily_kline_done INTEGER DEFAULT 0,  -- 是否已下载日K记录 (0=未完成, 1=已完成)
-    industry TEXT,                       -- 所属行业（三级分类，逗号分隔）
-    concept TEXT,                        -- 所属概念题材（全部概念，逗号分隔）
-    created_at TEXT,                     -- 记录创建时间
-    last_update_at TEXT,                 -- 最后更新时间
-    UNIQUE(code)
+    daily_kline_done INTEGER DEFAULT 0,  -- 日K是否已下载
+    industry TEXT,                       -- 行业
+    concept TEXT,                        -- 概念
+    created_at TEXT,                     -- 入库时间
+    last_update_at TEXT                  -- 最后更新
 );
 
-CREATE INDEX IF NOT EXISTS idx_stock_info_code ON stock_info(code);
+-- ============================================
+-- 14. 恐贪指数历史
+-- ============================================
+CREATE TABLE IF NOT EXISTS fear_greed_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,                  -- 日期
+    score REAL NOT NULL,                 -- 综合得分（0-100）
+    level TEXT NOT NULL,                 -- 等级（极度恐惧/恐惧/中性/贪婪/极度贪婪）
+    f_ma_deviation REAL,                 -- 均线偏离因子
+    f_volume_ratio REAL,                 -- 量比因子
+    f_advance_decline REAL,              -- 涨跌家数比因子
+    f_limit_ratio REAL,                  -- 涨停跌停比因子
+    f_amplitude REAL,                    -- 振幅因子
+    f_rsi REAL,                          -- RSI因子
+    f_high_turnover REAL,                -- 高换手因子
+    f_offense_defense REAL               -- 攻防转换因子
+);
+
+CREATE INDEX IF NOT EXISTS idx_fear_greed_date ON fear_greed_history(date);

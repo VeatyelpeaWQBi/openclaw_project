@@ -163,6 +163,7 @@ quant_trading/
 | 任务 | 调度时间 | 说明 |
 |------|----------|------|
 | `update_daily_kline` | 工作日 14:48 / 19:00 | 盘中+盘后各更新一次 |
+| `calc_rs_score` | 手动执行 | 计算RS相对强度评分 |
 
 ## 📊 日K数据更新
 
@@ -196,18 +197,20 @@ sqlite3 data/stock_data.db < db_init/init_all.sql
 
 | 表名 | 说明 |
 |------|------|
-| daily_kline | 日K线数据（含换手率/PE/PB/市值） |
-| minute_kline | 分钟线数据 |
+| daily_kline | 日K线数据（含换手率/PE/PB/市值/涨跌幅） |
+| minute_kline | 分钟K线数据 |
 | index_daily_kline | 指数日K线数据（含涨跌幅/PE/成分股数） |
+| rs_score | RS相对强度评分历史（UNIQUE: code+benchmark_code+calc_date） |
 | index_info | 指数元数据（名称/类型/基日/中位成交量） |
 | index_members | 指数成分股列表 |
-| rs_score | RS相对强度评分历史 |
 | trade_calendar | 交易日历 |
 | account | 账户（多账户，含仓位控制配置） |
 | account_flow | 资金流水 |
 | positions | 持仓（趋势特有字段带 turtle_ 前缀） |
 | position_flow | 持仓流水 |
-| watchlist | 候选池（type=标的类型，pool_type=关注池类型） |
+| watchlist | 候选池（pool_type=池类型, index_code=基准指数） |
+| stock_info | 股票基础信息 |
+| fear_greed_history | 恐贪指数历史（8维度因子） |
 
 ### 字段命名规范
 
