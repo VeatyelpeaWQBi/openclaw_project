@@ -406,12 +406,17 @@ class SignalChecker:
         pool_label = stock.get('keyword', '') or stock.get('pool_type', '')
         display_name = f"{stock.get('name', '')}（{pool_label}）" if pool_label else stock.get('name', '')
 
-        logger.info(f"[{code}] 入场信号! 突破类型={entry['type']}，趋势={trend}，{st_status}")
+        # 信号格式化
+        sys_label = 'S2' if '55' in entry['type'] else 'S1'
+        trend_label = {'多头': '均线偏多', '空头': '均线偏空'}.get(trend, '均线不明')
+        st_label = 'SuperTrend多头' if st_bullish else 'SuperTrend空头'
+
+        logger.info(f"[{code}] 入场信号! {sys_label}，{trend_label}，{st_label}")
         return {
             'type': 'entry',
             'code': code,
             'name': display_name,
-            'detail': f"{entry['type']}，收盘{entry['break_price']:.2f} 突破通道{entry['channel_high']:.2f}，趋势{trend}，{st_status}，ATR={atr:.2f}",
+            'detail': f"{sys_label}突破，收{entry['break_price']:.2f}(>{entry['channel_high']:.2f})，{trend_label}，{st_label}",
             'urgency': 'medium',
             'price': entry['break_price'],
             'atr': atr,
