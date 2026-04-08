@@ -14,6 +14,7 @@ import logging
 from strategies.trend_trading.breakout import check_entry_signal, check_exit_signal
 from strategies.trend_trading.filters import trend_filter, is_eligible
 from strategies.trend_trading.atr import get_atr_value
+from core.indicators import is_supertrend_bullish
 
 logger = logging.getLogger(__name__)
 
@@ -392,20 +393,25 @@ class SignalChecker:
         # 非强制阻止，记录趋势方向供参考
         trend = trend_filter(df)
 
-        # 趋势条件④：ATR计算（用于仓位管理）
+        # 趋势条件④：SuperTrend状态（日线级别）
+        st_bullish = is_supertrend_bullish(df)
+        st_status = 'SuperTrend多头状态' if st_bullish else 'SuperTrend空头状态'
+
+        # 趋势条件⑤：ATR计算（用于仓位管理）
         atr = get_atr_value(df)
         if atr <= 0:
             return None
 
-        logger.info(f"[{code}] 入场信号! 突破类型={entry['type']}，趋势={trend}")
+        logger.info(f"[{code}] 入场信号! 突破类型={entry['type']}，趋势={trend}，{st_status}")
         return {
             'type': 'entry',
             'code': code,
             'name': stock.get('name', ''),
-            'detail': f"{entry['type']}突破，收盘{entry['break_price']:.2f} 突破通道{entry['channel_high']:.2f}，趋势{trend}，ATR={atr:.2f}",
+            'detail': f"{entry['type']}突破，收盘{entry['break_price']:.2f} 突破通道{entry['channel_high']:.2f}，趋势{trend}，{st_status}，ATR={atr:.2f}",
             'urgency': 'medium',
             'price': entry['break_price'],
             'atr': atr,
             'trend': trend,
+            'supertrend': '多头' if st_bullish else '空头',
             'breakout_type': entry['type'],
         }
