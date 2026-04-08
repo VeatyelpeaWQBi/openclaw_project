@@ -85,7 +85,12 @@ quant_trading/
 │   └── init_all.sql                 #   全部表定义
 │
 ├── job/                             # 定时任务
-│   └── update_daily_kline.py        #   日K数据更新（新浪原生API）
+│   ├── update_daily_kline.py        #   全市场日K数据更新（新浪原生API）
+│   ├── fetch_index_info.py          #   获取全A股指数元数据（中证指数官网）
+│   ├── fetch_index_members.py       #   获取指数成分股列表（中证指数官网）
+│   ├── fetch_index_daily_kline.py   #   获取指数日K数据（中证指数官网）
+│   ├── calc_index_median_volume.py  #   计算指数成分股成交量/额中位数
+│   └── calc_rs_score.py             #   计算RS Score（相对强度评分）
 │
 ├── test_case/                       # 测试用例
 ├── scripts/                         # 辅助脚本
@@ -142,6 +147,23 @@ quant_trading/
 
 支持多账户并行运行，每账户独立资金、持仓、冷却状态。
 
+## ⏰ JOB 定时任务
+
+| JOB 文件 | 功能 | 数据源 | 输出表 |
+|-----------|------|--------|--------|
+| `update_daily_kline.py` | 全市场日K数据增量更新 | 新浪财经原生API | `daily_kline` |
+| `fetch_index_info.py` | 获取全A股指数元数据（名称/类型/基日等） | 中证指数官网 | `index_info` |
+| `fetch_index_members.py` | 获取指定指数的成分股列表 | 中证指数官网 | `index_members` |
+| `fetch_index_daily_kline.py` | 获取指定指数的日K线数据 | 中证指数官网 | `index_daily_kline` |
+| `calc_index_median_volume.py` | 计算指数成分股日均成交量/成交额中位数 | 本地DB | `index_info` (更新) |
+| `calc_rs_score.py` | 计算个股RS相对强度评分（多周期） | 本地DB | `rs_score` |
+
+### Cron 配置
+
+| 任务 | 调度时间 | 说明 |
+|------|----------|------|
+| `update_daily_kline` | 工作日 14:48 / 19:00 | 盘中+盘后各更新一次 |
+
 ## 📊 日K数据更新
 
 通过新浪财经原生API获取全市场当日行情，写入 `daily_kline` 表。
@@ -176,7 +198,10 @@ sqlite3 data/stock_data.db < db_init/init_all.sql
 |------|------|
 | daily_kline | 日K线数据（含换手率/PE/PB/市值） |
 | minute_kline | 分钟线数据 |
-| index_kline | 指数K线数据 |
+| index_daily_kline | 指数日K线数据（含涨跌幅/PE/成分股数） |
+| index_info | 指数元数据（名称/类型/基日/中位成交量） |
+| index_members | 指数成分股列表 |
+| rs_score | RS相对强度评分历史 |
 | trade_calendar | 交易日历 |
 | account | 账户（多账户，含仓位控制配置） |
 | account_flow | 资金流水 |
