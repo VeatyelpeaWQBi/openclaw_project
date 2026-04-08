@@ -108,6 +108,7 @@ class TrendTradingStrategy(BaseStrategy):
 
         # Step 4: 构建候选池
         candidates = self.candidate_pool.get_candidate_list()
+        logger.info(f"[{nickname}] 候选池: {len(candidates)} 只")
 
         # Step 5: 加载K线数据
         kline_data = self._load_kline_data(positions, candidates)
