@@ -33,14 +33,24 @@ def filter_stocks(stocks, sector_name):
         turnover = stock.get('turnover', 0)
         market_cap = stock.get('market_cap', 0)
 
-        # 基础过滤
-        # 1. 涨幅在3%-7%之间（强势但非涨停）
-        if change_pct < 3 or change_pct > 7:
-            continue
+        # 基础过滤（分板设置）
+        is_20cm = code.startswith('300') or code.startswith('688')
 
-        # 2. 换手率在5%-15%
-        if turnover < 5 or turnover > 15:
-            continue
+        # 1. 涨幅筛选：主板3-7%，双创板6-15%
+        if is_20cm:
+            if change_pct < 6 or change_pct > 15:
+                continue
+        else:
+            if change_pct < 3 or change_pct > 7:
+                continue
+
+        # 2. 换手率筛选：主板5-15%，双创板10-25%
+        if is_20cm:
+            if turnover < 10 or turnover > 25:
+                continue
+        else:
+            if turnover < 5 or turnover > 15:
+                continue
 
         # 3. 从数据库获取日K数据（最近120个交易日）
         df = get_daily_data_from_sqlite(code, days=120)

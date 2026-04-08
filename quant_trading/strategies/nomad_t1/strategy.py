@@ -171,18 +171,26 @@ class NomadT1Strategy(BaseStrategy):
         if code.startswith(('83', '87', '430', '92')):
             return False, _skip_stats('北交所股票')
 
-        # 涨幅筛选（3%-7%），ETF放宽到1%-10%
+        # 涨幅筛选：主板3-7%，双创板6-15%，ETF 1-10%
+        is_20cm = code.startswith('300') or code.startswith('688')
         if is_etf:
             if change_pct < 1 or change_pct > 10:
                 return False, _skip_stats(f'涨幅{change_pct}%不在1-10%范围')
+        elif is_20cm:
+            if change_pct < 6 or change_pct > 15:
+                return False, _skip_stats(f'涨幅{change_pct}%不在6-15%范围(双创板)')
         else:
             if change_pct < 3 or change_pct > 7:
                 return False, _skip_stats(f'涨幅{change_pct}%不在3-7%范围')
 
-        # 换手率筛选（5%-15%），ETF跳过
+        # 换手率筛选：主板5-15%，双创板10-25%，ETF跳过
         if not is_etf:
-            if turnover < 5 or turnover > 15:
-                return False, _skip_stats(f'换手率{turnover}%不在5-15%范围')
+            if is_20cm:
+                if turnover < 10 or turnover > 25:
+                    return False, _skip_stats(f'换手率{turnover}%不在10-25%范围(双创板)')
+            else:
+                if turnover < 5 or turnover > 15:
+                    return False, _skip_stats(f'换手率{turnover}%不在5-15%范围')
 
         # ========== 阶段二：获取日K计算量比+SuperTrend ==========
 
