@@ -1,0 +1,18 @@
+# 数据库文件
+stock_data.db
+stock_data.db-journal
+
+# 输出目录
+output/
+
+# Python缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# 配置文件（含敏感信息）
+config/paths.json
