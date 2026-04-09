@@ -154,7 +154,7 @@ def generate_report(signals, positions, account, candidates, today_opens=None):
         src = c.get('source', 'unknown')
         sources.setdefault(src, []).append(c)
 
-    source_names = {'a500': '核心池(A500)', 'hotspot': '热点池', 'watchlist': '自选池'}
+    source_names = {'a500': '核心池(A500)', 'hotspot': '热点池', 'manual': '自选池'}
     for src, stocks in sources.items():
         src_name = source_names.get(src, src)
         lines.append(f"  {src_name}: {len(stocks)} 只")

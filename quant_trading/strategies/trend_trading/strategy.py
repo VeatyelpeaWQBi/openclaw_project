@@ -24,6 +24,10 @@ class TrendTradingStrategy(BaseStrategy):
     def name(self) -> str:
         return 'trend_trading'
 
+    @property
+    def status(self) -> str:
+        return '开发中，未稳定'
+
     def __init__(self):
         self.account_manager = AccountManager()
         self.position_manager = TrendTradingPositionManager()

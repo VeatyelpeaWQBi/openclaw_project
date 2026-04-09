@@ -403,8 +403,8 @@ class SignalChecker:
             return None
 
         # 所属池标识
-        pool_label = stock.get('keyword', '') or stock.get('pool_type', '')
-        display_name = f"{stock.get('name', '')}（{pool_label}）" if pool_label else stock.get('name', '')
+        nickname = stock.get('account_nickname', '')
+        display_name = f"{stock.get('name', '')}（{nickname}自选）" if nickname else stock.get('name', '')
 
         # 信号格式化
         sys_label = 'S2' if '55' in entry['type'] else 'S1'
@@ -423,4 +423,5 @@ class SignalChecker:
             'trend': trend,
             'supertrend': '多头' if st_bullish else '空头',
             'breakout_type': entry['type'],
+            'account_nickname': stock.get('account_nickname', ''),
         }
