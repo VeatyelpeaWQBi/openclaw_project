@@ -28,7 +28,10 @@ class CandidatePool:
         try:
             conn = get_db_connection()
             rows = conn.execute(
-                "SELECT code, name, keyword, type, pool_type FROM watchlist WHERE active = 1"
+                "SELECT w.code, w.name, w.keyword, w.type, w.pool_type, a.nickname "
+                "FROM watchlist w "
+                "LEFT JOIN account a ON w.account_id = a.id "
+                "WHERE w.active = 1"
             ).fetchall()
             conn.close()
 
@@ -43,6 +46,7 @@ class CandidatePool:
                         'pool_type': r.get('pool_type', ''),
                         'item_type': r.get('type', 'stock'),
                         'keyword': r.get('keyword', ''),
+                        'account_nickname': r.get('nickname', ''),
                     })
 
             self.merged_pool = pool
