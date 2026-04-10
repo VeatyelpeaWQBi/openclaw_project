@@ -94,6 +94,9 @@ def is_liquid_enough(float_mv, turnover_amount, volume_ratio):
     返回:
         bool: 是否满足流动性要求
     """
+    if float_mv is None or turnover_amount is None or volume_ratio is None:
+        return False
+
     if float_mv <= 0:
         return False
 

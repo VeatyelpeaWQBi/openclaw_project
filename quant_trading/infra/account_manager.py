@@ -548,12 +548,16 @@ class AccountManager:
             conn.close()
 
     def set_s1_filter(self, account_id):
-        """设置S1过滤（S1交易盈利时调用）"""
+        """
+        激活S1过滤（S1交易盈利时调用）
+        实际行为：将 turtle_s1_filter_active 设为 0（0=过滤激活，跳过S1信号）
+        注意：方法名 set 容易误解为"设为1"，实际是设为0来激活过滤
+        """
         conn = get_db_connection()
         try:
             cursor = conn.execute("""
                 UPDATE account SET turtle_s1_filter_active = 0
-                WHERE account_id = ? AND turtle_s1_filter_active = 1
+                WHERE id = ? AND turtle_s1_filter_active = 1
             """, (account_id,))
             conn.commit()
             if cursor.rowcount > 0:
@@ -562,12 +566,16 @@ class AccountManager:
             conn.close()
 
     def clear_s1_filter(self, account_id):
-        """清除S1过滤（S2开仓成功时调用）"""
+        """
+        清除S1过滤（S2开仓成功时调用）
+        实际行为：将 turtle_s1_filter_active 设为 1（1=过滤清除，允许S1信号）
+        注意：方法名 clear 容易误解为"设为0"，实际是设为1来清除过滤
+        """
         conn = get_db_connection()
         try:
             cursor = conn.execute("""
                 UPDATE account SET turtle_s1_filter_active = 1
-                WHERE account_id = ? AND turtle_s1_filter_active = 0
+                WHERE id = ? AND turtle_s1_filter_active = 0
             """, (account_id,))
             conn.commit()
             if cursor.rowcount > 0:
@@ -581,7 +589,7 @@ class AccountManager:
         try:
             row = conn.execute("""
                 SELECT turtle_s1_filter_active FROM account
-                WHERE account_id = ?
+                WHERE id = ?
             """, (account_id,)).fetchone()
             return row and row['turtle_s1_filter_active'] == 0
         finally:

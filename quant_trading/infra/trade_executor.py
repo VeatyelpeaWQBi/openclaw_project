@@ -563,6 +563,7 @@ class TradeExecutor:
                 UPDATE positions SET
                     total_shares = ?,
                     turtle_units = ?,
+                    has_reduced = 1,
                     updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
             """, (new_total, new_units, now, account_id, code))

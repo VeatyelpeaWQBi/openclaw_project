@@ -22,17 +22,28 @@ import sys
 import os
 import time
 import logging
-import sqlite3
 import random
 import requests
+import json
 from datetime import datetime
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from core.paths import DB_PATH
-from akshare.utils import demjson
+from core.storage import (
+    get_trading_day_offset,
+    get_trade_days_range, get_rs_score_last_date,
+    get_index_daily_closes, get_stocks_daily_closes,
+    batch_upsert_rs_score,
+    get_watchlist_index_codes, get_watchlist_stocks_by_index,
+    get_tracked_indices, batch_upsert_daily_kline,
+    batch_upsert_index_daily_kline,
+    get_daily_kline_max_date, get_index_daily_kline_max_date,
+    get_recent_trade_dates, get_avg_volume_by_code,
+    get_trading_day_offset_from, get_trading_day_offset_from_end,
+    is_trade_day,
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -55,7 +66,7 @@ def _get_page_count():
     params["num"] = "1"
     try:
         r = requests.get(SINA_URL, params=params, timeout=15)
-        data = demjson.decode(r.text)
+        data = json.loads(r.text)
         if isinstance(data, list) and len(data) > 0:
             return int(data[0].get('total_page', 69))
     except Exception:
@@ -71,79 +82,69 @@ def fetch_all_market():
     logger.info(f"总页数: {page_count}")
 
     all_data = []
+    failed_pages = []
     for page in range(1, page_count + 1):
         params = SINA_PAYLOAD.copy()
         params["page"] = str(page)
+        page_ok = False
 
         for attempt in range(3):
             try:
                 r = requests.get(SINA_URL, params=params, timeout=15)
-                data = demjson.decode(r.text)
-                if isinstance(data, list):
+                data = json.loads(r.text)
+                if isinstance(data, list) and len(data) > 0:
                     all_data.extend(data)
+                    page_ok = True
+                    # 数据量不足一页，已到末尾
+                    if len(data) < int(SINA_PAYLOAD["num"]):
+                        logger.info(f"第{page}页返回{len(data)}条，已达末尾")
+                        elapsed = time.time() - start
+                        logger.info(f"获取完成: {len(all_data)} 只, 耗时 {elapsed:.1f}秒")
+                        return all_data
+                else:
+                    page_ok = True  # 空列表视为末尾
                 break
             except Exception as e:
                 logger.warning(f"第{page}页 第{attempt+1}次失败: {e}")
                 time.sleep(5)
 
+        if not page_ok:
+            failed_pages.append(page)
+            logger.error(f"第{page}页 3次重试全部失败，跳过")
+
         if page < page_count:
             time.sleep(0.5 + random.random() * 0.5)
+
+    if failed_pages:
+        logger.error(f"以下页码获取失败（数据可能缺失）: {failed_pages}")
 
     elapsed = time.time() - start
     logger.info(f"获取完成: {len(all_data)} 只, 耗时 {elapsed:.1f}秒")
     return all_data
 
 
-def _load_avg_volume(conn, trade_date, lookback_days=5):
+def _load_avg_volume(trade_date, lookback_days=5):
     """
     预加载所有股票的前N个交易日平均成交量
-
-    通过交易日历表获取精确的交易日范围
     返回: dict[code] = avg_volume
     """
-    # 从交易日历获取前N个交易日
-    trade_days = conn.execute("""
-        SELECT trade_date FROM trade_calendar
-        WHERE trade_status = 1 AND trade_date < ?
-        ORDER BY trade_date DESC
-        LIMIT ?
-    """, (trade_date, lookback_days)).fetchall()
-
+    trade_days = get_recent_trade_dates(trade_date, lookback_days)
     if not trade_days:
         logger.warning(f"交易日历无数据，无法计算量比")
         return {}
 
-    day_list = [d['trade_date'] for d in trade_days]
-    start_str = day_list[-1]  # 最早的那天
-
-    rows = conn.execute("""
-        SELECT code, AVG(volume) as avg_vol
-        FROM daily_kline
-        WHERE date >= ? AND date < ?
-        GROUP BY code
-        HAVING COUNT(*) >= 2
-    """, (start_str, trade_date)).fetchall()
-
-    avg_map = {}
-    for r in rows:
-        if r['avg_vol'] and r['avg_vol'] > 0:
-            avg_map[r['code']] = float(r['avg_vol'])
-
-    logger.info(f"加载前{len(day_list)}个交易日均量({start_str}~{day_list[0]}): {len(avg_map)} 只")
+    start_str = trade_days[-1]  # 最早的那天
+    avg_map = get_avg_volume_by_code(start_str, trade_date)
+    logger.info(f"加载前{len(trade_days)}个交易日均量({start_str}~{trade_days[0]}): {len(avg_map)} 只")
     return avg_map
 
 
 def save_to_db(data_list, trade_date):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
     # 预加载前5日均量（用于计算量比）
-    avg_vol_map = _load_avg_volume(conn, trade_date)
+    avg_vol_map = _load_avg_volume(trade_date)
 
-    success = 0
+    rows = []
     skip = 0
-    error = 0
 
     for item in data_list:
         code = str(item.get('symbol', '')).strip()
@@ -172,37 +173,25 @@ def save_to_db(data_list, trade_date):
         avg_vol = avg_vol_map.get(code)
         volume_ratio = volume / avg_vol if avg_vol and volume is not None else None
 
-        try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO daily_kline
-                (code, name, date, open, high, low, close, volume, amount,
-                 change_pct, turnover, pe_ratio, pb_ratio, mktcap, nmc,
-                 outstanding_share, volume_ratio)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                code, name, trade_date,
-                _safe_float(item.get('open')),
-                _safe_float(item.get('high')),
-                _safe_float(item.get('low')),
-                close_price,
-                volume,
-                _safe_float(item.get('amount')),
-                _safe_float(item.get('changepercent')),
-                _safe_float(item.get('turnoverratio')),
-                _safe_float(item.get('per')),
-                _safe_float(item.get('pb')),
-                _safe_float(item.get('mktcap')),
-                nmc_val,
-                outstanding_share,
-                volume_ratio,
-            ))
-            success += 1
-        except Exception as e:
-            logger.debug(f"[{code}] 写入失败: {e}")
-            error += 1
+        rows.append((
+            code, name, trade_date,
+            _safe_float(item.get('open')),
+            _safe_float(item.get('high')),
+            _safe_float(item.get('low')),
+            close_price,
+            volume,
+            _safe_float(item.get('amount')),
+            _safe_float(item.get('changepercent')),
+            _safe_float(item.get('turnoverratio')),
+            _safe_float(item.get('per')),
+            _safe_float(item.get('pb')),
+            _safe_float(item.get('mktcap')),
+            nmc_val,
+            outstanding_share,
+            volume_ratio,
+        ))
 
-    conn.commit()
-    conn.close()
+    success, error = batch_upsert_daily_kline(rows)
     logger.info(f"写入完成: 成功{success}, 跳过{skip}, 失败{error}")
     return success
 
@@ -225,17 +214,229 @@ def _safe_int(val):
         return None
 
 
+def fetch_and_save_index_daily_kline(trade_date):
+    """
+    批量获取各大指数当天日K，写入 index_daily_kline 表
+
+    数据源：ak.stock_zh_index_spot_sina（新浪批量指数接口，一次获取全部）
+    过滤：只保留 index_info 表中跟踪的指数
+    """
+    import akshare as ak
+
+    logger.info("开始获取指数日K（新浪批量接口）...")
+    start = time.time()
+
+    # 1. 从 storage 获取跟踪的指数代码
+    tracked_map = get_tracked_indices()
+    if not tracked_map:
+        logger.info("index_info 无跟踪指数，跳过")
+        return 0
+
+    # 2. 批量获取全部指数实时行情
+    try:
+        df = ak.stock_zh_index_spot_sina()
+    except Exception as e:
+        logger.error(f"获取指数行情失败: {e}")
+        return 0
+
+    if df is None or df.empty:
+        logger.warning("指数行情为空")
+        return 0
+
+    # 3. 过滤出跟踪的指数，构建批量数据
+    rows = []
+    for _, row in df.iterrows():
+        code_raw = str(row.get('代码', '')).strip()
+        # 去掉 sh/sz 前缀
+        code = code_raw
+        for prefix in ('sh', 'sz', 'bj'):
+            if code.startswith(prefix):
+                code = code[len(prefix):]
+                break
+
+        if code not in tracked_map:
+            continue
+
+        rows.append((
+            code, tracked_map[code], trade_date,
+            _safe_float(row.get('今开')),
+            _safe_float(row.get('最高')),
+            _safe_float(row.get('最低')),
+            _safe_float(row.get('最新价')),
+            _safe_float(row.get('成交量')),
+            _safe_float(row.get('成交额')),
+            _safe_float(row.get('涨跌额')),
+            _safe_float(row.get('涨跌幅')),
+        ))
+
+    success = batch_upsert_index_daily_kline(rows)
+    elapsed = time.time() - start
+    logger.info(f"指数日K更新完成: {success}个指数, 耗时{elapsed:.1f}秒")
+    return success
+
+
+def calc_rs_score_incremental(trade_date, lookback=250):
+    """
+    增量计算RS Score（自动回溯补全缺失日期）
+
+    流程：
+      1. 从 watchlist 获取唯一的 index_code 列表
+      2. 对每个 index_code：
+         a. 查 rs_score 最新日期
+         b. 查 daily_kline / index_daily_kline 最新日期
+         c. 自动从最新往前补全缺失的交易日
+      3. 每个缺失日：加载250天数据 → 计算RS → 写入
+    """
+    logger.info("开始增量计算RS Score...")
+    start = time.time()
+
+    # 1. 获取候选池关联的指数代码
+    index_codes = get_watchlist_index_codes()
+    if not index_codes:
+        logger.info("候选池无关联指数，跳过RS Score计算")
+        return 0
+
+    # 2. 获取今天（或最近交易日）
+    today = get_trading_day_offset(0)
+    if not today:
+        today = trade_date
+
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    total_rows = 0
+
+    for index_code in index_codes:
+        # 获取该指数关联的成分股
+        stock_codes = get_watchlist_stocks_by_index(index_code)
+        if not stock_codes:
+            continue
+
+        # 查 rs_score 最新日期
+        rs_last = get_rs_score_last_date(index_code)
+
+        # 查可计算的最新日期
+        dk_last = get_daily_kline_max_date(stock_codes[0])
+        idx_last = get_index_daily_kline_max_date(index_code)
+
+        if not dk_last or not idx_last:
+            logger.warning(f"[{index_code}] 日K数据不足，跳过")
+            continue
+
+        calc_end = min(dk_last, idx_last)
+
+        # 确定需要计算的日期范围
+        # 原则：历史缺失补全（已有不动），当天强制更新
+        if rs_last:
+            # 从 rs_last 后一天开始补全历史缺口
+            calc_start = get_trading_day_offset_from(rs_last, 1)
+            if not calc_start:
+                # 无缺口，仍需计算今天
+                calc_dates = []
+            else:
+                calc_dates = get_trade_days_range(calc_start, calc_end)
+        else:
+            # 无历史RS Score，从最早可计算日开始
+            calc_start = get_trading_day_offset_from_end(calc_end, -lookback)
+            if not calc_start:
+                continue
+            calc_dates = get_trade_days_range(calc_start, calc_end)
+
+        # 强制刷新最近2个交易日的RS Score（含calc_end本身）
+        force_days = get_recent_trade_dates(calc_end, 1)
+        force_days.insert(0, calc_end)
+        for d in force_days:
+            if d not in calc_dates:
+                calc_dates.append(d)
+                logger.info(f"[{index_code}] 追加强制更新日期: {d}")
+
+        if not calc_dates:
+            logger.info(f"[{index_code}] RS Score已是最新")
+            continue
+
+        logger.info(f"[{index_code}] 待补全: {calc_dates[0]} ~ {calc_dates[-1]} ({len(calc_dates)}天)")
+
+        # 加载历史数据（最早需要 lookback 天前的数据）
+        data_start = get_trading_day_offset_from(calc_dates[0], -lookback)
+        if not data_start:
+            continue
+
+        stock_closes = get_stocks_daily_closes(stock_codes, data_start, calc_end)
+        index_closes = get_index_daily_closes(index_code, data_start, calc_end)
+
+        # 获取完整交易日历（用于回溯 lookback 天）
+        all_days = get_trade_days_range(data_start, calc_end)
+        date_to_idx = {d: i for i, d in enumerate(all_days)}
+
+        # 逐日计算RS Score
+        for calc_date in calc_dates:
+            date_idx = date_to_idx.get(calc_date)
+            if date_idx is None or date_idx < lookback:
+                continue
+
+            past_date = all_days[date_idx - lookback]
+
+            index_today = index_closes.get(calc_date)
+            index_past = index_closes.get(past_date)
+            if index_today is None or index_past is None or index_past == 0:
+                continue
+
+            benchmark_return = (index_today - index_past) / index_past
+            benchmark_ratio = 1 + benchmark_return
+            if benchmark_ratio == 0:
+                continue
+
+            valid_ratios = []
+            for code in stock_codes:
+                closes = stock_closes.get(code, {})
+                s_today = closes.get(calc_date)
+                s_past = closes.get(past_date)
+                if s_today is None or s_past is None or s_past == 0:
+                    continue
+                stock_return = (s_today - s_past) / s_past
+                rs_ratio = (1 + stock_return) / benchmark_ratio
+                valid_ratios.append((code, rs_ratio, stock_return))
+
+            if not valid_ratios:
+                continue
+
+            valid_ratios.sort(key=lambda x: x[1])
+            total_valid = len(valid_ratios)
+
+            batch = []
+            for rank_idx, (code, rs_ratio, stock_return) in enumerate(valid_ratios):
+                rs_rank = rank_idx + 1
+                rs_score_val = round(rs_rank / total_valid * 100, 2)
+                batch.append((
+                    code, index_code, calc_date,
+                    round(rs_ratio, 6), rs_score_val, rs_rank,
+                    round(stock_return, 6), round(benchmark_return, 6),
+                    lookback, now_str,
+                ))
+
+            written = batch_upsert_rs_score(batch)
+            total_rows += written
+
+        logger.info(f"[{index_code}] {len(stock_codes)}只成分股, {len(calc_dates)}天补全完成")
+
+    elapsed = time.time() - start
+    logger.info(f"RS Score增量计算完成: {total_rows}条, 耗时{elapsed:.1f}秒")
+    return total_rows
+
 def run():
     today = datetime.now().strftime('%Y-%m-%d')
     logger.info(f"=== 更新全市场日K — {today} ===")
 
+    # 1. 更新个股日K
     data = fetch_all_market()
-    if not data:
-        logger.warning("获取数据为空，跳过")
-        return
+    if data:
+        save_to_db(data, today)
 
-    count = save_to_db(data, today)
-    logger.info(f"=== 完成: {count} 只更新到 {today} ===")
+    # 2. 更新指数日K
+    fetch_and_save_index_daily_kline(today)
+
+    # 3. 增量计算RS Score
+    calc_rs_score_incremental(today)
+
+    logger.info(f"=== 完成: 个股+指数+RS Score更新到 {today} ===")
 
 
 if __name__ == '__main__':

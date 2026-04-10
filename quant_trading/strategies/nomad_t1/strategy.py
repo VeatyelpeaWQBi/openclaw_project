@@ -89,7 +89,6 @@ def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
         df = get_daily_data_from_sqlite(stock_code)
         if df.empty:
             logger.warning(f"[{stock_code}] SQLite无数据，尝试API获取")
-            existing = get_daily_data_from_sqlite(stock_code)
             start_date = (datetime.now() - timedelta(days=INITIAL_FETCH_DAYS)).strftime('%Y%m%d')
             end_date = datetime.now().strftime('%Y%m%d')
             from core.data_access import get_stock_daily_kline_range
@@ -342,7 +341,7 @@ class NomadT1Strategy(BaseStrategy):
                 etf_candidates = filter_etf_candidates(sector['name'])
                 for etf in etf_candidates:
                     code = etf['code']
-                    market = 'sh' if code.startswith('5') else 'sz'
+                    market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
                     try:
                         df = load_or_fetch_kline(code, market=market, stock_name=etf['name'], sector_name=sector['name'])
                         if not df.empty:
