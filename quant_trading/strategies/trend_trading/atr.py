@@ -91,7 +91,7 @@ def calc_exit_price(df, period=10):
         return 0.0
 
     # 排除最后一根K线，取前N日的最低价
-    lookback = df.iloc[-(period):]
+    lookback = df.iloc[-(period + 1):-1]
     return round(float(lookback['low'].min()), 2)
 
 

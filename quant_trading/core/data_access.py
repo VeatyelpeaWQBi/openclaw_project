@@ -19,10 +19,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 禁止代理干扰
-for _k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
-    os.environ.pop(_k, None)
-
 
 # ==================== 数据源配置 ====================
 
@@ -407,6 +403,10 @@ def get_stock_realtime(stock_code):
     获取个股实时行情（AKShare 东方财富）
     注意：实时行情暂保留EM数据源，新浪无独立实时行情接口
     """
+    # 禁止代理干扰（实时行情请求可能受代理影响）
+    for _k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
+        os.environ.pop(_k, None)
+
     try:
         df = ak.stock_zh_a_spot_em()
         if df is None or df.empty:

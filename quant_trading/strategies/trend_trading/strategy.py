@@ -210,7 +210,7 @@ class TrendTradingStrategy(BaseStrategy):
             # 数据不足时才调API
             if need_fetch:
                 try:
-                    market = 'sh' if code.startswith(('6',)) else 'sz'
+                    market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
                     recent_df = get_stock_daily_kline_range(
                         code, market=market,
                         start_date=check_date.replace('-', ''),

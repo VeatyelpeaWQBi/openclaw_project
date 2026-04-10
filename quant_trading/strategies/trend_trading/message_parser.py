@@ -34,8 +34,8 @@ class MessageParser:
         }
 
         if not text:
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+            logger.info(f'[消息解析] 空文本 → action=unknown')
+            return result
 
         # 按优先级尝试解析
         for parser_fn in [
@@ -73,18 +73,15 @@ class MessageParser:
             result['code'] = m.group(1)
             if m.group(2):
                 result['price'] = float(m.group(2))
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
 
-        # 加仓
-        m = re.search(r'加仓\s*(\d{6})\s*(\d+(?:\.\d+)?)?', text)
-        if m:
-            result['action'] = 'add'
-            result['code'] = m.group(1)
-            if m.group(2):
-                result['price'] = float(m.group(2))
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+        # 加仓（仅当尚未匹配到买入时尝试）
+        if result['action'] == 'unknown':
+            m = re.search(r'加仓\s*(\d{6})\s*(\d+(?:\.\d+)?)?', text)
+            if m:
+                result['action'] = 'add'
+                result['code'] = m.group(1)
+                if m.group(2):
+                    result['price'] = float(m.group(2))
 
         logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
         return result
@@ -109,8 +106,6 @@ class MessageParser:
             result['code'] = m.group(1)
             if m.group(2):
                 result['price'] = float(m.group(2))
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
 
         logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
         return result
@@ -134,13 +129,10 @@ class MessageParser:
             m = re.search(r'(\d{6})', text)
             if m:
                 result['code'] = m.group(1)
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
 
-        if re.search(r'(?:查?账户|资金|余额)', text):
+        # 仅当尚未匹配到持仓查询时尝试账户查询
+        if result['action'] == 'unknown' and re.search(r'(?:查?账户|资金|余额)', text):
             result['action'] = 'query_account'
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
 
         logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
         return result
@@ -164,30 +156,25 @@ class MessageParser:
         if m:
             result['action'] = 'watchlist_add'
             result['keyword'] = m.group(1).strip()
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
 
         # 自选删
-        m = re.search(r'(?:自选|关注|收藏)\s*(?:删|移除|删除)\s*(.+)', text)
-        if m:
-            result['action'] = 'watchlist_delete'
-            result['keyword'] = m.group(1).strip()
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+        if result['action'] == 'unknown':
+            m = re.search(r'(?:自选|关注|收藏)\s*(?:删|移除|删除)\s*(.+)', text)
+            if m:
+                result['action'] = 'watchlist_delete'
+                result['keyword'] = m.group(1).strip()
 
         # 自选列表
-        if re.search(r'(?:自选|关注|收藏)\s*(?:列表|列表|清单|看看)', text):
-            result['action'] = 'watchlist_list'
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+        if result['action'] == 'unknown':
+            if re.search(r'(?:自选|关注|收藏)\s*(?:列表|列表|清单|看看)', text):
+                result['action'] = 'watchlist_list'
 
         # 暂停自选
-        m = re.search(r'(?:自选|关注)\s*(?:暂停|停)\s*(.+)', text)
-        if m:
-            result['action'] = 'watchlist_pause'
-            result['keyword'] = m.group(1).strip()
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+        if result['action'] == 'unknown':
+            m = re.search(r'(?:自选|关注)\s*(?:暂停|停)\s*(.+)', text)
+            if m:
+                result['action'] = 'watchlist_pause'
+                result['keyword'] = m.group(1).strip()
 
         logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
         return result
@@ -210,22 +197,18 @@ class MessageParser:
         if m:
             result['action'] = 'deposit'
             result['price'] = float(m.group(1))
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
 
-        m = re.search(r'出金\s*(\d+(?:\.\d+)?)', text)
-        if m:
-            result['action'] = 'withdraw'
-            result['price'] = float(m.group(1))
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+        if result['action'] == 'unknown':
+            m = re.search(r'出金\s*(\d+(?:\.\d+)?)', text)
+            if m:
+                result['action'] = 'withdraw'
+                result['price'] = float(m.group(1))
 
-        m = re.search(r'(?:设置|初始化)\s*(?:资金|资本|本金)\s*(\d+(?:\.\d+)?)', text)
-        if m:
-            result['action'] = 'account_set'
-            result['price'] = float(m.group(1))
-            logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
-        return result
+        if result['action'] == 'unknown':
+            m = re.search(r'(?:设置|初始化)\s*(?:资金|资本|本金)\s*(\d+(?:\.\d+)?)', text)
+            if m:
+                result['action'] = 'account_set'
+                result['price'] = float(m.group(1))
 
         logger.info(f'[消息解析] "{text[:30]}..." → action={result.get("action", "unknown")}')
         return result

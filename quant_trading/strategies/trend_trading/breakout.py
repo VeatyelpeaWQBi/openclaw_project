@@ -53,34 +53,6 @@ def detect_donchian_low(df, period):
     return round(float(lookback['low'].min()), 2)
 
 
-def detect_breakout(df, period=20):
-    """
-    检测突破信号（当日收盘价突破N日最高/最低）
-
-    参数:
-        df: 日K DataFrame，需包含 high, low, close 列
-        period: 唐奇安通道周期
-
-    返回:
-        str: 'up'（向上突破）/ 'down'（向下突破）/ None（无突破）
-    """
-    if df is None or len(df) < period + 1:
-        return None
-
-    close_now = float(df['close'].iloc[-1])
-    high_prev = detect_donchian_high(df, period)
-    low_prev = detect_donchian_low(df, period)
-
-    if close_now > high_prev:
-        logger.info(f'[突破检测] 向上突破, 现价{close:.2f} > 高点{high:.2f}')
-        return 'up'
-    elif close_now < low_prev:
-        logger.info(f'[突破检测] 向下突破, 现价{close:.2f} < 低点{low:.2f}')
-        return 'down'
-
-    return None
-
-
 def check_entry_signal(df, short=20, long=55, s1_filtered=1):
     """
     检查入场突破信号

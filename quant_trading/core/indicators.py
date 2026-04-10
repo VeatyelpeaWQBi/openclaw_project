@@ -82,8 +82,8 @@ def calculate_supertrend(df, atr_period=10, multiplier=3.0):
     if first_valid >= n:
         return pd.DataFrame({'supertrend': supertrend, 'upper_band': final_upper, 'lower_band': final_lower, 'atr': atr})
 
-    # 初始化第一根有效K线的方向（默认多头）
-    direction = -1  # -1=多头(bullish), 1=空头(bearish)
+    # 初始化方向：1=空头(bearish), -1=多头(bullish)，与TradingView对齐
+    direction = 1  # 默认空头
 
     for i in range(first_valid + 1, n):
         # 调整上轨（对齐TradingView: 用prev_close vs prev_final_upper）
@@ -102,12 +102,12 @@ def calculate_supertrend(df, atr_period=10, multiplier=3.0):
         else:
             final_lower.iloc[i] = prev_fl
 
-        # 方向判断（对齐TradingView: 用prev方向决定检查哪条轨）
+        # 方向判断（对齐TradingView: 用当前K线的轨）
         if direction == -1:  # 之前多头
-            if close.iloc[i] < final_lower.iloc[i - 1]:
+            if close.iloc[i] < final_lower.iloc[i]:
                 direction = 1  # 翻空
         else:  # 之前空头
-            if close.iloc[i] > final_upper.iloc[i - 1]:
+            if close.iloc[i] > final_upper.iloc[i]:
                 direction = -1  # 翻多
 
         supertrend[i] = (direction == -1)
@@ -190,36 +190,36 @@ def get_supertrend_at_date(stock_code, target_date, lookback_days=60, atr_period
         db_path = DB_PATH
 
     conn = sqlite3.connect(db_path)
+    try:
+        # 1. 查询交易日历，找到target_date及往前lookback_days个交易日
+        cursor = conn.execute(
+            "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date <= ? ORDER BY trade_date DESC LIMIT ?",
+            (target_date, lookback_days + 1)
+        )
+        trade_dates = [row[0] for row in cursor.fetchall()]
+        trade_dates.reverse()  # 升序
 
-    # 1. 查询交易日历，找到target_date及往前lookback_days个交易日
-    cursor = conn.execute(
-        "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date <= ? ORDER BY trade_date DESC LIMIT ?",
-        (target_date, lookback_days + 1)
-    )
-    trade_dates = [row[0] for row in cursor.fetchall()]
-    trade_dates.reverse()  # 升序
+        if len(trade_dates) < atr_period + 1:
+            return {
+                'stock_code': stock_code,
+                'target_date': target_date,
+                'is_bullish': False,
+                'close': 0.0,
+                'upper_band': 0.0,
+                'lower_band': 0.0,
+                'valid': False
+            }
 
-    if len(trade_dates) < atr_period + 1:
+        start_date = trade_dates[0]
+        end_date = trade_dates[-1]
+
+        # 2. 查询该区间内的日K数据
+        df = pd.read_sql(
+            f'SELECT date, open, high, low, close, volume FROM daily_kline WHERE code=? AND date >= ? AND date <= ? ORDER BY date ASC',
+            conn, params=(stock_code, start_date, end_date)
+        )
+    finally:
         conn.close()
-        return {
-            'stock_code': stock_code,
-            'target_date': target_date,
-            'is_bullish': False,
-            'close': 0.0,
-            'upper_band': 0.0,
-            'lower_band': 0.0,
-            'valid': False
-        }
-
-    start_date = trade_dates[0]
-    end_date = trade_dates[-1]
-
-    # 2. 查询该区间内的日K数据
-    df = pd.read_sql(
-        f'SELECT date, open, high, low, close, volume FROM daily_kline WHERE code=? AND date >= ? AND date <= ? ORDER BY date ASC',
-        conn, params=(stock_code, start_date, end_date)
-    )
-    conn.close()
 
     if df.empty or len(df) < atr_period + 1:
         return {
@@ -280,7 +280,7 @@ def calculate_volume_ratio(df, days=5):
     today_volume = df['volume'].iloc[-1]
     avg_volume = df['volume'].iloc[-(days + 1):-1].mean()
 
-    if avg_volume == 0:
+    if pd.isna(today_volume) or pd.isna(avg_volume) or avg_volume == 0:
         return 1.0
 
     return round(today_volume / avg_volume, 2)
@@ -302,17 +302,25 @@ def get_weekly_kline(daily_df):
         return pd.DataFrame()
 
     df = daily_df.copy()
-    df['week'] = df['date'].dt.isocalendar().week
-    df['year'] = df['date'].dt.year
+    # 确保 date 列为 datetime 类型
+    if not pd.api.types.is_datetime64_any_dtype(df['date']):
+        df['date'] = pd.to_datetime(df['date'])
+    # 使用 ISO year + week 组合分组，避免跨年归属错误
+    iso = df['date'].dt.isocalendar()
+    df['iso_year'] = iso.year.astype(int)
+    df['iso_week'] = iso.week.astype(int)
 
-    weekly = df.groupby(['year', 'week']).agg({
+    agg_dict = {
         'date': 'last',
         'open': 'first',
         'high': 'max',
         'low': 'min',
         'close': 'last',
         'volume': 'sum',
-        'amount': 'sum'
-    }).reset_index(drop=True)
+    }
+    if 'amount' in df.columns:
+        agg_dict['amount'] = 'sum'
+
+    weekly = df.groupby(['iso_year', 'iso_week']).agg(agg_dict).reset_index(drop=True)
 
     return weekly
