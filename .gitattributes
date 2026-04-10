@@ -1,0 +1,16 @@
+# 核心规则：统一所有文本文件的行尾符为LF（Linux标准，Windows完美兼容）
+* text=auto eol=lf
+
+# 二进制文件不做任何处理，避免损坏
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.so binary
