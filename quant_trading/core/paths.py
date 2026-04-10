@@ -1,19 +1,32 @@
 """
 路径配置加载模块
-从 paths.json 加载所有路径配置
+根据环境变量 test_env 选择配置文件：
+  test_env=physical → paths_windows.json（Windows 物理机）
+  test_env=virtual 或未设置 → paths.json（Ubuntu 虚拟机，默认）
 """
 import os
 import json
 
 # core/ 的上级目录就是项目根目录
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_config_path = os.path.join(_PROJECT_ROOT, 'config', 'paths.json')
+_config_dir = os.path.join(_PROJECT_ROOT, 'config')
 
 
 def _load_paths():
-    if os.path.exists(_config_path):
-        with open(_config_path, 'r', encoding='utf-8') as f:
+    try:
+        env = os.environ.get('test_env', 'virtual').strip().lower()
+    except Exception:
+        env = 'virtual'
+
+    if env == 'physical':
+        config_file = os.path.join(_config_dir, 'paths_windows.json')
+    else:
+        config_file = os.path.join(_config_dir, 'paths.json')
+
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
             return json.load(f)
+
     # fallback：使用项目根目录推算
     return {
         'project_root': _PROJECT_ROOT,
