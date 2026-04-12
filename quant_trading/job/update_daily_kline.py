@@ -275,6 +275,79 @@ def fetch_and_save_index_daily_kline(trade_date):
     return success
 
 
+def calc_rs_batch(calc_dates, stock_codes, stock_closes, index_closes, all_trade_days, benchmark_code, lookback=250):
+    """
+    对指定日期列表批量计算RS Score并写入数据库
+
+    这是RS计算的核心逻辑，被 calc_rs_score_incremental 和 refresh_recent_rs_score 共用。
+
+    参数:
+        calc_dates: 待计算日期列表
+        stock_codes: 成分股代码列表
+        stock_closes: dict[code] = dict[date] = close
+        index_closes: dict[date] = close
+        all_trade_days: 完整交易日列表（用于回溯lookback天）
+        benchmark_code: 基准指数代码
+        lookback: 回看天数
+
+    返回:
+        int: 写入条数
+    """
+    date_to_idx = {d: i for i, d in enumerate(all_trade_days)}
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    total_rows = 0
+
+    for calc_date in calc_dates:
+        date_idx = date_to_idx.get(calc_date)
+        if date_idx is None or date_idx < lookback:
+            continue
+
+        past_date = all_trade_days[date_idx - lookback]
+
+        index_today = index_closes.get(calc_date)
+        index_past = index_closes.get(past_date)
+        if index_today is None or index_past is None or index_past == 0:
+            continue
+
+        benchmark_return = (index_today - index_past) / index_past
+        benchmark_ratio = 1 + benchmark_return
+        if benchmark_ratio == 0:
+            continue
+
+        valid_ratios = []
+        for code in stock_codes:
+            closes = stock_closes.get(code, {})
+            s_today = closes.get(calc_date)
+            s_past = closes.get(past_date)
+            if s_today is None or s_past is None or s_past == 0:
+                continue
+            stock_return = (s_today - s_past) / s_past
+            rs_ratio = (1 + stock_return) / benchmark_ratio
+            valid_ratios.append((code, rs_ratio, stock_return))
+
+        if not valid_ratios:
+            continue
+
+        valid_ratios.sort(key=lambda x: x[1])
+        total_valid = len(valid_ratios)
+
+        batch = []
+        for rank_idx, (code, rs_ratio, stock_return) in enumerate(valid_ratios):
+            rs_rank = rank_idx + 1
+            rs_score_val = round(rs_rank / total_valid * 100, 2)
+            batch.append((
+                code, benchmark_code, calc_date,
+                round(rs_ratio, 6), rs_score_val, rs_rank,
+                round(stock_return, 6), round(benchmark_return, 6),
+                lookback, now_str,
+            ))
+
+        written = batch_upsert_rs_score(batch)
+        total_rows += written
+
+    return total_rows
+
+
 def calc_rs_score_incremental(trade_date, lookback=250):
     """
     增量计算RS Score（自动回溯补全缺失日期）
@@ -301,7 +374,6 @@ def calc_rs_score_incremental(trade_date, lookback=250):
     if not today:
         today = trade_date
 
-    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     total_rows = 0
 
     for index_code in index_codes:
@@ -367,55 +439,10 @@ def calc_rs_score_incremental(trade_date, lookback=250):
         date_to_idx = {d: i for i, d in enumerate(all_days)}
 
         # 逐日计算RS Score
-        for calc_date in calc_dates:
-            date_idx = date_to_idx.get(calc_date)
-            if date_idx is None or date_idx < lookback:
-                continue
+        rows = calc_rs_batch(calc_dates, stock_codes, stock_closes, index_closes, all_days, index_code, lookback)
+        total_rows += rows
 
-            past_date = all_days[date_idx - lookback]
-
-            index_today = index_closes.get(calc_date)
-            index_past = index_closes.get(past_date)
-            if index_today is None or index_past is None or index_past == 0:
-                continue
-
-            benchmark_return = (index_today - index_past) / index_past
-            benchmark_ratio = 1 + benchmark_return
-            if benchmark_ratio == 0:
-                continue
-
-            valid_ratios = []
-            for code in stock_codes:
-                closes = stock_closes.get(code, {})
-                s_today = closes.get(calc_date)
-                s_past = closes.get(past_date)
-                if s_today is None or s_past is None or s_past == 0:
-                    continue
-                stock_return = (s_today - s_past) / s_past
-                rs_ratio = (1 + stock_return) / benchmark_ratio
-                valid_ratios.append((code, rs_ratio, stock_return))
-
-            if not valid_ratios:
-                continue
-
-            valid_ratios.sort(key=lambda x: x[1])
-            total_valid = len(valid_ratios)
-
-            batch = []
-            for rank_idx, (code, rs_ratio, stock_return) in enumerate(valid_ratios):
-                rs_rank = rank_idx + 1
-                rs_score_val = round(rs_rank / total_valid * 100, 2)
-                batch.append((
-                    code, index_code, calc_date,
-                    round(rs_ratio, 6), rs_score_val, rs_rank,
-                    round(stock_return, 6), round(benchmark_return, 6),
-                    lookback, now_str,
-                ))
-
-            written = batch_upsert_rs_score(batch)
-            total_rows += written
-
-        logger.info(f"[{index_code}] {len(stock_codes)}只成分股, {len(calc_dates)}天补全完成")
+        logger.info(f"[{index_code}] {len(stock_codes)}只成分股, {len(calc_dates)}天补全完成, 写入{rows}条")
 
     elapsed = time.time() - start
     logger.info(f"RS Score增量计算完成: {total_rows}条, 耗时{elapsed:.1f}秒")
