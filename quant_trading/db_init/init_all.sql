@@ -100,7 +100,31 @@ CREATE INDEX IF NOT EXISTS idx_rs_date ON rs_score(calc_date);
 CREATE INDEX IF NOT EXISTS idx_rs_composite ON rs_score(code, benchmark_code, calc_date);
 
 -- ============================================
--- 5. 指数元数据
+-- 5. VCP 波动收缩评分
+-- ============================================
+CREATE TABLE IF NOT EXISTS vcp_score (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,                      -- 股票代码
+    calc_date TEXT NOT NULL,                  -- 计算日期（YYYY-MM-DD）
+    score REAL NOT NULL,                      -- VCP 总分（-40 ~ +95）
+    score_compression REAL,                   -- ① 弹簧压缩度 (+25 ~ -10)
+    score_contraction REAL,                   -- ② 收缩质量 (+20 ~ -10)
+    score_credibility REAL,                   -- ③ 形态可信度 (+15 ~ -5)
+    score_swing_count REAL,                   -- ④ 波段数量 (+10 ~ -5)
+    score_volume REAL,                        -- ⑤ 量能枯竭 (+15 ~ 0)
+    score_triangle_type REAL,                 -- ⑥ 三角类型 (+10 ~ -10)
+    data_start TEXT,                          -- 分析窗口起始日期
+    data_end TEXT,                            -- 分析窗口结束日期
+    write_at TEXT,                            -- 写入时间
+    UNIQUE(code, calc_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vcp_score_code ON vcp_score(code);
+CREATE INDEX IF NOT EXISTS idx_vcp_score_date ON vcp_score(calc_date);
+CREATE INDEX IF NOT EXISTS idx_vcp_score_score ON vcp_score(score);
+
+-- ============================================
+-- 6. 指数元数据
 -- ============================================
 CREATE TABLE IF NOT EXISTS index_info (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

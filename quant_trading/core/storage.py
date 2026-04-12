@@ -755,3 +755,110 @@ def get_trading_day_offset_from_end(end_date, offset):
         str or None: 目标交易日
     """
     return get_trading_day_offset_from(end_date, offset)
+
+
+# ==================== VCP 评分存储 ====================
+
+def save_vcp_score(records):
+    """
+    批量写入 VCP 评分结果（INSERT OR REPLACE）
+
+    参数:
+        records: list of dict，每个 dict 包含:
+            code, calc_date, score,
+            score_compression, score_contraction, score_credibility,
+            score_swing_count, score_volume, score_triangle_type,
+            data_start, data_end
+    """
+    if not records:
+        return 0
+
+    conn = get_db_connection()
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rows = []
+        for r in records:
+            rows.append((
+                r['code'],
+                r['calc_date'],
+                r['score'],
+                r.get('score_compression'),
+                r.get('score_contraction'),
+                r.get('score_credibility'),
+                r.get('score_swing_count'),
+                r.get('score_volume'),
+                r.get('score_triangle_type'),
+                r.get('data_start'),
+                r.get('data_end'),
+                now,
+            ))
+
+        conn.executemany(
+            """INSERT OR REPLACE INTO vcp_score
+               (code, calc_date, score,
+                score_compression, score_contraction, score_credibility,
+                score_swing_count, score_volume, score_triangle_type,
+                data_start, data_end, write_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def get_vcp_scores(calc_date=None, min_score=None, limit=None):
+    """
+    查询 VCP 评分
+
+    参数:
+        calc_date: 指定日期（YYYY-MM-DD），None=不限
+        min_score: 最低分筛选，None=不限
+        limit: 返回条数上限
+
+    返回:
+        list of dict
+    """
+    conn = get_db_connection()
+    try:
+        sql = "SELECT * FROM vcp_score WHERE 1=1"
+        params = []
+        if calc_date:
+            sql += " AND calc_date = ?"
+            params.append(calc_date)
+        if min_score is not None:
+            sql += " AND score >= ?"
+            params.append(min_score)
+        sql += " ORDER BY score DESC"
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_vcp_history(code, days=30):
+    """
+    查询某只股票的 VCP 评分历史
+
+    参数:
+        code: 股票代码
+        days: 最近N天
+
+    返回:
+        list of dict，按日期降序
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """SELECT * FROM vcp_score
+               WHERE code = ? ORDER BY calc_date DESC LIMIT ?""",
+            (code, days)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
