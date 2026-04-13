@@ -80,14 +80,34 @@ def get_recent_trade_dates(end_date, days):
         conn.close()
 
 
+def get_stock_data_earliest_date():
+    """
+    获取个股日K数据的最早日期
+    作为评分计算的截断点，避免在无个股数据的日期上白跑循环
+
+    返回:
+        str or None: 最早日期 'YYYY-MM-DD'
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT MIN(date) FROM daily_kline").fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        conn.close()
+
+
 def get_all_trade_dates():
     """
-    获取全量交易日列表（从2014年至今）
+    获取全量交易日列表（从个股数据最早日期至今）
+
+    自动截断：取个股日K最早日期作为起点，
+    避免在指数有数据但个股无数据的日期上白跑循环。
 
     返回:
         list[str]: 交易日列表（升序）
     """
-    return get_trade_dates(start_date='2014-01-01')
+    earliest = get_stock_data_earliest_date()
+    return get_trade_dates(start_date=earliest)
 
 
 def get_index_members(index_code):
