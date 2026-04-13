@@ -12,10 +12,9 @@ Job: 统一刷新全部评分（RS + VCP + ADX）
 
 流程：
   1. 一次性预加载全部股票日K + 指数收盘价到内存
-  2. RS评分（需要250天预热）
-  3. VCP评分（需要104天窗口）
-  4. ADX评分（需要27天预热）
-  5. 输出汇总
+  2. VCP + ADX 评分（不依赖基准指数，执行一次）
+  3. RS 评分（依赖基准指数，按 watchlist 中每个 index 循环）
+  4. 输出汇总
 """
 
 import sys
@@ -82,8 +81,96 @@ def preload_data(codes, index_code, end_date, lookback_days):
     return stock_data, index_closes, all_dates
 
 
+def run_scores_without_index(stock_data, all_dates, days, adx_period=14):
+    """
+    运行 VCP + ADX 评分（不依赖基准指数）
+
+    参数:
+        stock_data: {code: DataFrame} 预加载的日K数据
+        all_dates: list[str] 指数日期列表（升序）
+        days: 计算天数
+        adx_period: ADX计算周期
+
+    返回:
+        (vcp_count, adx_count)
+    """
+    logger.info(f"{'='*60}")
+    logger.info(f"  VCP + ADX 评分: {days}天")
+    logger.info(f"{'='*60}")
+
+    # VCP
+    vcp_start = time.time()
+    try:
+        vcp_count = calc_vcp_from_data(stock_data, all_dates, days)
+    except Exception as e:
+        logger.error(f"VCP评分异常: {e}")
+        vcp_count = 0
+    vcp_time = time.time() - vcp_start
+    logger.info(f"VCP完成: {vcp_count}条, 耗时{vcp_time:.0f}秒")
+
+    # ADX
+    adx_start = time.time()
+    try:
+        adx_count = calc_adx_from_data(stock_data, all_dates, days, period=adx_period)
+    except Exception as e:
+        logger.error(f"ADX评分异常: {e}")
+        adx_count = 0
+    adx_time = time.time() - adx_start
+    logger.info(f"ADX完成: {adx_count}条, 耗时{adx_time:.0f}秒")
+
+    return vcp_count or 0, adx_count or 0
+
+
+def run_rs(index_code, stock_data, all_dates, days):
+    """
+    运行单个基准指数的 RS 评分
+
+    参数:
+        index_code: 基准指数代码
+        stock_data: {code: DataFrame} 预加载的日K数据
+        all_dates: list[str] 指数日期列表（升序）
+        days: 计算天数
+
+    返回:
+        int: 写入条数
+    """
+    logger.info(f"{'='*60}")
+    logger.info(f"  RS评分: {index_code}, {days}天")
+    logger.info(f"{'='*60}")
+
+    rs_start = time.time()
+    try:
+        # 获取成分股子集
+        rs_stock_codes = get_index_members(index_code)
+        rs_closes = {code: stock_data[code] for code in rs_stock_codes if code in stock_data}
+        # RS 需要 {code: {date: close}} 格式
+        rs_closes_dict = {}
+        for code, df in rs_closes.items():
+            rs_closes_dict[code] = {
+                row['date']: float(row['close'])
+                for _, row in df.iterrows()
+                if row['close'] is not None
+            }
+
+        # 需要重新加载该指数的收盘价
+        start_date = all_dates[0]
+        end_date = all_dates[-1]
+        index_closes = get_index_daily_closes(index_code, start_date, end_date)
+
+        rs_count = calc_rs_scores_from_data(
+            index_code, rs_closes_dict, index_closes, all_dates, days
+        )
+    except Exception as e:
+        logger.error(f"RS评分异常 [{index_code}]: {e}")
+        rs_count = 0
+    rs_time = time.time() - rs_start
+    logger.info(f"RS完成 [{index_code}]: {rs_count}条, 耗时{rs_time:.0f}秒")
+
+    return rs_count or 0
+
+
 def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
-    """主入口"""
+    """CLI 主入口（VCP+ADX 一次 + RS 单指数）"""
     if end_date is None:
         end_date = get_trading_day_offset(0)
         if end_date is None:
@@ -98,104 +185,59 @@ def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
     start = time.time()
 
     if days:
-        # 增量模式：统一预加载，各模块从内存取数据
+        # 增量模式：统一预加载
         codes = get_all_stock_codes()
         if not codes:
             logger.error("未找到股票代码")
             return 0
 
-        max_lookback = 250 + days  # RS 需要的最大预热范围
+        max_lookback = 250 + days
         stock_data, index_closes, all_dates = preload_data(
             codes, index_code, end_date, max_lookback
         )
-
         if not all_dates:
             logger.error("预加载失败，无法继续")
             return 0
 
-        # 获取 RS 需要的成分股子集
-        rs_stock_codes = get_index_members(index_code)
-        rs_closes = {code: stock_data[code] for code in rs_stock_codes if code in stock_data}
-        # RS 需要 {code: {date: close}} 格式
-        rs_closes_dict = {}
-        for code, df in rs_closes.items():
-            rs_closes_dict[code] = {
-                row['date']: float(row['close'])
-                for _, row in df.iterrows()
-                if row['close'] is not None
-            }
-
-        # 1. RS评分
-        rs_start = time.time()
-        try:
-            rs_count = calc_rs_scores_from_data(
-                index_code, rs_closes_dict, index_closes, all_dates, days
-            )
-        except Exception as e:
-            logger.error(f"[1/3] RS评分异常: {e}")
-            rs_count = 0
-        rs_time = time.time() - rs_start
-        logger.info(f"[1/3] RS完成: {rs_count}条, 耗时{rs_time:.0f}秒")
-
-        # 2. VCP评分
-        vcp_start = time.time()
-        try:
-            vcp_count = calc_vcp_from_data(stock_data, all_dates, days)
-        except Exception as e:
-            logger.error(f"[2/3] VCP评分异常: {e}")
-            vcp_count = 0
-        vcp_time = time.time() - vcp_start
-        logger.info(f"[2/3] VCP完成: {vcp_count}条, 耗时{vcp_time:.0f}秒")
-
-        # 3. ADX评分
-        adx_start = time.time()
-        try:
-            adx_count = calc_adx_from_data(stock_data, all_dates, days, period=adx_period)
-        except Exception as e:
-            logger.error(f"[3/3] ADX评分异常: {e}")
-            adx_count = 0
-        adx_time = time.time() - adx_start
-        logger.info(f"[3/3] ADX完成: {adx_count}条, 耗时{adx_time:.0f}秒")
+        vcp_count, adx_count = run_scores_without_index(stock_data, all_dates, days, adx_period)
+        rs_count = run_rs(index_code, stock_data, all_dates, days)
 
     else:
         # 全量模式：各模块自行加载全部数据
-        # 1. RS评分
         rs_start = time.time()
         try:
             rs_count = calc_rs_scores_full(index_code)
         except Exception as e:
-            logger.error(f"[1/3] RS评分异常: {e}")
+            logger.error(f"[RS] 评分异常: {e}")
             rs_count = 0
         rs_time = time.time() - rs_start
-        logger.info(f"[1/3] RS完成: {rs_count}条, 耗时{rs_time:.0f}秒")
+        logger.info(f"[RS] 完成: {rs_count}条, 耗时{rs_time:.0f}秒")
 
-        # 2. VCP评分
         vcp_start = time.time()
         try:
             vcp_count = calc_vcp_batch()
         except Exception as e:
-            logger.error(f"[2/3] VCP评分异常: {e}")
+            logger.error(f"[VCP] 评分异常: {e}")
             vcp_count = 0
         vcp_time = time.time() - vcp_start
-        logger.info(f"[2/3] VCP完成: {vcp_count}条, 耗时{vcp_time:.0f}秒")
+        logger.info(f"[VCP] 完成: {vcp_count}条, 耗时{vcp_time:.0f}秒")
 
-        # 3. ADX评分
         adx_start = time.time()
         try:
             adx_count = calc_adx_batch(period=adx_period)
         except Exception as e:
-            logger.error(f"[3/3] ADX评分异常: {e}")
+            logger.error(f"[ADX] 评分异常: {e}")
             adx_count = 0
         adx_time = time.time() - adx_start
-        logger.info(f"[3/3] ADX完成: {adx_count}条, 耗时{adx_time:.0f}秒")
+        logger.info(f"[ADX] 完成: {adx_count}条, 耗时{adx_time:.0f}秒")
 
     # 汇总
     total_time = time.time() - start
     logger.info(f"{'='*60}")
     logger.info(f"  全部完成!")
-    logger.info(f"  RS: {rs_count or 0}条 ({rs_time:.0f}秒)")
-    logger.info(f"  VCP: {vcp_count or 0}条 ({vcp_time:.0f}秒)")
-    logger.info(f"  ADX: {adx_count or 0}条 ({adx_time:.0f}秒)")
+    logger.info(f"  RS: {rs_count or 0}条")
+    logger.info(f"  VCP: {vcp_count or 0}条")
+    logger.info(f"  ADX: {adx_count or 0}条")
     logger.info(f"  总耗时: {total_time:.0f}秒 ({total_time/60:.1f}分钟)")
     logger.info(f"{'='*60}")
 

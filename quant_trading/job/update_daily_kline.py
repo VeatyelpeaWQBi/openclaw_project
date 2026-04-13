@@ -44,7 +44,8 @@ from core.storage import (
     get_trading_day_offset_from, get_trading_day_offset_from_end,
     is_trade_day,
 )
-from job.calc_scores import run as run_score_pipeline
+from job.calc_scores import preload_data, run_scores_without_index, run_rs
+from strategies.trend_trading.score._base import get_all_stock_codes
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -461,13 +462,29 @@ def run():
     # 2. 更新指数日K
     fetch_and_save_index_daily_kline(today)
 
-    # 3. 统一计算 RS/VCP/ADX 评分
+    # 3. 统一计算 VCP + ADX 评分（不依赖基准指数，只跑一次）
     logger.info("=== 启动评分流水线 ===")
     try:
-        # 从watchlist获取基准指数，默认000510
         index_codes = get_watchlist_index_codes()
-        index_code = index_codes[0] if index_codes else '000510'
-        run_score_pipeline(days=3, end_date=today, index_code=index_code)
+        if not index_codes:
+            index_codes = ['000510'] # 中证A500，作为默认基准
+
+        codes = get_all_stock_codes()
+        if codes:
+            days = 3
+            max_lookback = 250 + days
+            # 用第一个指数做预加载（VCP/ADX 只需要 stock_data 和 all_dates）
+            stock_data, index_closes, all_dates = preload_data(
+                codes, index_codes[0], today, max_lookback
+            )
+
+            if all_dates:
+                # VCP + ADX 只跑一次
+                run_scores_without_index(stock_data, all_dates, days)
+
+                # RS 按 watchlist 中每个指数循环
+                for index_code in index_codes:
+                    run_rs(index_code, stock_data, all_dates, days)
     except Exception as e:
         logger.error(f"评分流水线执行失败: {e}", exc_info=True)
 
