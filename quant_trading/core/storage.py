@@ -438,6 +438,46 @@ def get_stocks_daily_closes(stock_codes, start_date, end_date):
         return {}
 
 
+def get_all_stocks_daily_data(codes, start_date, end_date):
+    """
+    批量获取多只股票的完整日K数据（OHLCV），按 code 分组返回
+
+    参数:
+        codes: list[str] 股票代码列表
+        start_date: 起始日期 'YYYY-MM-DD'
+        end_date: 结束日期 'YYYY-MM-DD'
+
+    返回:
+        dict: {code: DataFrame} 每只股票的日K（date升序）
+    """
+    if not codes:
+        return {}
+    try:
+        conn = get_db_connection()
+        BATCH_SIZE = 500
+        dfs = []
+        for i in range(0, len(codes), BATCH_SIZE):
+            batch = codes[i:i + BATCH_SIZE]
+            placeholders = ','.join(['?'] * len(batch))
+            df_batch = pd.read_sql_query(
+                f"SELECT * FROM daily_kline "
+                f"WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0 "
+                f"ORDER BY code, date",
+                conn, params=batch + [start_date, end_date]
+            )
+            dfs.append(df_batch)
+        conn.close()
+
+        df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        result = {}
+        for code, group in df_all.groupby('code', sort=False):
+            result[code] = group.reset_index(drop=True)
+        return result
+    except Exception as e:
+        logger.error(f"批量获取完整日K失败: {e}")
+        return {}
+
+
 def batch_upsert_rs_score(rows):
     """
     批量写入/更新RS Score
