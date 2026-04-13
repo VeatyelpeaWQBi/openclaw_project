@@ -966,36 +966,3 @@ def get_adx_history(code, days=30):
         return [dict(r) for r in rows]
     finally:
         conn.close()
-
-
-def init_adx_table():
-    """
-    创建 adx_score 表（如果不存在）
-
-    在首次运行ADX评分JOB前执行一次即可。
-    """
-    conn = get_db_connection()
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS adx_score (
-                code          TEXT NOT NULL,
-                calc_date     TEXT NOT NULL,
-                period        INTEGER NOT NULL DEFAULT 14,
-                adx           REAL,
-                plus_di       REAL,
-                minus_di      REAL,
-                dx            REAL,
-                adx_score_val REAL,
-                write_at      TEXT,
-                PRIMARY KEY (code, calc_date, period)
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_adx_date ON adx_score(calc_date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_adx_score ON adx_score(adx_score_val)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_adx_code_date ON adx_score(code, calc_date)")
-        conn.commit()
-        logger.info("adx_score 表已创建/确认存在")
-    except Exception as e:
-        logger.error(f"创建 adx_score 表失败: {e}")
-    finally:
-        conn.close()

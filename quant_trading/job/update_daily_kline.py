@@ -44,6 +44,7 @@ from core.storage import (
     get_trading_day_offset_from, get_trading_day_offset_from_end,
     is_trade_day,
 )
+from job.calc_scores import run as run_score_pipeline
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -460,10 +461,17 @@ def run():
     # 2. 更新指数日K
     fetch_and_save_index_daily_kline(today)
 
-    # 3. 增量计算RS Score
-    calc_rs_score_incremental(today)
+    # 3. 统一计算 RS/VCP/ADX 评分
+    logger.info("=== 启动评分流水线 ===")
+    try:
+        # 从watchlist获取基准指数，默认000510
+        index_codes = get_watchlist_index_codes()
+        index_code = index_codes[0] if index_codes else '000510'
+        run_score_pipeline(days=3, end_date=today, index_code=index_code)
+    except Exception as e:
+        logger.error(f"评分流水线执行失败: {e}", exc_info=True)
 
-    logger.info(f"=== 完成: 个股+指数+RS Score更新到 {today} ===")
+    logger.info(f"=== 完成: 个股+指数+评分更新到 {today} ===")
 
 
 if __name__ == '__main__':

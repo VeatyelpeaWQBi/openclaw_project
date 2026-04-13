@@ -665,6 +665,7 @@ def calc_vcp_recent(end_date, days=30):
     calc_dates = get_trade_dates(start_date, end_date)
     # 实际要计算的日期：从第 WINDOW 个交易日开始
     calc_dates = calc_dates[WINDOW - 1:]
+    calc_dates_set = set(calc_dates)
     logger.info(f"预热{WINDOW - 1}天, 计算{len(calc_dates)}天, 数据范围{start_date}~{end_date}")
 
     # 删除旧数据
@@ -687,8 +688,10 @@ def calc_vcp_recent(end_date, days=30):
 
         records = _calc_vcp_for_stock_df(code, df)
         if records:
-            save_vcp_score(records)
-            total_records += len(records)
+            records = [r for r in records if r['calc_date'] in calc_dates_set]
+            if records:
+                save_vcp_score(records)
+                total_records += len(records)
 
         if (idx + 1) % 100 == 0 or idx == len(codes) - 1:
             elapsed = time.time() - start_time
@@ -699,4 +702,60 @@ def calc_vcp_recent(end_date, days=30):
 
     elapsed = time.time() - start_time
     logger.info(f"[VCP] 近日完成: {total_records} 条, 耗时 {elapsed:.0f}秒")
+    return total_records
+
+
+def calc_vcp_from_data(stock_data, all_dates, days):
+    """
+    从预加载数据计算VCP评分（由 calc_scores.py 统一调度调用）
+
+    参数:
+        stock_data: {code: DataFrame} 预加载的日K数据
+        all_dates: list[str] 指数日期列表（升序）
+        days: 计算天数
+
+    返回:
+        int: 写入条数
+    """
+    if len(all_dates) < WINDOW + days - 1:
+        logger.error(f"[VCP] 日期不足: 需要{WINDOW + days - 1}天，实际{len(all_dates)}天")
+        return 0
+
+    calc_dates = all_dates[-days:]
+    calc_dates_set = set(calc_dates)
+
+    logger.info(f"[VCP] 从预加载数据计算: {len(stock_data)}只股票, {len(calc_dates)}天")
+
+    # 删除旧数据
+    conn = get_db_connection()
+    try:
+        for d in calc_dates:
+            conn.execute("DELETE FROM vcp_score WHERE calc_date = ?", (d,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    total_records = 0
+    start_time = time.time()
+
+    for idx, (code, df) in enumerate(stock_data.items()):
+        if len(df) < WINDOW:
+            continue
+
+        records = _calc_vcp_for_stock_df(code, df)
+        if records:
+            records = [r for r in records if r['calc_date'] in calc_dates_set]
+            if records:
+                save_vcp_score(records)
+                total_records += len(records)
+
+        if (idx + 1) % 500 == 0 or idx == len(stock_data) - 1:
+            elapsed = time.time() - start_time
+            speed = (idx + 1) / elapsed if elapsed > 0 else 0
+            logger.info(f"  进度: {idx + 1}/{len(stock_data)} 只, "
+                        f"已写入 {total_records} 条, "
+                        f"速度: {speed:.1f}只/秒")
+
+    elapsed = time.time() - start_time
+    logger.info(f"[VCP] 完成: {total_records} 条, 耗时 {elapsed:.0f}秒")
     return total_records
