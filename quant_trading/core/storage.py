@@ -862,3 +862,140 @@ def get_vcp_history(code, days=30):
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+# ==================== ADX Score 相关方法 ====================
+
+def save_adx_score(records):
+    """
+    批量写入/更新 ADX 评分结果（INSERT OR REPLACE）
+
+    参数:
+        records: list of dict，每个 dict 包含:
+            code, calc_date, period, adx, plus_di, minus_di, dx, adx_score_val
+
+    返回:
+        int: 写入条数
+    """
+    if not records:
+        return 0
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    rows = []
+    for r in records:
+        rows.append((
+            r['code'],
+            r['calc_date'],
+            r.get('period', 14),
+            r['adx'],
+            r['plus_di'],
+            r['minus_di'],
+            r['dx'],
+            r['adx_score_val'],
+            now,
+        ))
+
+    conn = get_db_connection()
+    try:
+        conn.executemany(
+            """INSERT OR REPLACE INTO adx_score
+               (code, calc_date, period, adx, plus_di, minus_di, dx,
+                adx_score_val, write_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows
+        )
+        conn.commit()
+        return len(rows)
+    except Exception as e:
+        logger.error(f"批量写入ADX Score失败: {e}")
+        return 0
+    finally:
+        conn.close()
+
+
+def get_adx_scores_by_date(calc_date, min_score=None, limit=None):
+    """
+    指定日期查询ADX评分
+
+    参数:
+        calc_date: 指定日期（YYYY-MM-DD），None=不限
+        min_score: 最低分筛选，None=不限
+        limit: 返回条数上限
+
+    返回:
+        list of dict
+    """
+    conn = get_db_connection()
+    try:
+        sql = "SELECT * FROM adx_score WHERE 1=1"
+        params = []
+        if calc_date:
+            sql += " AND calc_date = ?"
+            params.append(calc_date)
+        if min_score is not None:
+            sql += " AND adx_score_val >= ?"
+            params.append(min_score)
+        sql += " ORDER BY adx_score_val DESC"
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_adx_history(code, days=30):
+    """
+    查询某只股票的 ADX 评分历史
+
+    参数:
+        code: 股票代码
+        days: 最近N天
+
+    返回:
+        list of dict，按日期降序
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """SELECT * FROM adx_score
+               WHERE code = ? ORDER BY calc_date DESC LIMIT ?""",
+            (code, days)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def init_adx_table():
+    """
+    创建 adx_score 表（如果不存在）
+
+    在首次运行ADX评分JOB前执行一次即可。
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS adx_score (
+                code          TEXT NOT NULL,
+                calc_date     TEXT NOT NULL,
+                period        INTEGER NOT NULL DEFAULT 14,
+                adx           REAL,
+                plus_di       REAL,
+                minus_di      REAL,
+                dx            REAL,
+                adx_score_val REAL,
+                write_at      TEXT,
+                PRIMARY KEY (code, calc_date, period)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_adx_date ON adx_score(calc_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_adx_score ON adx_score(adx_score_val)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_adx_code_date ON adx_score(code, calc_date)")
+        conn.commit()
+        logger.info("adx_score 表已创建/确认存在")
+    except Exception as e:
+        logger.error(f"创建 adx_score 表失败: {e}")
+    finally:
+        conn.close()
