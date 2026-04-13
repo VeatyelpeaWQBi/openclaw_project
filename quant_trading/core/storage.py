@@ -373,6 +373,73 @@ def get_rs_score_last_date(benchmark_code):
         return None
 
 
+def get_rs_score_by_code(code, calc_date, benchmark_code='000510'):
+    """
+    查询指定股票、指定日期的RS评分
+
+    参数:
+        code: 股票代码
+        calc_date: 计算日期 'YYYY-MM-DD'
+        benchmark_code: 基准指数代码，默认中证500
+
+    返回:
+        dict or None: RS评分记录
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT * FROM rs_score
+            WHERE code = ? AND calc_date = ? AND benchmark_code = ?
+        """, (code, calc_date, benchmark_code)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_vcp_score_by_code(code, calc_date):
+    """
+    查询指定股票、指定日期的VCP评分
+
+    参数:
+        code: 股票代码
+        calc_date: 计算日期 'YYYY-MM-DD'
+
+    返回:
+        dict or None: VCP评分记录
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT * FROM vcp_score
+            WHERE code = ? AND calc_date = ?
+        """, (code, calc_date)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_adx_score_by_code(code, calc_date):
+    """
+    查询指定股票、指定日期的ADX评分
+
+    参数:
+        code: 股票代码
+        calc_date: 计算日期 'YYYY-MM-DD'
+
+    返回:
+        dict or None: ADX评分记录
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT * FROM adx_score
+            WHERE code = ? AND calc_date = ?
+        """, (code, calc_date)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def get_index_daily_closes(index_code, start_date, end_date):
     """
     获取指数在日期范围内的每日收盘价
