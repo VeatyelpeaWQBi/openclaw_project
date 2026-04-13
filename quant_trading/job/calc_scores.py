@@ -23,17 +23,16 @@ import os
 import logging
 import argparse
 import time
-import sqlite3
 from datetime import datetime
-
-import pandas as pd
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from core.paths import DB_PATH
-from core.storage import get_trading_day_offset, get_trading_day_offset_from
+from core.storage import (
+    get_trading_day_offset, get_trading_day_offset_from,
+    get_all_stocks_daily_data, get_index_daily_closes,
+)
 from strategies.trend_trading.score._base import (
     get_all_stock_codes, get_index_members,
 )
@@ -50,7 +49,7 @@ DEFAULT_DAYS = 30
 
 def preload_data(codes, index_code, end_date, lookback_days):
     """
-    统一预加载：一次查DB，把所有股票日K + 指数收盘价加载到内存
+    统一预加载：通过 storage 层加载全部股票日K + 指数收盘价到内存
 
     参数:
         codes: 全部股票代码列表
@@ -63,7 +62,6 @@ def preload_data(codes, index_code, end_date, lookback_days):
         index_closes: {date: close} 指数收盘价
         all_dates: list[str] 指数的日期列表（升序），作为全局时间轴
     """
-    # 大致起点（不依赖交易日历，直接用日历天数多取一些余量）
     start_date = get_trading_day_offset_from(end_date, -lookback_days)
     if not start_date:
         logger.error("无法获取预加载起始日期")
@@ -71,45 +69,17 @@ def preload_data(codes, index_code, end_date, lookback_days):
 
     logger.info(f"预加载: {len(codes)}只股票, {start_date} ~ {end_date}")
 
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.row_factory = sqlite3.Row
+    # 1. 批量加载全部股票完整日K（OHLCV）
+    stock_data = get_all_stocks_daily_data(codes, start_date, end_date)
 
-        # 1. 分批加载全部股票日K（避免 IN 子句参数超 SQLite 上限）
-        BATCH_SIZE = 500
-        dfs = []
-        for i in range(0, len(codes), BATCH_SIZE):
-            batch = codes[i:i + BATCH_SIZE]
-            placeholders = ','.join(['?'] * len(batch))
-            df_batch = pd.read_sql_query(
-                f"SELECT * FROM daily_kline "
-                f"WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0 "
-                f"ORDER BY code, date",
-                conn, params=batch + [start_date, end_date]
-            )
-            dfs.append(df_batch)
-        df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    # 2. 加载指数收盘价
+    index_closes = get_index_daily_closes(index_code, start_date, end_date)
 
-        # 按 code 分组成 dict
-        stock_data = {}
-        for code, group in df_all.groupby('code', sort=False):
-            stock_data[code] = group.reset_index(drop=True)
+    # 3. 从指数提取日期列表作为全局时间轴
+    all_dates = sorted(index_closes.keys())
 
-        # 2. 加载指数收盘价
-        index_rows = conn.execute(
-            "SELECT date, close FROM index_daily_kline "
-            "WHERE index_code = ? AND date >= ? AND date <= ? ORDER BY date",
-            (index_code, start_date, end_date)
-        ).fetchall()
-        index_closes = {r['date']: float(r['close']) for r in index_rows if r['close'] is not None}
-
-        # 3. 从指数提取日期列表作为全局时间轴
-        all_dates = sorted(index_closes.keys())
-
-        logger.info(f"预加载完成: 股票{len(stock_data)}只, 指数{len(all_dates)}天")
-        return stock_data, index_closes, all_dates
-    finally:
-        conn.close()
+    logger.info(f"预加载完成: 股票{len(stock_data)}只, 指数{len(all_dates)}天")
+    return stock_data, index_closes, all_dates
 
 
 def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
