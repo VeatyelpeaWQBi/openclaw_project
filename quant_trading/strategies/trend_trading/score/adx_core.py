@@ -339,6 +339,61 @@ def calc_adx_recent(end_date, days=30, period: int = DEFAULT_PERIOD) -> int:
     return total_records
 
 
+def calc_adx_from_data(stock_data, all_dates, days, period: int = DEFAULT_PERIOD) -> int:
+    """
+    从预加载数据计算ADX评分（由 calc_scores.py 统一调度调用）
+
+    参数:
+        stock_data: {code: DataFrame} 预加载的日K数据
+        all_dates: list[str] 指数日期列表（升序）
+        days: 计算天数
+        period: ADX计算周期
+
+    返回:
+        int: 写入条数
+    """
+    warmup = 2 * period - 1
+    if len(all_dates) < warmup + days:
+        logger.error(f"[ADX] 日期不足: 需要{warmup + days}天，实际{len(all_dates)}天")
+        return 0
+
+    calc_dates = all_dates[-days:]
+    save_dates_set = set(calc_dates)
+
+    logger.info(f"[ADX] 从预加载数据计算: {len(stock_data)}只股票, {len(calc_dates)}天, period={period}")
+
+    # 删除旧数据
+    conn = get_db_connection()
+    try:
+        for d in calc_dates:
+            conn.execute("DELETE FROM adx_score WHERE calc_date = ?", (d,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    total_records = 0
+    start_time = time.time()
+
+    for idx, (code, df) in enumerate(stock_data.items()):
+        records = _extract_adx_records(code, df, period)
+        if records:
+            records = [r for r in records if r['calc_date'] in save_dates_set]
+            if records:
+                save_adx_score(records)
+                total_records += len(records)
+
+        if (idx + 1) % 500 == 0 or idx == len(stock_data) - 1:
+            elapsed = time.time() - start_time
+            speed = (idx + 1) / elapsed if elapsed > 0 else 0
+            logger.info(f"  进度: {idx + 1}/{len(stock_data)} 只, "
+                        f"已写入 {total_records} 条, "
+                        f"速度: {speed:.1f}只/秒")
+
+    elapsed = time.time() - start_time
+    logger.info(f"[ADX] 完成: {total_records} 条, 耗时 {elapsed:.0f}秒")
+    return total_records
+
+
 # ==================== 实时查询 ====================
 
 def get_adx_score(code: str, calc_date: str, period: int = DEFAULT_PERIOD) -> dict | None:

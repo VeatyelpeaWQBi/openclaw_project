@@ -20,7 +20,7 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from core.storage import get_trading_day_offset, init_adx_table
+from core.storage import get_trading_day_offset
 from strategies.trend_trading.score.adx_core import calc_adx_batch, calc_adx_recent
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -31,9 +31,6 @@ DEFAULT_PERIOD = 14
 
 def run(days=None, end_date=None, period=DEFAULT_PERIOD):
     """主入口"""
-    # 确保表存在
-    init_adx_table()
-
     if end_date is None:
         end_date = get_trading_day_offset(0)
         if end_date is None:
@@ -60,7 +57,9 @@ if __name__ == '__main__':
 
     if args.full:
         days = None
-    elif args.days:
+    elif args.days is not None:
+        if args.days <= 0:
+            parser.error('--days 必须为正整数')
         days = args.days
     else:
         days = None

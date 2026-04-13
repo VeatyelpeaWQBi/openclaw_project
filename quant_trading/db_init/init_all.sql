@@ -124,6 +124,27 @@ CREATE INDEX IF NOT EXISTS idx_vcp_score_date ON vcp_score(calc_date);
 CREATE INDEX IF NOT EXISTS idx_vcp_score_score ON vcp_score(score);
 
 -- ============================================
+-- 5b. ADX 评分
+-- ============================================
+CREATE TABLE IF NOT EXISTS adx_score (
+    code          TEXT NOT NULL,           -- 股票代码
+    calc_date     TEXT NOT NULL,           -- 计算日期 YYYY-MM-DD
+    period        INTEGER NOT NULL DEFAULT 14,  -- 计算周期
+    adx           REAL,                    -- ADX原始值
+    plus_di       REAL,                    -- +DI值
+    minus_di      REAL,                    -- -DI值
+    dx            REAL,                    -- DX值
+    adx_score_val REAL,                    -- 0-100评分
+    write_at      TEXT,                    -- 写入时间
+    PRIMARY KEY (code, calc_date, period)
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_adx_date ON adx_score(calc_date);
+CREATE INDEX IF NOT EXISTS idx_adx_score ON adx_score(adx_score_val);
+CREATE INDEX IF NOT EXISTS idx_adx_code_date ON adx_score(code, calc_date);
+
+-- ============================================
 -- 6. 指数元数据
 -- ============================================
 CREATE TABLE IF NOT EXISTS index_info (

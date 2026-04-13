@@ -202,27 +202,22 @@ def calc_rs_scores_recent(index_code, end_date, days=30,
         logger.error(f"未找到 {index_code} 的成分股")
         return 0
 
-    # 1. 获取预热数据：end_date前 lookback 个交易日
-    warmup_dates = get_recent_trade_dates(end_date, lookback)
-    if len(warmup_dates) < lookback:
-        logger.error(f"预热交易日不足: 需要{lookback}天，实际{len(warmup_dates)}天")
-        return 0
-    warmup_start = warmup_dates[0]
-
-    # 2. 获取需要计算的日期：end_date前 days 个交易日
-    calc_dates = get_recent_trade_dates(end_date, days)
-    if not calc_dates:
-        logger.error(f"无法获取最近{days}天交易日")
+    # 1. 获取完整日期范围：预热(lookback) + 计算(days)
+    all_dates = get_recent_trade_dates(end_date, lookback + days)
+    if len(all_dates) < lookback + 1:
+        logger.error(f"交易日不足: 需要{lookback + days}天，实际{len(all_dates)}天")
         return 0
 
-    # 3. 合并预热+计算的完整日期范围
-    all_dates = sorted(set(warmup_dates + calc_dates))
+    # 2. 分离预热期和计算期
+    # all_dates 前 lookback 天仅用于预热（提供 past_date），后 days 天才是计算目标
+    calc_dates = all_dates[lookback:]
+    data_start = all_dates[0]
 
-    # 4. 加载数据
-    index_closes = load_index_closes(index_code, warmup_start, end_date)
-    stock_closes = load_stock_closes(stock_codes, warmup_start, end_date)
+    # 3. 加载数据
+    index_closes = load_index_closes(index_code, data_start, end_date)
+    stock_closes = load_stock_closes(stock_codes, data_start, end_date)
     logger.info(f"数据加载: 指数{len(index_closes)}天, 个股{len(stock_closes)}只, "
-                f"预热{len(warmup_dates)}天, 计算{len(calc_dates)}天")
+                f"预热{lookback}天, 计算{len(calc_dates)}天")
 
     # 5. 删除旧数据
     conn = get_db_connection()
@@ -239,6 +234,49 @@ def calc_rs_scores_recent(index_code, end_date, days=30,
                           calc_dates, lookback, index_code)
 
     logger.info(f"[RS] 近日完成: {count} 条")
+    return count
+
+
+def calc_rs_scores_from_data(index_code, stock_closes, index_closes,
+                             all_dates, days, lookback=DEFAULT_LOOKBACK):
+    """
+    从预加载数据计算RS评分（由 calc_scores.py 统一调度调用）
+
+    参数:
+        index_code: 基准指数代码
+        stock_closes: {code: {date: close}} 预加载的个股收盘价
+        index_closes: {date: close} 预加载的指数收盘价
+        all_dates: list[str] 指数日期列表（升序），作为全局时间轴
+        days: 计算天数
+        lookback: 回看天数
+
+    返回:
+        int: 写入条数
+    """
+    if len(all_dates) < lookback + days:
+        logger.error(f"[RS] 日期不足: 需要{lookback + days}天，实际{len(all_dates)}天")
+        return 0
+
+    calc_dates = all_dates[-days:]
+    stock_codes = list(stock_closes.keys())
+
+    logger.info(f"[RS] 从预加载数据计算: {index_code}, {len(calc_dates)}天, "
+                f"{len(stock_codes)}只成分股")
+
+    # 删除旧数据
+    conn = get_db_connection()
+    try:
+        for d in calc_dates:
+            conn.execute("DELETE FROM rs_score WHERE benchmark_code = ? AND calc_date = ?",
+                         (index_code, d))
+        conn.commit()
+    finally:
+        conn.close()
+
+    count = _calc_rs_core(all_dates, stock_codes, stock_closes, index_closes,
+                          calc_dates, lookback, index_code)
+
+    logger.info(f"[RS] 完成: {count} 条")
     return count
 
 
