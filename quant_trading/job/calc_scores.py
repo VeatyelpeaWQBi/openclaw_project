@@ -191,7 +191,7 @@ def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
             logger.error("未找到股票代码")
             return 0
 
-        max_lookback = 250 + days
+        max_lookback = 250 + days + 5  # 多取5天余量，应对指数数据缺失
         stock_data, index_closes, all_dates = preload_data(
             codes, index_code, end_date, max_lookback
         )
