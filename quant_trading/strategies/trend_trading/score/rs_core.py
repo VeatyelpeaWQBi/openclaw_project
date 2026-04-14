@@ -314,6 +314,9 @@ def calc_single_rs(stock_code, benchmark_code, calc_date, lookback=DEFAULT_LOOKB
     if index_past == 0 or stock_past == 0:
         return None
 
+    assert index_today is not None and index_past is not None
+    assert stock_today is not None and stock_past is not None
+
     benchmark_return = (index_today - index_past) / index_past
     benchmark_ratio = 1 + benchmark_return
     if benchmark_ratio == 0:
