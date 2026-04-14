@@ -58,14 +58,15 @@ def wilder_rma(series: pd.Series, period: int) -> pd.Series:
     # 向量化递推（从period开始）
     values = series.values
     rma_val = first_sma
-    result_vals = result.values
+    result_arr = np.full(len(values), np.nan)
+    result_arr[period - 1] = first_sma
     alpha = 1.0 / period
 
     for i in range(period, len(values)):
         rma_val = rma_val * (1.0 - alpha) + values[i] * alpha
-        result_vals[i] = rma_val
+        result_arr[i] = rma_val
 
-    return result
+    return pd.Series(result_arr, index=series.index)
 
 
 # ==================== ADX 6步计算 ====================
@@ -138,13 +139,14 @@ def calculate_adx(df: pd.DataFrame, period: int = DEFAULT_PERIOD) -> pd.DataFram
 
 def adx_score(adx_value: float, plus_di: float, minus_di: float) -> float:
     """
-    ADX趋势强度评分（0-100分）
-    分段线性映射 + 方向确认加权
+    ADX趋势强度方向综合评分（-100~+100分）
+    分段线性映射 + 方向正负号
 
     设计：
     - 分段线性映射（虾虾子方案），A股适配阈值（豆包方案）
-    - 方向确认加成 ±10分（虾虾子方案）
-    - A股强趋势阈值30（申万宏源验证）
+    - 方向正负号：+DI>-DI → 正分（多头），+DI<-DI → 负分（空头）
+    - 绝对值 = 趋势强度，正负号 = 方向，信息零损失
+    - A股只做多：空头趋势负分，综合评分自然被拉低，无需额外惩罚
 
     参数:
         adx_value: ADX原始值
@@ -152,9 +154,9 @@ def adx_score(adx_value: float, plus_di: float, minus_di: float) -> float:
         minus_di: -DI值
 
     返回:
-        float: 0-100分
+        float: -100~+100分（正=多头趋势，负=空头趋势）
     """
-    # 分段线性基础分
+    # 分段线性基础分（0-100）
     if adx_value < 15:
         base_score = adx_value / 15 * 15              # 0-15 → 0-15分
     elif adx_value < 25:
@@ -168,7 +170,7 @@ def adx_score(adx_value: float, plus_di: float, minus_di: float) -> float:
     else:
         base_score = 95 + min(5.0, (adx_value - 60) / 40 * 5)  # 60+ → 95-100分
 
-    # 方向确认加成（多头加分，空头减分）
+    # 方向加成（多头加分，空头减分）
     di_sum = plus_di + minus_di
     if di_sum > 0:
         direction_ratio = (plus_di - minus_di) / di_sum  # -1 到 +1
@@ -176,7 +178,13 @@ def adx_score(adx_value: float, plus_di: float, minus_di: float) -> float:
     else:
         direction_bonus = 0
 
-    return max(0.0, min(100.0, round(base_score + direction_bonus, 2)))
+    score = base_score + direction_bonus
+
+    # 方向正负号：空头趋势 → 负分
+    if plus_di < minus_di:
+        score = -score
+
+    return round(score, 2)
 
 
 
