@@ -273,6 +273,7 @@ def fetch_and_save_index_daily_kline(trade_date):
 def run():
     today = datetime.now().strftime('%Y-%m-%d')
     logger.info(f"=== 更新全市场日K — {today} ===")
+    start_time = time.time()
 
     kline_count = 0
     index_count = 0
@@ -318,6 +319,9 @@ def run():
 
     logger.info(f"=== 完成: 个股+指数+评分更新到 {today} ===")
 
+    elapsed = time.time() - start_time
+    elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
+
     # 返回统计结果供shell脚本通知用
     return {
         'date': today,
@@ -327,6 +331,7 @@ def run():
         'adx_count': adx_count or 0,
         'rs_count': rs_count or 0,
         'score_error': score_error,
+        'elapsed': elapsed_str,
     }
 
 
