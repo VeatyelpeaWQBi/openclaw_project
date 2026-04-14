@@ -321,6 +321,7 @@ def run():
 
     elapsed = time.time() - start_time
     elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
+    logger.info(f"⏱️ 总耗时: {elapsed_str}")
 
     # 返回统计结果供shell脚本通知用
     return {
