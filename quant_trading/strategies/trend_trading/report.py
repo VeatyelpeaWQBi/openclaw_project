@@ -140,6 +140,25 @@ def generate_report(signals, positions, account, candidates, today_opens=None):
         for sig in other_signals:
             icon = '➕' if sig['type'] == 'add' else '🆕' if sig['type'] == 'entry' else 'ℹ️'
             lines.append(f"  {icon} [{sig['code']}] {sig['name']}: {sig['detail']}")
+            # 入场信号展示评分明细
+            if sig['type'] == 'entry' and 'composite_score' in sig:
+                rs = sig.get('rs_score')
+                vcp = sig.get('vcp_score')
+                adx = sig.get('adx_score')
+                composite = sig.get('composite_score', 0)
+                rank = sig.get('rank')
+                missing = sig.get('missing', [])
+                parts = []
+                parts.append(f"RS {'N/A' if rs is None else f'{rs:.0f}'}分")
+                parts.append(f"VCP {'N/A' if vcp is None else f'{vcp:.0f}'}分")
+                parts.append(f"ADX {'N/A' if adx is None else f'{adx:.0f}'}分")
+                parts.append(f"综合{composite:.1f}分")
+                if rank:
+                    parts.append(f"第{rank}名")
+                score_line = '，'.join(parts)
+                if missing:
+                    score_line += f" (缺{'/'.join(missing)})"
+                lines.append(f"     {score_line}")
 
     if not signals:
         lines.append("  暂无新信号")

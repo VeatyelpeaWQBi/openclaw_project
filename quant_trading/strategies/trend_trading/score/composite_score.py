@@ -19,6 +19,9 @@ from core.storage import (
     get_rs_score_by_code,
     get_vcp_score_by_code,
     get_adx_score_by_code,
+    get_latest_rs_score,
+    get_latest_vcp_score,
+    get_latest_adx_score,
 )
 from strategies.trend_trading.score._base import get_trade_dates
 
@@ -101,15 +104,20 @@ def get_composite_score(code, signal_date, benchmark_code=DEFAULT_BENCHMARK,
         }
     """
     missing = []
+    actual_dates = {}
 
-    # RS：取信号日当天
+    # RS：取信号日当天，无数据则取最新
     rs_row = get_rs_score_by_code(code, signal_date, benchmark_code)
+    if not rs_row:
+        rs_row = get_latest_rs_score(code, benchmark_code)
     rs_raw = rs_row['rs_score'] if rs_row else None
     rs_score = rs_raw if rs_raw is not None else 0.0
     if rs_raw is None:
         missing.append('RS')
+    else:
+        actual_dates['rs'] = rs_row.get('calc_date')
 
-    # VCP：取前一个交易日（突破前形态）
+    # VCP：取前一个交易日（突破前形态），无数据则取最新
     if prev_trade_date is None:
         prev_trade_date = _get_prev_trade_date(signal_date)
     vcp_raw = None
@@ -120,13 +128,20 @@ def get_composite_score(code, signal_date, benchmark_code=DEFAULT_BENCHMARK,
             vcp_raw = vcp_row['score']
             vcp_date = prev_trade_date
     if vcp_raw is None:
+        vcp_row = get_latest_vcp_score(code, skip_latest=True)
+        if vcp_row:
+            vcp_raw = vcp_row['score']
+            vcp_date = vcp_row.get('calc_date')
+    if vcp_raw is None:
         missing.append('VCP')
 
     # VCP原始范围：-40 ~ +95，归一化到 0-100
     vcp_score = _normalize_score(vcp_raw, -40, 95) if vcp_raw is not None else 0.0
 
-    # ADX：取信号日当天
+    # ADX：取信号日当天，无数据则取最新
     adx_row = get_adx_score_by_code(code, signal_date)
+    if not adx_row:
+        adx_row = get_latest_adx_score(code)
     adx_raw = adx_row['adx_score_val'] if adx_row else None
     adx_score = adx_raw if adx_raw is not None else 0.0
     if adx_raw is None:

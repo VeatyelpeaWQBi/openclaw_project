@@ -299,7 +299,7 @@ def run():
         codes = get_all_stock_codes()
         if codes:
             days = 2  # 只计算最近2天，包含当天（增量模式）
-            max_lookback = 250 + days + 5  # 多取5天余量，应对指数数据缺失
+            max_lookback = 250 + days
             # 用第一个指数做预加载（VCP/ADX 只需要 stock_data 和 all_dates）
             stock_data, index_closes, all_dates = preload_data(
                 codes, index_codes[0], today, max_lookback

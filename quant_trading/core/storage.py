@@ -440,6 +440,49 @@ def get_adx_score_by_code(code, calc_date):
         conn.close()
 
 
+def get_latest_rs_score(code, benchmark_code='000510'):
+    """获取某只股票最新的RS评分"""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT * FROM rs_score
+            WHERE code = ? AND benchmark_code = ?
+            ORDER BY calc_date DESC LIMIT 1
+        """, (code, benchmark_code)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_latest_vcp_score(code, skip_latest=False):
+    """获取某只股票最新的VCP评分（skip_latest=True时取倒数第二条）"""
+    conn = get_db_connection()
+    try:
+        offset = 1 if skip_latest else 0
+        row = conn.execute("""
+            SELECT * FROM vcp_score
+            WHERE code = ?
+            ORDER BY calc_date DESC LIMIT 1 OFFSET ?
+        """, (code, offset)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_latest_adx_score(code):
+    """获取某只股票最新的ADX评分"""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT * FROM adx_score
+            WHERE code = ?
+            ORDER BY calc_date DESC LIMIT 1
+        """, (code,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def get_index_daily_closes(index_code, start_date, end_date):
     """
     获取指数在日期范围内的每日收盘价
