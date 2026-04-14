@@ -170,21 +170,19 @@ def adx_score(adx_value: float, plus_di: float, minus_di: float) -> float:
     else:
         base_score = 95 + min(5.0, (adx_value - 60) / 40 * 5)  # 60+ → 95-100分
 
-    # 方向加成（多头加分，空头减分）
+    # 空头趋势 → 负分（绝对值=base，不加direction_bonus避免双重计算）
+    if plus_di < minus_di:
+        return round(-base_score, 2)
+
+    # 多头趋势 → 正分 + 方向加成
     di_sum = plus_di + minus_di
     if di_sum > 0:
-        direction_ratio = (plus_di - minus_di) / di_sum  # -1 到 +1
-        direction_bonus = direction_ratio * 10             # ±10分
+        direction_ratio = (plus_di - minus_di) / di_sum  # 0 到 +1
+        direction_bonus = direction_ratio * 10             # +0~10分
     else:
         direction_bonus = 0
 
-    score = base_score + direction_bonus
-
-    # 方向正负号：空头趋势 → 负分
-    if plus_di < minus_di:
-        score = -score
-
-    return round(score, 2)
+    return round(base_score + direction_bonus, 2)
 
 
 
