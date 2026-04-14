@@ -22,14 +22,14 @@ import os
 import logging
 import argparse
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from core.storage import (
-    get_trading_day_offset, get_trading_day_offset_from,
+    get_trading_day_offset,
     get_all_stocks_daily_data, get_index_daily_closes,
 )
 from strategies.trend_trading.score._base import (
@@ -61,10 +61,10 @@ def preload_data(codes, index_code, end_date, lookback_days):
         index_closes: {date: close} 指数收盘价
         all_dates: list[str] 指数的日期列表（升序），作为全局时间轴
     """
-    start_date = get_trading_day_offset_from(end_date, -lookback_days)
-    if not start_date:
-        logger.error("无法获取预加载起始日期")
-        return {}, {}, []
+    # 用日历天数推算起点（不依赖交易日历，指数数据本身决定有多少天）
+    # *1.6 留足余量，应对指数数据抓取遗漏
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    start_date = (end_dt - timedelta(days=int(lookback_days * 1.6))).strftime('%Y-%m-%d')
 
     logger.info(f"预加载: {len(codes)}只股票, {start_date} ~ {end_date}")
 
@@ -191,7 +191,7 @@ def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
             logger.error("未找到股票代码")
             return 0
 
-        max_lookback = 250 + days + 5  # 多取5天余量，应对指数数据缺失
+        max_lookback = 250 + days
         stock_data, index_closes, all_dates = preload_data(
             codes, index_code, end_date, max_lookback
         )

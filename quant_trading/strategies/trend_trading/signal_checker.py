@@ -98,6 +98,7 @@ class SignalChecker:
         cooling_codes = {p['code'] for p in cooling_positions}
         exclude_codes = holding_codes | cooling_codes
 
+        entry_signals = []
         for stock in (candidate_pool.merged_pool if hasattr(candidate_pool, 'merged_pool') else []):
             code = stock.get('code', '')
             if not code or code in exclude_codes:
@@ -111,7 +112,18 @@ class SignalChecker:
             # 趋势法则：突破 + 均线多头过滤 → 入场
             entry_sig = self.check_entry(stock, df)
             if entry_sig:
-                signals.append(entry_sig)
+                entry_signals.append(entry_sig)
+
+        # 多个入场信号时，按综合评分排序
+        if len(entry_signals) > 1:
+            from strategies.trend_trading.score.composite_score import rank_signals
+            from datetime import datetime as _dt
+            signal_date = _dt.now().strftime('%Y-%m-%d')
+            entry_signals = rank_signals(entry_signals, signal_date)
+            logger.info(f"入场信号按综合评分排序: "
+                        f"{[(s['code'], s.get('composite_score', '?')) for s in entry_signals]}")
+
+        signals.extend(entry_signals)
 
         # 按紧急度排序：critical > high > medium > low
         urgency_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
@@ -402,9 +414,18 @@ class SignalChecker:
         if atr <= 0:
             return None
 
-        # 所属池标识
+        # 所属池标识（MD语法：红色加粗=A500核心池，橙色加粗=自选）
         nickname = stock.get('account_nickname', '')
-        display_name = f"{stock.get('name', '')}（{nickname}自选）" if nickname else stock.get('name', '')
+        source = stock.get('source', '')
+        name = stock.get('name', '')
+        if nickname:
+            display_name = f"{name} <font color=\"orange\">**（{nickname}自选）**</font>"
+        elif source == 'a500':
+            display_name = f"{name} <font color=\"red\">**（A500核心池）**</font>"
+        elif source == 'hotspot':
+            display_name = f"{name}（热点池）"
+        else:
+            display_name = name
 
         # 信号格式化
         sys_label = 'S2' if '55' in entry['type'] else 'S1'
