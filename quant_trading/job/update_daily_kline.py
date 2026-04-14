@@ -274,13 +274,20 @@ def run():
     today = datetime.now().strftime('%Y-%m-%d')
     logger.info(f"=== 更新全市场日K — {today} ===")
 
+    kline_count = 0
+    index_count = 0
+    vcp_count = 0
+    adx_count = 0
+    rs_count = 0
+    score_error = False
+
     # 1. 更新个股日K
     data = fetch_all_market()
     if data:
-        save_to_db(data, today)
+        kline_count = save_to_db(data, today)
 
     # 2. 更新指数日K
-    fetch_and_save_index_daily_kline(today)
+    index_count = fetch_and_save_index_daily_kline(today)
 
     # 3. 统一计算 VCP + ADX 评分（不依赖基准指数，只跑一次）
     logger.info("=== 启动评分流水线 ===")
@@ -300,16 +307,30 @@ def run():
 
             if all_dates:
                 # VCP + ADX 只跑一次
-                run_scores_without_index(stock_data, all_dates, days)
+                vcp_count, adx_count = run_scores_without_index(stock_data, all_dates, days)
 
                 # RS 按 watchlist 中每个指数循环
                 for index_code in index_codes:
-                    run_rs(index_code, stock_data, all_dates, days)
+                    rs_count += run_rs(index_code, stock_data, all_dates, days)
     except Exception as e:
         logger.error(f"评分流水线执行失败: {e}", exc_info=True)
+        score_error = True
 
     logger.info(f"=== 完成: 个股+指数+评分更新到 {today} ===")
 
+    # 返回统计结果供shell脚本通知用
+    return {
+        'date': today,
+        'kline_count': kline_count or 0,
+        'index_count': index_count or 0,
+        'vcp_count': vcp_count or 0,
+        'adx_count': adx_count or 0,
+        'rs_count': rs_count or 0,
+        'score_error': score_error,
+    }
+
 
 if __name__ == '__main__':
-    run()
+    result = run()
+    # 输出统计JSON到stdout最后一行，供shell脚本解析
+    print(f"RESULT_JSON:{json.dumps(result, ensure_ascii=False)}")
