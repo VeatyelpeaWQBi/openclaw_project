@@ -381,6 +381,11 @@ def calc_adx_from_data(stock_data, all_dates, days, period: int = DEFAULT_PERIOD
     start_time = time.time()
 
     for idx, (code, df) in enumerate(stock_data.items()):
+        # 只取最后 warmup + days 行，避免对全部历史算ADX
+        need_rows = warmup + days
+        if len(df) > need_rows:
+            df = df.iloc[-need_rows:].reset_index(drop=True)
+
         records = _extract_adx_records(code, df, period)
         if records:
             records = [r for r in records if r['calc_date'] in save_dates_set]

@@ -742,6 +742,11 @@ def calc_vcp_from_data(stock_data, all_dates, days):
         if len(df) < WINDOW:
             continue
 
+        # 只取最后 WINDOW + days - 1 行，避免对全部历史做滑动窗口
+        need_rows = WINDOW + days - 1
+        if len(df) > need_rows:
+            df = df.iloc[-need_rows:].reset_index(drop=True)
+
         records = _calc_vcp_for_stock_df(code, df)
         if records:
             records = [r for r in records if r['calc_date'] in calc_dates_set]
