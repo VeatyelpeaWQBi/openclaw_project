@@ -123,7 +123,7 @@ class AccountManager:
             UPDATE account SET note = ? WHERE id = ?
         """, (f"{flow_type} {amount} ({now})", account_id))
 
-    def init_account(self, account_id, capital, nickname=None, simulator=1):
+    def init_account(self, account_id, capital, nickname=None, simulator=0):
         """
         初始化账户（如已存在则更新总资产）
 
@@ -131,7 +131,7 @@ class AccountManager:
             account_id: 账户ID
             capital: 初始资金
             nickname: 用户昵称（可选）
-            simulator: 0=机器模拟账户, 1=否(手工账户)
+            simulator: 1=模拟账户(true), 0=手工账户(false)
         """
         conn = get_db_connection()
         try:
@@ -150,7 +150,7 @@ class AccountManager:
         finally:
             conn.close()
 
-    def init_account_by_bind_id(self, bind_id, capital, nickname=None, simulator=1):
+    def init_account_by_bind_id(self, bind_id, capital, nickname=None, simulator=0):
         """
         通过bind_id初始化账户
         如bind_id已绑定，返回已有账户；否则使用雪花ID自动创建
@@ -159,7 +159,7 @@ class AccountManager:
             bind_id: 社交ID（如QQ的sender_id）
             capital: 初始资金
             nickname: 用户昵称（可选）
-            simulator: 0=机器模拟账户, 1=否(手工账户)
+            simulator: 1=模拟账户(true), 0=手工账户(false)
 
         返回:
             dict: 账户信息
@@ -395,7 +395,7 @@ class AccountManager:
 
     def get_manual_accounts(self):
         """
-        查询所有手工账户（simulator=1, active=1）
+        查询所有手工账户（simulator=0, active=1）
 
         返回:
             list[dict]: 手工账户列表
@@ -404,7 +404,7 @@ class AccountManager:
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM account WHERE simulator = 1 AND active = 1 ORDER BY id"
+                "SELECT * FROM account WHERE simulator = 0 AND active = 1 ORDER BY id"
             ).fetchall()
             return [self._row_to_dict(r) for r in rows]
         finally:
@@ -412,7 +412,7 @@ class AccountManager:
 
     def get_simulator_accounts(self):
         """
-        查询所有机器模拟账户（simulator=0, active=1）
+        查询所有模拟账户（simulator=1, active=1）
 
         返回:
             list[dict]: 机器模拟账户列表
@@ -421,7 +421,7 @@ class AccountManager:
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM account WHERE simulator = 0 AND active = 1 ORDER BY id"
+                "SELECT * FROM account WHERE simulator = 1 AND active = 1 ORDER BY id"
             ).fetchall()
             return [self._row_to_dict(r) for r in rows]
         finally:

@@ -125,7 +125,7 @@ class TrendTradingStrategy(BaseStrategy):
         )
 
         # Step 7: 汇总结果
-        is_simulator = account.get('simulator') == 0
+        is_simulator = account.get('simulator') == 1
 
         if is_simulator:
             # 模拟账户：signals 此时是动作队列
@@ -136,7 +136,7 @@ class TrendTradingStrategy(BaseStrategy):
             return {
                 'account_id': account_id,
                 'nickname': nickname,
-                'simulator': 0,
+                'simulator': account.get('simulator', 0),
                 'action_queue': action_queue,
                 'robot_result': robot_result,
                 'has_signal': has_signal,
@@ -155,7 +155,7 @@ class TrendTradingStrategy(BaseStrategy):
             return {
                 'account_id': account_id,
                 'nickname': nickname,
-                'simulator': 1,
+                'simulator': account.get('simulator', 0),
                 'candidates': [
                     {'code': c.get('code', ''), 'name': c.get('name', ''), 'source': c.get('source', '')}
                     for c in candidates
