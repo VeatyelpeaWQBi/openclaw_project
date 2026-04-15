@@ -328,6 +328,7 @@ class TrendTradingExecutor:
                 name=item.get('name', ''),
                 price=item.get('price', 0),
                 atr=item.get('atr', 0),
+                shares=item.get('shares', 0),
                 reason=item.get('signal_type', ''),
                 turtle_entry_system=item.get('turtle_entry_system'),
                 source='robot_signal',

@@ -26,6 +26,16 @@ class RobotExecutor:
         self.tt_executor = TrendTradingExecutor()
         self.account_manager = AccountManager()
 
+    def set_target_date(self, target_date):
+        """传递 target_date 给整个执行链"""
+        self.account_manager._target_date = target_date
+        self.tt_executor.pm._target_date = target_date
+        self.tt_executor.tt_pm._target_date = target_date
+        self.tt_executor.account_manager._target_date = target_date
+        self.tt_executor.trade_executor._target_date = target_date
+        self.tt_executor.trade_executor.position_manager._target_date = target_date
+        self.tt_executor.trade_executor.account_manager._target_date = target_date
+
     def execute_signals(self, account_id, action_queue: list) -> dict:
         """
         执行信号检测器输出的动作队列
@@ -102,6 +112,7 @@ class RobotExecutor:
         latest_kline = {}
         for r in rows:
             latest_kline[r['code']] = {
+                'date': str(r['date'])[:10],
                 'open': r['open'], 'high': r['high'],
                 'low': r['low'], 'close': r['close'],
             }
@@ -200,7 +211,9 @@ class RobotExecutor:
 
     def _adjust_open_sizes(self, account_id, action_queue):
         """
-        对开仓/加仓动作做资金可购性校验，资金不足时降级手数
+        对开仓/加仓动作计算手数 + 资金可购性校验
+
+        无论是否降级，都将最终手数写入 item['shares']
         """
         summary = self.account_manager.get_summary(account_id)
         available = summary.get('available', 0) if summary else 0
@@ -219,23 +232,23 @@ class RobotExecutor:
             if price <= 0 or atr <= 0:
                 continue
 
+            # 用 calc_unit_size 计算理论手数
             shares_per_unit = calc_unit_size(capital, atr, price)
             total_shares = shares_per_unit
             estimated_cost = total_shares * price * 1.002
 
-            if available >= estimated_cost:
-                continue
+            if available < estimated_cost:
+                # 资金不足，降级手数
+                affordable_lots = int(available * 0.98 / (price * 100))
+                if affordable_lots <= 0:
+                    logger.warning(f"[{item.get('code', '')}] 可用资金不足1手(可用{available:.0f}, 单价{price:.2f})")
+                    continue
+                total_shares = affordable_lots * 100
+                code = item.get('code', '')
+                logger.info(f"[{code}] 资金降级: {shares_per_unit}股 → {total_shares}股(可用{available:.0f})")
 
-            affordable_lots = int(available * 0.98 / (price * 100))
-            if affordable_lots <= 0:
-                logger.warning(f"[{item.get('code', '')}] 可用资金不足1手(可用{available:.0f}, 单价{price:.2f})")
-                continue
-
-            new_shares = affordable_lots * 100
-            code = item.get('code', '')
-            logger.info(f"[{code}] 资金降级: {total_shares}股 → {new_shares}股(可用{available:.0f})")
-            item['shares'] = new_shares
-
-            available -= new_shares * price * 1.002
+            # 写入手数（无论是否降级）
+            item['shares'] = total_shares
+            available -= total_shares * price * 1.002
 
         return action_queue

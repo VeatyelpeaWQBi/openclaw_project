@@ -71,6 +71,14 @@ def generate_snowflake_id():
 class AccountManager:
     """海龟交易法账户管理器"""
 
+    _target_date = None  # 由 strategy.py 注入
+
+    def _now(self):
+        """获取当前时间戳（回测时用 target_date）"""
+        if self._target_date:
+            return f"{self._target_date} 00:00:00"
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     def _row_to_dict(self, row):
         """
         将sqlite3.Row转换为dict
@@ -105,7 +113,7 @@ class AccountManager:
             flow_type: 类型（入金/出金/买入/卖出）
             amount: 金额
         """
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = self._now()
         # 查询操作后的余额
         row = conn.execute(
             "SELECT available_capital FROM account WHERE id = ?",
@@ -135,7 +143,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 INSERT INTO account (id, total_capital, available_capital, realized_profit, active, nickname, simulator, updated_at, note)
                 VALUES (?, ?, ?, 0, 1, ?, ?, ?, '初始化')
@@ -212,7 +220,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 UPDATE account SET
                     total_capital = total_capital + ?,
@@ -239,7 +247,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             cursor = conn.execute("""
                 UPDATE account SET
                     total_capital = total_capital - ?,
@@ -270,7 +278,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             cursor = conn.execute("""
                 UPDATE account SET
                     available_capital = available_capital - ?,
@@ -297,7 +305,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 UPDATE account SET
                     total_capital = total_capital + ?,
@@ -437,7 +445,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 UPDATE account SET active = ?, updated_at = ? WHERE id = ?
             """, (active, now, account_id))
@@ -457,7 +465,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 UPDATE account SET nickname = ?, updated_at = ? WHERE id = ?
             """, (nickname, now, account_id))
@@ -488,7 +496,7 @@ class AccountManager:
                 logger.warning(f"[账户{account_id}] bind_id {bind_id} 已被账户{existing[0]}绑定")
                 return False
 
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 UPDATE account SET bind_id = ?, updated_at = ? WHERE id = ?
             """, (bind_id, now, account_id))
@@ -507,7 +515,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = self._now()
             conn.execute("""
                 UPDATE account SET bind_id = NULL, updated_at = ? WHERE id = ?
             """, (now, account_id))
@@ -641,7 +649,7 @@ class AccountManager:
             return
 
         updates.append('updated_at = ?')
-        params.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        params.append(self._now())
         params.append(account_id)
 
         conn = get_db_connection()
