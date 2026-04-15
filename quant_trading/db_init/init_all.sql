@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS account (
     note TEXT,                           -- 备注
     bind_id TEXT,                        -- 绑定ID
     nickname TEXT,                       -- 账户昵称
-    simulator INTEGER DEFAULT 0,        -- 0=机器, 1=手工
+    simulator INTEGER DEFAULT 0,        -- 1=模拟账户(true), 0=手工账户(false)
     turtle_s1_filter_active INTEGER DEFAULT 0, -- S1过滤器
     unit_pct REAL DEFAULT 5.0,          -- 单位仓位比例（%）
     max_holdings INTEGER DEFAULT 5,      -- 最大持仓数

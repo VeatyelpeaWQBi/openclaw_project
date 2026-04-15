@@ -33,13 +33,13 @@ class SignalChecker:
             kline_data: K线数据
 
         返回:
-            手工账户(simulator=1): list[dict] 信号列表
-            模拟账户(simulator=0): list[dict] 交易动作队列
+            手工账户(simulator=0): list[dict] 信号列表
+            模拟账户(simulator=1): list[dict] 交易动作队列
         """
         account_id = account['id']
         self.account = account
         self.account_id = account_id
-        is_simulator = account.get('simulator') == 0
+        is_simulator = account.get('simulator') == 1
         signals = []
 
         # === 第一部分：检查现有持仓 ===
