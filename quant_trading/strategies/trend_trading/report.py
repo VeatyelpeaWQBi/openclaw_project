@@ -187,7 +187,7 @@ def generate_report(signals, positions, account, candidates, today_opens=None):
 
     lines.append("")
     lines.append("=" * 40)
-    lines.append("🤖 趋势交易 v1.0 | 仅供参考，投资有风险")
+    lines.append("🤖 本程序仅用于进行市场趋势跟踪，不作为任何交易参考，投资有风险，买卖行为与程序发布者本人无关")
 
     logger.info(f'[日报生成] 信号{len(signals)}个, 持仓{len(positions)}只, 候选{len(candidates)}只')
     return '\n'.join(lines)
