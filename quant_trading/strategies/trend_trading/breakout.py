@@ -53,7 +53,7 @@ def detect_donchian_low(df, period):
     return round(float(lookback['low'].min()), 2)
 
 
-def check_entry_signal(df, short=20, long=55, s1_filtered=1):
+def check_entry_signal(df, short=20, long=55, s1_filtered=0):
     """
     检查入场突破信号
 
@@ -64,7 +64,7 @@ def check_entry_signal(df, short=20, long=55, s1_filtered=1):
         df: 日K DataFrame
         short: 短期突破周期，默认20
         long: 长期突破周期，默认55
-        s1_filtered: S1过滤是否激活（True则跳过20日突破）
+        s1_filtered: S1过滤开关（1=需要过滤，跳过20日突破；0=不过滤，允许20日突破）
 
     返回:
         dict: {
@@ -97,7 +97,7 @@ def check_entry_signal(df, short=20, long=55, s1_filtered=1):
 
     # 再检查短期突破
     # S1过滤：上次S1盈利则跳过，等待55日突破
-    if s1_filtered == 0:
+    if s1_filtered == 1:
         return result
 
     short_high = detect_donchian_high(df, short)

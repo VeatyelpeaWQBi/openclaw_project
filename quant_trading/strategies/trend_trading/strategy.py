@@ -6,8 +6,7 @@
 import logging
 from datetime import datetime, timedelta
 from strategies.base import BaseStrategy
-from core.storage import get_daily_data_from_sqlite, save_daily_kline_to_sqlite, get_trading_day_offset
-from core.data_access import get_stock_daily_kline_range
+from core.storage import get_db_connection, get_trading_day_offset
 from infra.account_manager import AccountManager
 from strategies.trend_trading.trend_trading_position_manager import TrendTradingPositionManager
 from strategies.trend_trading.candidate_pool import CandidatePool
@@ -177,62 +176,51 @@ class TrendTradingStrategy(BaseStrategy):
             }
 
     def _load_kline_data(self, positions, candidates):
-        """加载K线数据（共用逻辑，不区分账户）"""
+        """从SQLite批量加载K线数据（不调API，获取不到的跳过）"""
+        import pandas as pd
+        from collections import defaultdict
+
         holding_codes = [p['code'] for p in positions]
         candidate_codes = [c['code'] for c in candidates if c.get('code')]
         all_codes = list(set(holding_codes + candidate_codes))
 
-        # end_date = 最近交易日（含今天，如果是交易日）
-        # check_date = end_date的前一交易日（最近2个交易日中的较早者）
-        end_date = get_trading_day_offset(0)
-        check_date = get_trading_day_offset(1)
-        if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        if not check_date:
-            check_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
+        if not all_codes:
+            return {}
+
+        # 从交易日历获取350个交易日前的日期
+        start_date = get_trading_day_offset(350)
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=500)).strftime('%Y-%m-%d')
+
+        # 批量SQL查询
+        conn = get_db_connection()
+        try:
+            placeholders = ','.join(['?'] * len(all_codes))
+            rows = conn.execute(f"""
+                SELECT code, date, open, high, low, close, volume, amount,
+                       turnover, change_pct, mktcap, nmc
+                FROM daily_kline
+                WHERE code IN ({placeholders}) AND date >= ?
+                ORDER BY code, date
+            """, all_codes + [start_date]).fetchall()
+        finally:
+            conn.close()
+
+        # 按code分组构建DataFrame
+        grouped = defaultdict(list)
+        for r in rows:
+            grouped[r['code']].append(dict(r))
 
         kline_data = {}
-        skip_api = 0
-        fetch_api = 0
-
-        for code in all_codes:
-            # 先从DB加载完整日K
-            df = get_daily_data_from_sqlite(code, days=350)
-
-            # 检查DB中是否有最近2个交易日的数据
-            need_fetch = True
-            if not df.empty:
-                latest_date = str(df['date'].iloc[-1])[:10]
-                if latest_date >= check_date:
-                    need_fetch = False
-                    skip_api += 1
-
-            # 数据不足时才调API
-            if need_fetch:
-                try:
-                    market = 'sh' if code.startswith(('5', '6', '9')) else 'sz'
-                    recent_df = get_stock_daily_kline_range(
-                        code, market=market,
-                        start_date=check_date.replace('-', ''),
-                        end_date=end_date.replace('-', '')
-                    )
-                    if not recent_df.empty:
-                        name = ''
-                        for c in candidates:
-                            if c.get('code') == code:
-                                name = c.get('name', '')
-                                break
-                        save_daily_kline_to_sqlite(code, name, recent_df)
-                        # 重新从DB加载
-                        df = get_daily_data_from_sqlite(code, days=350)
-                    fetch_api += 1
-                except Exception as e:
-                    logger.debug(f"[{code}] 更新日K失败: {e}")
-
+        for code, code_rows in grouped.items():
+            df = pd.DataFrame(code_rows)
+            df['date'] = df['date'].astype(str)
+            df = df.sort_values('date').reset_index(drop=True)
             if not df.empty:
                 kline_data[code] = df
 
-        logger.info(f"加载K线数据: {len(kline_data)} 只 (DB缓存命中{skip_api}, API调用{fetch_api})")
+        skipped = len(all_codes) - len(kline_data)
+        logger.info(f"批量加载K线: {len(kline_data)}只 (跳过{skipped}只无数据)")
         return kline_data
 
     def _execute_robot(self, account_id, nickname, action_queue):
