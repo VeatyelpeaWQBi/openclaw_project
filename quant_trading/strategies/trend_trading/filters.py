@@ -69,7 +69,15 @@ def is_eligible(stock):
 
     # 北交所（8开头的6位代码）
     if code.startswith('8') and len(code) == 6:
-        logger.debug(f'[标的过滤] 不合格: ') 
+        logger.debug(f'[标的过滤] 不合格: ')
+        return False, '北交所'
+
+    # 科创板（688开头）
+    if code.startswith('688'):
+        return False, '科创板'
+
+    # 北交所（4开头的6位代码）
+    if code.startswith('4') and len(code) == 6:
         return False, '北交所'
 
     # 科创板/创业板不限制，但排除异常代码

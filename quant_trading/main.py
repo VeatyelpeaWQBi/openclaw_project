@@ -28,12 +28,13 @@ from strategies import get_strategy, STRATEGY_MAP
 logger = logging.getLogger(__name__)
 
 
-def run(strategy_name='nomad_t1'):
+def run(strategy_name='nomad_t1', target_date=None):
     """
     主运行函数（向后兼容，默认 nomad_t1）
 
     参数:
         strategy_name: 策略名称，默认 'nomad_t1'
+        target_date: 目标日期 'YYYY-MM-DD'，None则使用当天
 
     返回:
         str: 报告文本
@@ -42,14 +43,22 @@ def run(strategy_name='nomad_t1'):
     setup_logging()
 
     start_time = time.time()
-    date_str = datetime.now().strftime('%Y-%m-%d')
+    date_str = target_date or datetime.now().strftime('%Y-%m-%d')
     logger.info(f"=== 尾盘T+1信号生成 — {date_str} (策略: {strategy_name}) ===")
 
     # 1. 获取策略实例
     strategy = get_strategy(strategy_name)
 
-    # 2. 执行策略
-    result = strategy.run()
+    # 2. 执行策略（trend_trading 支持 target_date，其他策略忽略）
+    if target_date and hasattr(strategy, 'run'):
+        import inspect
+        sig = inspect.signature(strategy.run)
+        if 'target_date' in sig.parameters:
+            result = strategy.run(target_date=target_date)
+        else:
+            result = strategy.run()
+    else:
+        result = strategy.run()
 
     # 3. 生成报告
     report = strategy.generate_report(result)
@@ -84,8 +93,12 @@ def run(strategy_name='nomad_t1'):
 
 
 if __name__ == '__main__':
-    # 支持命令行指定策略名，默认 nomad_t1
-    strat = sys.argv[1] if len(sys.argv) > 1 else 'nomad_t1'
-    report = run(strat)
+    import argparse
+    parser = argparse.ArgumentParser(description='尾盘T+1信号生成系统')
+    parser.add_argument('strategy', nargs='?', default='nomad_t1', help='策略名称')
+    parser.add_argument('--date', type=str, default=None, help='目标日期 YYYY-MM-DD（回测用）')
+    args = parser.parse_args()
+
+    report = run(args.strategy, target_date=args.date)
     logger.info("=== 最终报告 ===")
     logger.info(report)
