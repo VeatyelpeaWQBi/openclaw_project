@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime, timedelta
 from strategies.base import BaseStrategy
-from core.storage import get_db_connection, get_trading_day_offset
+from core.storage import get_db_connection, get_trading_day_offset_from
 from infra.account_manager import AccountManager
 from strategies.trend_trading.trend_trading_position_manager import TrendTradingPositionManager
 from strategies.trend_trading.candidate_pool import CandidatePool
@@ -48,6 +48,7 @@ class TrendTradingStrategy(BaseStrategy):
             }
         """
         date_str = target_date or datetime.now().strftime('%Y-%m-%d')
+        self._target_date = date_str
         logger.info(f"=== 趋势交易策略运行 — {date_str} ===")
 
         # Step 0: 查询所有活跃账户
@@ -91,6 +92,11 @@ class TrendTradingStrategy(BaseStrategy):
         account_id = account['id']
         nickname = account.get('nickname', f'账户{account_id}')
         logger.info(f"[{nickname}({account_id})] 开始运行")
+
+        # 传递 target_date 给子模块
+        self.position_manager._target_date = self._target_date
+        self.account_manager._target_date = self._target_date
+        self.signal_checker._target_date = self._target_date
 
         # Step 1: 检查账户初始化
         if account.get('total_capital', 0) <= 0:
@@ -190,8 +196,9 @@ class TrendTradingStrategy(BaseStrategy):
         if not all_codes:
             return {}
 
-        # 从交易日历获取350个交易日前的日期
-        start_date = get_trading_day_offset(350)
+        # 从交易日历获取350个交易日前的日期（基于 target_date 或今天）
+        base_date = self._target_date or datetime.now().strftime('%Y-%m-%d')
+        start_date = get_trading_day_offset_from(base_date, -350)
         if not start_date:
             start_date = (datetime.now() - timedelta(days=500)).strftime('%Y-%m-%d')
 
@@ -246,6 +253,7 @@ class TrendTradingStrategy(BaseStrategy):
         """
         from executor.robot_executor import RobotExecutor
         robot = RobotExecutor()
+        robot.set_target_date(self._target_date)
         result = robot.execute_signals(account_id, action_queue)
         logger.info(f"[{nickname}] 机器人执行完成: {result['summary']}")
         return result

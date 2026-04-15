@@ -35,9 +35,17 @@ class TradeExecutor:
         result = executor.execute(account_id=12345, command=cmd)
     """
 
+    _target_date = None  # 由 strategy.py 注入
+
     def __init__(self):
         self.position_manager = PositionManager()
         self.account_manager = AccountManager()
+
+    def _now(self):
+        """获取当前时间戳（回测时用 target_date）"""
+        if self._target_date:
+            return f"{self._target_date} 00:00:00"
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # ==================== 公开接口 ====================
 
@@ -545,7 +553,7 @@ class TradeExecutor:
         fees = self.position_manager._calc_fees(sell_amount, is_sell=True)
         net_profit = gross_profit - fees['total']
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = self._now()
         from core.storage import get_db_connection
 
         conn = get_db_connection()

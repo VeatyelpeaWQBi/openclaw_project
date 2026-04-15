@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 class TrendTradingPositionManager:
     """趋势交易策略持仓管理器"""
 
+    _target_date = None  # 由 strategy.py 注入
+
     def __init__(self):
         self.pm = PositionManager()
 

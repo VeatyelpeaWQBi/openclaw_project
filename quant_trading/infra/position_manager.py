@@ -15,6 +15,14 @@ logger = logging.getLogger(__name__)
 class PositionManager:
     """持仓管理器（纯CRUD层）"""
 
+    _target_date = None  # 由 strategy.py 注入
+
+    def _now(self):
+        """获取当前时间戳（回测时用 target_date）"""
+        if self._target_date:
+            return f"{self._target_date} 00:00:00"
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     @staticmethod
     def _require_account_id(account_id):
         """校验account_id必须传入"""
@@ -81,7 +89,7 @@ class PositionManager:
             stop_price: 止损价
             reason: 原因说明
         """
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = self._now()
         conn.execute("""
             INSERT INTO position_flow
             (account_id, code, name, action, shares, price, amount, profit, fees,
@@ -189,7 +197,7 @@ class PositionManager:
             logger.warning(f"[账户{account_id}] 开仓失败：资金不足 (需要{total_cost:.2f})")
             return None
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = self._now()
 
         conn = get_db_connection()
         try:
@@ -250,7 +258,7 @@ class PositionManager:
             return None
 
         old_units = pos['turtle_units']
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = self._now()
 
         conn = get_db_connection()
         try:
@@ -311,7 +319,7 @@ class PositionManager:
         net_proceeds = trade_amount - fees['total']
         profit = (sell_price - pos['avg_cost']) * shares_to_sell - fees['total']
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = self._now()
         conn = get_db_connection()
         try:
             conn.execute("""
@@ -365,8 +373,9 @@ class PositionManager:
         # 流水动作
         flow_action = '清仓止损' if reason == 'stop_loss' else '清仓止盈' if net_profit > 0 else '清仓止损'
 
-        cooldown_until = (datetime.now() + timedelta(days=cooldown_days)).strftime('%Y-%m-%d')
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        base_date = datetime.strptime(self._target_date, '%Y-%m-%d') if self._target_date else datetime.now()
+        cooldown_until = (base_date + timedelta(days=cooldown_days)).strftime('%Y-%m-%d')
+        now = self._now()
 
         conn = get_db_connection()
         try:
@@ -412,7 +421,7 @@ class PositionManager:
             int: 今日开仓次数
         """
         self._require_account_id(account_id)
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
         conn = get_db_connection()
         try:
             row = conn.execute(
@@ -434,7 +443,7 @@ class PositionManager:
             list: 已释放的持仓代码列表
         """
         self._require_account_id(account_id)
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
         conn = get_db_connection()
         try:
             rows = conn.execute("""
@@ -448,7 +457,7 @@ class PositionManager:
                 conn.execute("""
                     UPDATE positions SET status = 'CLOSED', updated_at = ?
                     WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
-                """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), account_id, today))
+                """, (self._now(), account_id, today))
                 conn.commit()
 
             return released
@@ -497,7 +506,7 @@ class PositionManager:
         if not pos:
             return None
 
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
         total = pos.get('total_shares', 0)
         last_buy_date = pos.get('last_buy_date', '')
         last_buy_shares = pos.get('last_buy_shares', 0)
