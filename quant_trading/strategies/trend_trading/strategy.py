@@ -33,9 +33,12 @@ class TrendTradingStrategy(BaseStrategy):
         self.candidate_pool = CandidatePool()
         self.signal_checker = SignalChecker()
 
-    def run(self) -> dict:
+    def run(self, target_date=None) -> dict:
         """
         执行趋势交易策略主流程（遍历所有活跃账户）
+
+        参数:
+            target_date: 目标日期 'YYYY-MM-DD'，None则使用当天（实盘模式）
 
         返回:
             dict: {
@@ -44,7 +47,7 @@ class TrendTradingStrategy(BaseStrategy):
                 'has_signal': bool, # 是否有任何账户产生信号
             }
         """
-        date_str = datetime.now().strftime('%Y-%m-%d')
+        date_str = target_date or datetime.now().strftime('%Y-%m-%d')
         logger.info(f"=== 趋势交易策略运行 — {date_str} ===")
 
         # Step 0: 查询所有活跃账户
