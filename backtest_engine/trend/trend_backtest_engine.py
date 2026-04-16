@@ -23,7 +23,7 @@ _QT_ROOT = os.path.join(_PROJECT_ROOT, 'quant_trading')
 if _QT_ROOT not in sys.path:
     sys.path.insert(0, _QT_ROOT)
 
-from core.storage import get_db_connection, get_all_stocks_daily_data
+from core.storage import get_db_connection, get_all_stocks_daily_data, get_trading_day_offset_from
 from strategies.trend_trading.score._base import get_trade_dates
 from infra.account_manager import AccountManager
 from strategies.trend_trading.trend_trading_position_manager import TrendTradingPositionManager
@@ -90,9 +90,12 @@ class TrendBacktestEngine:
             stock_codes = self._get_watchlist_codes(account_id)
         logger.info(f"预加载股票: {len(stock_codes)} 只")
 
-        # Step 3: 预加载回测日期范围内的日K数据
-        logger.info(f"预加载K线数据: {start_date} ~ {end_date}...")
-        all_data = get_all_stocks_daily_data(stock_codes, start_date, end_date)
+        # Step 3: 预加载日K数据（含回测前350天历史，供均线/ATR等指标计算）
+        data_start = get_trading_day_offset_from(start_date, -350)
+        if not data_start:
+            data_start = '2020-01-01'  # fallback
+        logger.info(f"预加载K线数据: {data_start} ~ {end_date}...")
+        all_data = get_all_stocks_daily_data(stock_codes, data_start, end_date)
         logger.info(f"K线数据加载完成: {len(all_data)} 只股票")
 
         # Step 4: 初始化模块
@@ -137,7 +140,7 @@ class TrendBacktestEngine:
         monthly_records = self._save_monthly_records(account_id, monthly_acc)
 
         # Step 7: 生成报告
-        from backtest_engine.trend.trend_backtest_report import generate_backtest_report
+        from trend.trend_backtest_report import generate_backtest_report
         report = generate_backtest_report(
             account_id=account_id,
             start_date=start_date,

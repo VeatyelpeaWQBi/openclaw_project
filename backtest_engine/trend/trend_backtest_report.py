@@ -65,9 +65,9 @@ def _generate_summary(account_id, start_date, end_date,
             break
 
     lines = [
-        f"📊 趋势交易回测报告",
+        f"📊 趋势交易回测报告 — {nickname or account_id}",
         f"",
-        f"**账户：** {nickname or account_id}",
+        f"**账户ID：** {account_id}",
         f"**回测区间：** {start_date} ~ {end_date}",
         f"**交易日数：** {len(trade_dates)} 天",
         f"**初始资金：** {start_capital:,.2f}",
