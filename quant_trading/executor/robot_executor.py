@@ -1,7 +1,7 @@
 """
 Robot Executor — 海龟机器人交易执行器
 代理 TrendTradingExecutor，在执行前增加机器人特有的逻辑：
-  - 资金可购性校验 + 手数降级
+  - 资金可购性校验
   - 涨停买不到 / 跌停卖不掉拦截
 
 职责：
@@ -42,7 +42,7 @@ class RobotExecutor:
 
         预处理顺序：
           1. 涨跌停拦截（涨停不买，跌停不卖）
-          2. 资金校验 + 手数降级
+          2. 资金校验
           3. 委托给 TrendTradingExecutor 执行
         """
         if not action_queue:
@@ -55,7 +55,7 @@ class RobotExecutor:
         # 1. 涨跌停拦截
         action_queue, skipped = self._check_limit_up_down(action_queue)
 
-        # 2. 资金校验 + 手数降级
+        # 2. 资金校验
         action_queue, size_skipped = self._adjust_open_sizes(account_id, action_queue)
 
         # 3. 执行
@@ -182,7 +182,7 @@ class RobotExecutor:
     @staticmethod
     def _get_limit_price(code, prev_close, up=True):
         """计算涨跌停价（股票2位小数，ETF3位小数）"""
-        pct = 0.20 if code.startswith('3') or code.startswith('688') else 0.10
+        pct = 0.20 if code.startswith('3') or code.startswith('688') or code.startswith('689') else 0.10
         decimals = 3 if code.startswith(('15', '51', '56', '58')) else 2
         if up:
             return round(prev_close * (1 + pct), decimals)
@@ -191,7 +191,7 @@ class RobotExecutor:
     @staticmethod
     def _is_limit_up(code, kline, prev_close):
         """是否涨停（最高价=收盘价且收盘价>=涨停价）"""
-        pct = 0.20 if code.startswith('3') or code.startswith('688') else 0.10
+        pct = 0.20 if code.startswith('3') or code.startswith('688') or code.startswith('689') else 0.10
         decimals = 3 if code.startswith(('15', '51', '56', '58')) else 2
         tolerance = 10 ** -decimals  # 股票0.01, ETF0.001
         limit_price = round(prev_close * (1 + pct), decimals)
@@ -200,7 +200,7 @@ class RobotExecutor:
     @staticmethod
     def _is_limit_down(code, kline, prev_close):
         """是否跌停（最低价=收盘价且收盘价<=跌停价）"""
-        pct = 0.20 if code.startswith('3') or code.startswith('688') else 0.10
+        pct = 0.20 if code.startswith('3') or code.startswith('688') or code.startswith('689') else 0.10
         decimals = 3 if code.startswith(('15', '51', '56', '58')) else 2
         tolerance = 10 ** -decimals
         limit_price = round(prev_close * (1 - pct), decimals)
@@ -210,7 +210,7 @@ class RobotExecutor:
         """
         对开仓/加仓动作计算手数 + 资金可购性校验
 
-        过滤式：不可开仓的项直接从队列中移除
+        资金不足时直接跳过（不做手数降级）
         返回: (过滤后的队列, 跳过数量)
         """
         from strategies.trend_trading.atr import calc_stop_price, calc_add_price
@@ -247,18 +247,14 @@ class RobotExecutor:
                 continue
 
             total_shares = shares_per_unit
-            estimated_cost = total_shares * price * 1.002
+            estimated_cost = total_shares * price * 1.00013
 
             if available < estimated_cost:
-                # 资金不足，降级手数
-                affordable_lots = int(available * 0.98 / (price * 100))
-                if affordable_lots <= 0:
-                    logger.warning(f"[{item.get('code', '')}] 可用资金不足1手(可用{available:.0f}, 单价{price:.2f})")
-                    skipped += 1
-                    continue
-                total_shares = affordable_lots * 100
+                # 资金不足，直接跳过
                 code = item.get('code', '')
-                logger.info(f"[{code}] 资金降级: {shares_per_unit}股 → {total_shares}股(可用{available:.0f})")
+                logger.warning(f"[{code}] 可用资金不足1单位(需{estimated_cost:.0f}, 可用{available:.0f})，跳过开仓")
+                skipped += 1
+                continue
 
             # 写入手数
             item['shares'] = total_shares
@@ -271,7 +267,7 @@ class RobotExecutor:
                 'next_add_price': calc_add_price(price, atr),
             }
 
-            available -= total_shares * price * 1.002
+            available -= total_shares * price * 1.00013
             filtered_queue.append(item)
 
         return filtered_queue, skipped
