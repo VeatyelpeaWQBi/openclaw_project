@@ -236,35 +236,56 @@ class RobotExecutor:
                 filtered_queue.append(item)
                 continue
 
-            # 用 calc_unit_size 计算理论手数
-            shares_per_unit = calc_unit_size(capital, atr, price)
+            if action == '开仓':
+                # 开仓：计算1单位大小（开仓后固定不变）
+                shares_per_unit = calc_unit_size(capital, atr, price)
 
-            # 0 = 1手金额超5%仓位上限，不可开仓
-            if shares_per_unit <= 0:
+                # 0 = 1手金额超5%仓位上限，不可开仓
+                if shares_per_unit <= 0:
+                    code = item.get('code', '')
+                    logger.info(f"[{code}] 1手金额超5%仓位上限，跳过开仓(资本{capital:,.0f}, 价{price:.2f})")
+                    skipped += 1
+                    continue
+
+                total_shares = shares_per_unit
+                stop_price = calc_stop_price(price, atr)
+                next_add_price = calc_add_price(price, atr)
+
+            else:
+                # 加仓：使用DB中已有的shares_per_unit（开仓时固定，不重算）
                 code = item.get('code', '')
-                logger.info(f"[{code}] 1手金额超5%仓位上限，跳过开仓(资本{capital:,.0f}, 价{price:.2f})")
-                skipped += 1
-                continue
+                pos = self.tt_executor.pm.get_position(account_id, code)
+                if not pos:
+                    logger.warning(f"[{code}] 持仓不存在，跳过加仓")
+                    skipped += 1
+                    continue
+                shares_per_unit = pos.get('shares_per_unit', 0)
+                if shares_per_unit <= 0:
+                    logger.warning(f"[{code}] shares_per_unit异常，跳过加仓")
+                    skipped += 1
+                    continue
+                total_shares = shares_per_unit
+                stop_price = calc_stop_price(price, atr)
+                next_add_price = calc_add_price(price, atr)
 
-            total_shares = shares_per_unit
             estimated_cost = total_shares * price * 1.00013
 
             if available < estimated_cost:
                 # 资金不足，直接跳过
                 code = item.get('code', '')
-                logger.warning(f"[{code}] 可用资金不足1单位(需{estimated_cost:.0f}, 可用{available:.0f})，跳过开仓")
+                logger.warning(f"[{code}] 可用资金不足1单位(需{estimated_cost:.0f}, 可用{available:.0f})，跳过{action}")
                 skipped += 1
                 continue
 
             # 写入手数
             item['shares'] = total_shares
 
-            # 补充 position_params（止损价/加仓价）
+            # 补充 position_params
             item['position_params'] = {
                 'shares_per_unit': shares_per_unit,
                 'total_shares': total_shares,
-                'stop_price': calc_stop_price(price, atr),
-                'next_add_price': calc_add_price(price, atr),
+                'stop_price': stop_price,
+                'next_add_price': next_add_price,
             }
 
             available -= total_shares * price * 1.00013
