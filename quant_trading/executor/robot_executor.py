@@ -56,14 +56,14 @@ class RobotExecutor:
         action_queue, skipped = self._check_limit_up_down(action_queue)
 
         # 2. 资金校验 + 手数降级
-        action_queue = self._adjust_open_sizes(account_id, action_queue)
+        action_queue, size_skipped = self._adjust_open_sizes(account_id, action_queue)
 
         # 3. 执行
         result = self.tt_executor.execute_signals(account_id, action_queue)
 
         # 合并跳过的计数
-        result['skipped'] = result.get('skipped', 0) + skipped
-        result['total'] = result.get('total', 0) + skipped
+        result['skipped'] = result.get('skipped', 0) + skipped + size_skipped
+        result['total'] = result.get('total', 0) + skipped + size_skipped
 
         return result
 
@@ -213,27 +213,42 @@ class RobotExecutor:
         """
         对开仓/加仓动作计算手数 + 资金可购性校验
 
-        无论是否降级，都将最终手数写入 item['shares']
+        过滤式：不可开仓的项直接从队列中移除
+        返回: (过滤后的队列, 跳过数量)
         """
+        from strategies.trend_trading.atr import calc_stop_price, calc_add_price
+
         summary = self.account_manager.get_summary(account_id)
         available = summary.get('available', 0) if summary else 0
         capital = summary.get('total', 0) if summary else 0
 
         if available <= 0 or capital <= 0:
-            return action_queue
+            return action_queue, 0
 
+        filtered_queue = []
+        skipped = 0
         for item in action_queue:
             action = item.get('action', '')
             if action not in ('开仓', '加仓'):
+                filtered_queue.append(item)
                 continue
 
             price = item.get('price', 0)
             atr = item.get('atr', 0)
             if price <= 0 or atr <= 0:
+                filtered_queue.append(item)
                 continue
 
             # 用 calc_unit_size 计算理论手数
             shares_per_unit = calc_unit_size(capital, atr, price)
+
+            # 0 = 1手金额超5%仓位上限，不可开仓
+            if shares_per_unit <= 0:
+                code = item.get('code', '')
+                logger.info(f"[{code}] 1手金额超5%仓位上限，跳过开仓(资本{capital:,.0f}, 价{price:.2f})")
+                skipped += 1
+                continue
+
             total_shares = shares_per_unit
             estimated_cost = total_shares * price * 1.002
 
@@ -242,13 +257,24 @@ class RobotExecutor:
                 affordable_lots = int(available * 0.98 / (price * 100))
                 if affordable_lots <= 0:
                     logger.warning(f"[{item.get('code', '')}] 可用资金不足1手(可用{available:.0f}, 单价{price:.2f})")
+                    skipped += 1
                     continue
                 total_shares = affordable_lots * 100
                 code = item.get('code', '')
                 logger.info(f"[{code}] 资金降级: {shares_per_unit}股 → {total_shares}股(可用{available:.0f})")
 
-            # 写入手数（无论是否降级）
+            # 写入手数
             item['shares'] = total_shares
-            available -= total_shares * price * 1.002
 
-        return action_queue
+            # 补充 position_params（止损价/加仓价）
+            item['position_params'] = {
+                'shares_per_unit': shares_per_unit,
+                'total_shares': total_shares,
+                'stop_price': calc_stop_price(price, atr),
+                'next_add_price': calc_add_price(price, atr),
+            }
+
+            available -= total_shares * price * 1.002
+            filtered_queue.append(item)
+
+        return filtered_queue, skipped

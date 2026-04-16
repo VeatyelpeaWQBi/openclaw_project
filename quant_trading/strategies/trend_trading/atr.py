@@ -20,7 +20,7 @@ def calc_unit_size(capital, atr, price):
         price: 当前价格
 
     返回:
-        int: 股数（100的整数倍），最小100
+        int: 股数（100的整数倍），最小100；0=不可开仓（1手超5%仓位）
     """
     if atr <= 0 or price <= 0:
         return 100
@@ -37,10 +37,18 @@ def calc_unit_size(capital, atr, price):
     if shares < 100:
         shares = 100
 
-    # 额外检查：买入金额不应超过总资金的5%（凯利公式）,最高4单位不超过总仓位20%,刚好略超凯利公式
+    # 5%仓位上限
     max_shares_by_cap = int((capital * 0.05) / price / 100) * 100
     if max_shares_by_cap < shares:
-        shares = max(max_shares_by_cap, 100)
+        shares = max_shares_by_cap
+
+    # 如果5%上限取整后为0，说明1手金额超过5%，不可开仓
+    if shares <= 0:
+        logger.info(f'[仓位计算] 跳过: 1手({price * 100:.0f}元) > 5%仓位({capital * 0.05:.0f}元), 资本{capital:,.0f}, 价{price:.2f}')
+        return 0
+
+    if shares < 100:
+        shares = 100
 
     logger.debug(f'[仓位计算] 1单位={shares}股 (资本{capital:,.0f}, ATR{atr:.2f}, 价{price:.2f})')
     return shares
