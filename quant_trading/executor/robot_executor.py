@@ -117,29 +117,26 @@ class RobotExecutor:
                 'low': r['low'], 'close': r['close'],
             }
 
-        # 批量查询前一日收盘价（一次性查出所有code的前一日数据）
+        # 批量查询前一日收盘价（单次SQL）
         conn = get_db_connection()
         try:
             prev_closes = {}
-            for code in codes_to_check:
-                kline = latest_kline.get(code)
-                if not kline:
-                    continue
-                latest_date = kline.get('date', '')
-                if not latest_date:
-                    row = conn.execute("""
-                        SELECT close FROM daily_kline
-                        WHERE code = ? AND date < (SELECT MAX(date) FROM daily_kline WHERE code = ?)
-                        ORDER BY date DESC LIMIT 1
-                    """, (code, code)).fetchone()
-                else:
-                    row = conn.execute("""
-                        SELECT close FROM daily_kline
-                        WHERE code = ? AND date < ?
-                        ORDER BY date DESC LIMIT 1
-                    """, (code, latest_date)).fetchone()
-                if row:
-                    prev_closes[code] = row['close']
+            codes_list = list(codes_to_check)
+            if codes_list:
+                placeholders = ','.join(['?'] * len(codes_list))
+                rows = conn.execute(f"""
+                    SELECT d.code, d.date, d.close
+                    FROM daily_kline d
+                    INNER JOIN (
+                        SELECT code, MAX(date) as prev_date
+                        FROM daily_kline
+                        WHERE code IN ({placeholders})
+                          AND date < (SELECT MAX(date) FROM daily_kline WHERE code = daily_kline.code)
+                        GROUP BY code
+                    ) prev ON d.code = prev.code AND d.date = prev.prev_date
+                """, codes_list).fetchall()
+                for r in rows:
+                    prev_closes[r['code']] = r['close']
         finally:
             conn.close()
 

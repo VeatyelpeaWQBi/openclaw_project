@@ -192,6 +192,11 @@ def load_stock_closes(stock_codes, start_date, end_date):
         conn.close()
 
 
+# 白名单：允许操作的表和列
+_ALLOWED_TABLES = {'rs_score', 'vcp_score', 'adx_score'}
+_ALLOWED_DATE_COLS = {'calc_date', 'date'}
+
+
 def delete_score_rows(table_name, date_col='calc_date', where_date=None):
     """
     删除评分表中指定日期的旧数据
@@ -204,6 +209,11 @@ def delete_score_rows(table_name, date_col='calc_date', where_date=None):
     返回:
         int: 删除行数
     """
+    if table_name not in _ALLOWED_TABLES:
+        raise ValueError(f"不允许操作的表: {table_name}，允许: {_ALLOWED_TABLES}")
+    if date_col not in _ALLOWED_DATE_COLS:
+        raise ValueError(f"不允许的日期列: {date_col}，允许: {_ALLOWED_DATE_COLS}")
+
     conn = get_db_connection()
     try:
         if where_date:

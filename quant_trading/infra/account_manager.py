@@ -313,7 +313,7 @@ class AccountManager:
                     realized_profit = realized_profit + ?,
                     updated_at = ?
                 WHERE id = ? AND active = 1
-            """, (profit, proceeds, profit, now, account_id))
+            """, (proceeds, proceeds, profit, now, account_id))
             conn.commit()
             logger.info(f"[账户{account_id}] 卖出，盈亏: {profit}")
         finally:
