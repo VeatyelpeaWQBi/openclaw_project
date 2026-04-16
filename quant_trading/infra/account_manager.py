@@ -6,6 +6,7 @@
 import sqlite3
 import time
 import logging
+import threading
 from datetime import datetime
 from core.storage import get_db_connection
 
@@ -26,35 +27,37 @@ class SnowflakeIdGenerator:
         self.datacenter_id = datacenter_id & 0x1F # 5位
         self.sequence = 0
         self.last_timestamp = -1
+        self._lock = threading.Lock()
 
     def _current_millis(self):
         return int(time.time() * 1000)
 
     def generate(self):
-        """生成一个雪花ID"""
-        timestamp = self._current_millis()
+        """生成一个雪花ID（线程安全）"""
+        with self._lock:
+            timestamp = self._current_millis()
 
-        if timestamp < self.last_timestamp:
-            raise Exception(f"时钟回拨，拒绝生成ID (回拨{self.last_timestamp - timestamp}ms)")
+            if timestamp < self.last_timestamp:
+                raise Exception(f"时钟回拨，拒绝生成ID (回拨{self.last_timestamp - timestamp}ms)")
 
-        if timestamp == self.last_timestamp:
-            self.sequence = (self.sequence + 1) & 0xFFF  # 12位序列号
-            if self.sequence == 0:
-                # 等待下一毫秒
-                while timestamp <= self.last_timestamp:
-                    timestamp = self._current_millis()
-        else:
-            self.sequence = 0
+            if timestamp == self.last_timestamp:
+                self.sequence = (self.sequence + 1) & 0xFFF  # 12位序列号
+                if self.sequence == 0:
+                    # 等待下一毫秒
+                    while timestamp <= self.last_timestamp:
+                        timestamp = self._current_millis()
+            else:
+                self.sequence = 0
 
-        self.last_timestamp = timestamp
+            self.last_timestamp = timestamp
 
-        snowflake_id = (
-            ((timestamp - self.EPOCH) << 22) |
-            (self.datacenter_id << 17) |
-            (self.worker_id << 12) |
-            self.sequence
-        )
-        return snowflake_id
+            snowflake_id = (
+                ((timestamp - self.EPOCH) << 22) |
+                (self.datacenter_id << 17) |
+                (self.worker_id << 12) |
+                self.sequence
+            )
+            return snowflake_id
 
 
 # 全局单例
