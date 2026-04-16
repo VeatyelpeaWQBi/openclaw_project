@@ -15,9 +15,12 @@ from datetime import datetime
 
 # 确保项目根目录和 config 在 sys.path 中
 _project_root = os.path.dirname(os.path.abspath(__file__))
-_config_dir = os.path.join(_project_root, 'config')
+_openclaw_root = os.path.dirname(_project_root)  # openclaw_project 根目录
+_config_dir = os.path.join(_openclaw_root, 'config')
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
+if _openclaw_root not in sys.path:
+    sys.path.insert(0, _openclaw_root)
 if _config_dir not in sys.path:
     sys.path.insert(0, _config_dir)
 

@@ -20,7 +20,7 @@ def setup_logging(config_path=None, log_dir=None):
         log_dir: 日志目录覆盖（prod模式用）
     """
     if config_path is None:
-        config_path = os.path.join(PROJECT_ROOT, 'config', 'logging.yaml')
+        config_path = os.path.join(os.path.dirname(PROJECT_ROOT), 'config', 'logging.yaml')
 
     # 默认配置
     log_level = 'DEBUG'

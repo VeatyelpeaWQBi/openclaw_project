@@ -9,7 +9,7 @@ import json
 
 # core/ 的上级目录就是项目根目录
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_config_dir = os.path.join(_PROJECT_ROOT, 'config')
+_config_dir = os.path.join(os.path.dirname(_PROJECT_ROOT), 'config')
 
 
 def _load_paths():
