@@ -19,10 +19,11 @@ from core.indicators import is_supertrend_bullish, calculate_volume_ratio
 from core.storage import merge_and_save_kline, get_daily_data_from_sqlite, INITIAL_FETCH_DAYS
 from core.paths import DB_PATH
 
-# config 目录需要加入 sys.path 以导入 sectors
-_config_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'config')
-if _config_dir not in sys.path:
-    sys.path.insert(0, _config_dir)
+# config 目录在 openclaw_project 根目录，加入 sys.path 以导入 sectors
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_CONFIG_DIR = os.path.join(_PROJECT_ROOT, 'config')
+if _CONFIG_DIR not in sys.path:
+    sys.path.insert(0, _CONFIG_DIR)
 
 from sectors import is_attack_sector
 from strategies.nomad_t1.filters import filter_etf_candidates
