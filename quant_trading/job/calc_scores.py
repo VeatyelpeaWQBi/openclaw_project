@@ -29,7 +29,7 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from core.storage import (
-    get_trading_day_offset,
+    get_trading_day_offset_from,
     get_all_stocks_daily_data, get_index_daily_closes,
 )
 from strategies.trend_trading.score._base import (
@@ -172,9 +172,10 @@ def run_rs(index_code, stock_data, all_dates, days):
 def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
     """CLI 主入口（VCP+ADX 一次 + RS 单指数）"""
     if end_date is None:
-        end_date = get_trading_day_offset(0)
+        today = datetime.now().strftime('%Y-%m-%d')
+        end_date = get_trading_day_offset_from(today, 0)
         if end_date is None:
-            end_date = datetime.now().strftime('%Y-%m-%d')
+            end_date = today
 
     mode = f"近日{days}天" if days else "全量"
     logger.info(f"{'='*60}")

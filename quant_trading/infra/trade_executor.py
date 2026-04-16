@@ -37,6 +37,10 @@ class TradeExecutor:
 
     _target_date = None  # 由 strategy.py 注入
 
+    def set_target_date(self, target_date):
+        """设置回测目标日期"""
+        self._target_date = target_date
+
     def __init__(self):
         self.position_manager = PositionManager()
         self.account_manager = AccountManager()

@@ -103,9 +103,12 @@ def _calc_rs_core(trade_days, stock_codes, stock_closes, index_closes,
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     total_rows = 0
 
+    # 预构建日期→索引映射，将查找从O(N)降为O(1)
+    date_to_idx = {d: i for i, d in enumerate(trade_days)}
+
     for calc_date in calc_dates:
         # 从 trade_days 中找到 calc_date 前 lookback 个交易日
-        idx = trade_days.index(calc_date) if calc_date in trade_days else -1
+        idx = date_to_idx.get(calc_date, -1)
         if idx < lookback:
             continue
 

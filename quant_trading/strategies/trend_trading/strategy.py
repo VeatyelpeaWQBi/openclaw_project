@@ -94,9 +94,9 @@ class TrendTradingStrategy(BaseStrategy):
         logger.info(f"[{nickname}({account_id})] 开始运行")
 
         # 传递 target_date 给子模块
-        self.position_manager._target_date = self._target_date
-        self.account_manager._target_date = self._target_date
-        self.signal_checker._target_date = self._target_date
+        self.position_manager.set_target_date(self._target_date)
+        self.account_manager.set_target_date(self._target_date)
+        self.signal_checker.set_target_date(self._target_date)
 
         # Step 1: 检查账户初始化
         if account.get('total_capital', 0) <= 0:

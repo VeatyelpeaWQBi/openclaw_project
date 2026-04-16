@@ -76,6 +76,10 @@ class AccountManager:
 
     _target_date = None  # 由 strategy.py 注入
 
+    def set_target_date(self, target_date):
+        """设置回测目标日期"""
+        self._target_date = target_date
+
     def _now(self):
         """获取当前时间戳（回测时用 target_date）"""
         if self._target_date:
@@ -134,7 +138,7 @@ class AccountManager:
             UPDATE account SET note = ? WHERE id = ?
         """, (f"{flow_type} {amount} ({now})", account_id))
 
-    def init_account(self, account_id, capital, nickname=None, simulator=0):
+    def init_account(self, account_id: int, capital: float, nickname: str = None, simulator: int = 0) -> None:
         """
         初始化账户（如已存在则更新总资产）
 
@@ -191,7 +195,7 @@ class AccountManager:
         logger.info(f"[bind_id={bind_id}] 新建账户{new_id}，资金: {capital}")
         return self.get_summary(new_id)
 
-    def get_available(self, account_id):
+    def get_available(self, account_id: int) -> float:
         """
         获取可用资金
 
@@ -268,7 +272,7 @@ class AccountManager:
         finally:
             conn.close()
 
-    def on_buy(self, account_id, cost):
+    def on_buy(self, account_id: int, cost: float) -> bool:
         """
         买入时扣减可用资金（乐观锁扣款）
 
@@ -297,7 +301,7 @@ class AccountManager:
         finally:
             conn.close()
 
-    def on_sell(self, account_id, proceeds, profit):
+    def on_sell(self, account_id: int, proceeds: float, profit: float) -> None:
         """
         卖出时增加可用资金+记录盈亏
 
@@ -322,7 +326,7 @@ class AccountManager:
         finally:
             conn.close()
 
-    def get_summary(self, account_id):
+    def get_summary(self, account_id: int) -> dict | None:
         """
         获取账户摘要
 
