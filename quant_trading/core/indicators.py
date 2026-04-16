@@ -83,7 +83,13 @@ def calculate_supertrend(df, atr_period=10, multiplier=3.0):
         return pd.DataFrame({'supertrend': supertrend, 'upper_band': final_upper, 'lower_band': final_lower, 'atr': atr})
 
     # 初始化方向：1=空头(bearish), -1=多头(bullish)，与TradingView对齐
-    direction = 1  # 默认空头
+    # 根据首根有效K线的收盘价与基本轨道的关系确定初始方向
+    if close.iloc[first_valid] > basic_upper.iloc[first_valid]:
+        direction = -1  # 收盘高于上轨 → 多头
+    elif close.iloc[first_valid] < basic_lower.iloc[first_valid]:
+        direction = 1   # 收盘低于下轨 → 空头
+    else:
+        direction = -1  # 默认多头（与TradingView一致）
 
     for i in range(first_valid + 1, n):
         # 调整上轨（对齐TradingView: 用prev_close vs prev_final_upper）

@@ -75,10 +75,11 @@ def save_daily_kline_to_sqlite(stock_code, stock_name, df):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
         conn.commit()
-        conn.close()
         logger.debug(f"SQLite: 保存 {stock_code}({stock_name}) {len(rows)} 条日K数据")
     except Exception as e:
         logger.warning(f"SQLite save_daily_kline失败: {e}")
+    finally:
+        conn.close()
 
 
 def save_minute_kline_to_sqlite(stock_code, stock_name, df):
@@ -119,10 +120,11 @@ def save_minute_kline_to_sqlite(stock_code, stock_name, df):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
         conn.commit()
-        conn.close()
         logger.debug(f"SQLite: 保存 {stock_code}({stock_name}) {len(rows)} 条分钟线数据")
     except Exception as e:
         logger.warning(f"SQLite save_minute_kline失败: {e}")
+    finally:
+        conn.close()
 
 
 def save_index_kline_to_sqlite(index_code, index_name, df):
@@ -162,10 +164,11 @@ def save_index_kline_to_sqlite(index_code, index_name, df):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
         conn.commit()
-        conn.close()
         logger.debug(f"SQLite: 保存 {index_code}({index_name}) {len(rows)} 条指数K线")
     except Exception as e:
         logger.warning(f"SQLite save_index_kline失败: {e}")
+    finally:
+        conn.close()
 
 
 # ==================== 目录/文件辅助方法 ====================
@@ -339,13 +342,15 @@ def get_trade_days_range(start_date, end_date):
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT trade_date FROM trade_calendar
-            WHERE trade_status = 1 AND trade_date >= ? AND trade_date <= ?
-            ORDER BY trade_date ASC
-        """, (start_date, end_date)).fetchall()
-        conn.close()
-        return [r['trade_date'] for r in rows]
+        try:
+            rows = conn.execute("""
+                SELECT trade_date FROM trade_calendar
+                WHERE trade_status = 1 AND trade_date >= ? AND trade_date <= ?
+                ORDER BY trade_date ASC
+            """, (start_date, end_date)).fetchall()
+            return [r['trade_date'] for r in rows]
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取交易日历失败: {e}")
         return []
@@ -363,11 +368,13 @@ def get_rs_score_last_date(benchmark_code):
     """
     try:
         conn = get_db_connection()
-        row = conn.execute("""
-            SELECT MAX(calc_date) FROM rs_score WHERE benchmark_code = ?
-        """, (benchmark_code,)).fetchone()
-        conn.close()
-        return row[0] if row and row[0] else None
+        try:
+            row = conn.execute("""
+                SELECT MAX(calc_date) FROM rs_score WHERE benchmark_code = ?
+            """, (benchmark_code,)).fetchone()
+            return row[0] if row and row[0] else None
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取RS Score最新日期失败: {e}")
         return None
@@ -497,13 +504,15 @@ def get_index_daily_closes(index_code, start_date, end_date):
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT date, close FROM index_daily_kline
-            WHERE index_code = ? AND date >= ? AND date <= ?
-            ORDER BY date
-        """, (index_code, start_date, end_date)).fetchall()
-        conn.close()
-        return {r['date']: float(r['close']) for r in rows if r['close'] is not None}
+        try:
+            rows = conn.execute("""
+                SELECT date, close FROM index_daily_kline
+                WHERE index_code = ? AND date >= ? AND date <= ?
+                ORDER BY date
+            """, (index_code, start_date, end_date)).fetchall()
+            return {r['date']: float(r['close']) for r in rows if r['close'] is not None}
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取指数日K失败 [{index_code}]: {e}")
         return {}
@@ -564,19 +573,21 @@ def get_all_stocks_daily_data(codes, start_date, end_date):
         return {}
     try:
         conn = get_db_connection()
-        BATCH_SIZE = 500
-        dfs = []
-        for i in range(0, len(codes), BATCH_SIZE):
-            batch = codes[i:i + BATCH_SIZE]
-            placeholders = ','.join(['?'] * len(batch))
-            df_batch = pd.read_sql_query(
-                f"SELECT * FROM daily_kline "
-                f"WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0 "
-                f"ORDER BY code, date",
-                conn, params=batch + [start_date, end_date]
-            )
-            dfs.append(df_batch)
-        conn.close()
+        try:
+            BATCH_SIZE = 500
+            dfs = []
+            for i in range(0, len(codes), BATCH_SIZE):
+                batch = codes[i:i + BATCH_SIZE]
+                placeholders = ','.join(['?'] * len(batch))
+                df_batch = pd.read_sql_query(
+                    f"SELECT * FROM daily_kline "
+                    f"WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0 "
+                    f"ORDER BY code, date",
+                    conn, params=batch + [start_date, end_date]
+                )
+                dfs.append(df_batch)
+        finally:
+            conn.close()
 
         df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
         result = {}
@@ -601,8 +612,8 @@ def batch_upsert_rs_score(rows):
     """
     if not rows:
         return 0
+    conn = get_db_connection()
     try:
-        conn = get_db_connection()
         conn.executemany("""
             INSERT OR REPLACE INTO rs_score
             (code, benchmark_code, calc_date, rs_ratio, rs_score, rs_rank,
@@ -610,11 +621,12 @@ def batch_upsert_rs_score(rows):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
         conn.commit()
-        conn.close()
         return len(rows)
     except Exception as e:
         logger.error(f"批量写入RS Score失败: {e}")
         return 0
+    finally:
+        conn.close()
 
 
 def get_watchlist_index_codes():
@@ -626,12 +638,14 @@ def get_watchlist_index_codes():
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT DISTINCT index_code FROM watchlist
-            WHERE active = 1 AND index_code IS NOT NULL
-        """).fetchall()
-        conn.close()
-        return [r['index_code'] for r in rows]
+        try:
+            rows = conn.execute("""
+                SELECT DISTINCT index_code FROM watchlist
+                WHERE active = 1 AND index_code IS NOT NULL
+            """).fetchall()
+            return [r['index_code'] for r in rows]
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取候选池指数列表失败: {e}")
         return []
@@ -649,12 +663,14 @@ def get_watchlist_stocks_by_index(index_code):
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT DISTINCT code FROM watchlist
-            WHERE active = 1 AND index_code = ?
-        """, (index_code,)).fetchall()
-        conn.close()
-        return [r['code'] for r in rows]
+        try:
+            rows = conn.execute("""
+                SELECT DISTINCT code FROM watchlist
+                WHERE active = 1 AND index_code = ?
+            """, (index_code,)).fetchall()
+            return [r['code'] for r in rows]
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取候选池成分股失败 [{index_code}]: {e}")
         return []
@@ -669,9 +685,11 @@ def get_tracked_indices():
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("SELECT code, short_name FROM index_info").fetchall()
-        conn.close()
-        return {str(r['code']): r['short_name'] or '' for r in rows}
+        try:
+            rows = conn.execute("SELECT code, short_name FROM index_info").fetchall()
+            return {str(r['code']): r['short_name'] or '' for r in rows}
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取跟踪指数列表失败: {e}")
         return {}
@@ -692,8 +710,9 @@ def batch_upsert_daily_kline(rows):
         return (0, 0)
     success = 0
     error = 0
+    conn = get_db_connection()
     try:
-        conn = get_db_connection()
+        conn.execute("BEGIN TRANSACTION")
         for row in rows:
             try:
                 conn.execute("""
@@ -708,9 +727,11 @@ def batch_upsert_daily_kline(rows):
                 logger.debug(f"写入失败 [{row[0]}]: {e}")
                 error += 1
         conn.commit()
-        conn.close()
     except Exception as e:
+        conn.rollback()
         logger.error(f"批量写入日K失败: {e}")
+    finally:
+        conn.close()
     return (success, error)
 
 
@@ -755,11 +776,13 @@ def get_daily_kline_max_date(code):
     """
     try:
         conn = get_db_connection()
-        row = conn.execute(
-            "SELECT MAX(date) FROM daily_kline WHERE code = ?", (code,)
-        ).fetchone()
-        conn.close()
-        return row[0] if row and row[0] else None
+        try:
+            row = conn.execute(
+                "SELECT MAX(date) FROM daily_kline WHERE code = ?", (code,)
+            ).fetchone()
+            return row[0] if row and row[0] else None
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取日K最新日期失败 [{code}]: {e}")
         return None
@@ -777,11 +800,13 @@ def get_index_daily_kline_max_date(index_code):
     """
     try:
         conn = get_db_connection()
-        row = conn.execute(
-            "SELECT MAX(date) FROM index_daily_kline WHERE index_code = ?", (index_code,)
-        ).fetchone()
-        conn.close()
-        return row[0] if row and row[0] else None
+        try:
+            row = conn.execute(
+                "SELECT MAX(date) FROM index_daily_kline WHERE index_code = ?", (index_code,)
+            ).fetchone()
+            return row[0] if row and row[0] else None
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取指数日K最新日期失败 [{index_code}]: {e}")
         return None
@@ -800,13 +825,15 @@ def get_recent_trade_dates(trade_date, limit=5):
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT trade_date FROM trade_calendar
-            WHERE trade_status = 1 AND trade_date < ?
-            ORDER BY trade_date DESC LIMIT ?
-        """, (trade_date, limit)).fetchall()
-        conn.close()
-        return [r['trade_date'] for r in rows]
+        try:
+            rows = conn.execute("""
+                SELECT trade_date FROM trade_calendar
+                WHERE trade_status = 1 AND trade_date < ?
+                ORDER BY trade_date DESC LIMIT ?
+            """, (trade_date, limit)).fetchall()
+            return [r['trade_date'] for r in rows]
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取最近交易日失败: {e}")
         return []
@@ -825,15 +852,17 @@ def get_avg_volume_by_code(start_date, end_date):
     """
     try:
         conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT code, AVG(volume) as avg_vol
-            FROM daily_kline
-            WHERE date >= ? AND date < ?
-            GROUP BY code
-            HAVING COUNT(*) >= 2
-        """, (start_date, end_date)).fetchall()
-        conn.close()
-        return {r['code']: float(r['avg_vol']) for r in rows if r['avg_vol'] and r['avg_vol'] > 0}
+        try:
+            rows = conn.execute("""
+                SELECT code, AVG(volume) as avg_vol
+                FROM daily_kline
+                WHERE date >= ? AND date < ?
+                GROUP BY code
+                HAVING COUNT(*) >= 2
+            """, (start_date, end_date)).fetchall()
+            return {r['code']: float(r['avg_vol']) for r in rows if r['avg_vol'] and r['avg_vol'] > 0}
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取均量失败: {e}")
         return {}
@@ -852,20 +881,22 @@ def get_trading_day_offset_from(base_date, offset):
     """
     try:
         conn = get_db_connection()
-        if offset >= 0:
-            row = conn.execute("""
-                SELECT trade_date FROM trade_calendar
-                WHERE trade_status = 1 AND trade_date >= ?
-                ORDER BY trade_date ASC LIMIT 1 OFFSET ?
-            """, (base_date, offset)).fetchone()
-        else:
-            row = conn.execute("""
-                SELECT trade_date FROM trade_calendar
-                WHERE trade_status = 1 AND trade_date <= ?
-                ORDER BY trade_date DESC LIMIT 1 OFFSET ?
-            """, (base_date, abs(offset))).fetchone()
-        conn.close()
-        return row['trade_date'] if row else None
+        try:
+            if offset >= 0:
+                row = conn.execute("""
+                    SELECT trade_date FROM trade_calendar
+                    WHERE trade_status = 1 AND trade_date >= ?
+                    ORDER BY trade_date ASC LIMIT 1 OFFSET ?
+                """, (base_date, offset)).fetchone()
+            else:
+                row = conn.execute("""
+                    SELECT trade_date FROM trade_calendar
+                    WHERE trade_status = 1 AND trade_date <= ?
+                    ORDER BY trade_date DESC LIMIT 1 OFFSET ?
+                """, (base_date, abs(offset))).fetchone()
+            return row['trade_date'] if row else None
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"获取交易日偏移失败: {e}")
         return None
@@ -883,11 +914,13 @@ def is_trade_day(date_str):
     """
     try:
         conn = get_db_connection()
-        row = conn.execute(
-            "SELECT trade_status FROM trade_calendar WHERE trade_date = ?", (date_str,)
-        ).fetchone()
-        conn.close()
-        return bool(row and row['trade_status'] == 1)
+        try:
+            row = conn.execute(
+                "SELECT trade_status FROM trade_calendar WHERE trade_date = ?", (date_str,)
+            ).fetchone()
+            return bool(row and row['trade_status'] == 1)
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"查询交易日失败 [{date_str}]: {e}")
         return False

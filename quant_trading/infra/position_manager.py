@@ -325,6 +325,8 @@ class PositionManager:
             conn.execute("""
                 UPDATE positions SET
                     total_shares = total_shares - ?,
+                    turtle_units = turtle_units - 1,
+                    has_reduced = 1,
                     updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
             """, (shares_to_sell, now, account_id, code))
