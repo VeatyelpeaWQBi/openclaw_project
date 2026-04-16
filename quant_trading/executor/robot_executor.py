@@ -222,6 +222,12 @@ class RobotExecutor:
         if available <= 0 or capital <= 0:
             return action_queue, 0
 
+        # 获取单日开仓上限
+        config = self.account_manager.get_position_config(account_id)
+        max_daily_open = config.get('max_daily_open', 2)
+        today_opens = self.tt_executor.pm.count_today_opens(account_id)
+        opens_in_batch = 0  # 本批次已接受的开仓数
+
         filtered_queue = []
         skipped = 0
         for item in action_queue:
@@ -229,6 +235,13 @@ class RobotExecutor:
             if action not in ('开仓', '加仓'):
                 filtered_queue.append(item)
                 continue
+
+            # 开仓数已达上限，直接跳出循环
+            if action == '开仓' and (today_opens + opens_in_batch) >= max_daily_open:
+                remaining = sum(1 for x in action_queue[action_queue.index(item):] if x.get('action') == '开仓')
+                logger.info(f"今日已开仓{today_opens + opens_in_batch}个(上限{max_daily_open})，后续{remaining}个开仓信号全部跳过")
+                skipped += remaining
+                break
 
             price = item.get('price', 0)
             atr = item.get('atr', 0)
@@ -290,5 +303,9 @@ class RobotExecutor:
 
             available -= total_shares * price * 1.00013
             filtered_queue.append(item)
+
+            # 记录本批次开仓数
+            if action == '开仓':
+                opens_in_batch += 1
 
         return filtered_queue, skipped
