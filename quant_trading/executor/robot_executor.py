@@ -28,13 +28,13 @@ class RobotExecutor:
 
     def set_target_date(self, target_date):
         """传递 target_date 给整个执行链"""
-        self.account_manager._target_date = target_date
-        self.tt_executor.pm._target_date = target_date
-        self.tt_executor.tt_pm._target_date = target_date
-        self.tt_executor.account_manager._target_date = target_date
-        self.tt_executor.trade_executor._target_date = target_date
-        self.tt_executor.trade_executor.position_manager._target_date = target_date
-        self.tt_executor.trade_executor.account_manager._target_date = target_date
+        self.account_manager.set_target_date(target_date)
+        self.tt_executor.pm.set_target_date(target_date)
+        self.tt_executor.tt_pm.set_target_date(target_date)
+        self.tt_executor.account_manager.set_target_date(target_date)
+        self.tt_executor.trade_executor.set_target_date(target_date)
+        self.tt_executor.trade_executor.position_manager.set_target_date(target_date)
+        self.tt_executor.trade_executor.account_manager.set_target_date(target_date)
 
     def execute_signals(self, account_id, action_queue: list) -> dict:
         """

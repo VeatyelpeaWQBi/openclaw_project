@@ -34,7 +34,7 @@ def filter_stocks(stocks, sector_name):
         market_cap = stock.get('market_cap', 0)
 
         # 基础过滤（分板设置）
-        is_20cm = code.startswith('300') or code.startswith('688')
+        is_20cm = code.startswith('300') or code.startswith('68')
 
         # 1. 涨幅筛选：主板3-7%，双创板6-15%
         if is_20cm:

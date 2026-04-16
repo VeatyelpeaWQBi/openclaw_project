@@ -47,9 +47,6 @@ def calc_unit_size(capital, atr, price):
         logger.info(f'[仓位计算] 跳过: 1手({price * 100:.0f}元) > 5%仓位({capital * 0.05:.0f}元), 资本{capital:,.0f}, 价{price:.2f}')
         return 0
 
-    if shares < 100:
-        shares = 100
-
     logger.debug(f'[仓位计算] 1单位={shares}股 (资本{capital:,.0f}, ATR{atr:.2f}, 价{price:.2f})')
     return shares
 

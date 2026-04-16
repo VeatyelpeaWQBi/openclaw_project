@@ -32,7 +32,7 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from core.storage import (
-    get_trading_day_offset,
+    get_trading_day_offset_from,
     get_watchlist_index_codes,
     get_tracked_indices, batch_upsert_daily_kline,
     batch_upsert_index_daily_kline,
@@ -270,32 +270,40 @@ def fetch_and_save_index_daily_kline(trade_date):
     logger.info(f"指数日K更新完成: {success}个指数, 耗时{elapsed:.1f}秒")
     return success
 
-def run():
-    today = datetime.now().strftime('%Y-%m-%d')
-    logger.info(f"=== 更新全市场日K — {today} ===")
-    start_time = time.time()
+def _update_klines(today):
+    """
+    步骤1：更新个股+指数日K数据
 
-    kline_count = 0
-    index_count = 0
+    返回:
+        dict: {'kline_count': int, 'index_count': int}
+    """
+    # 更新个股日K
+    data = fetch_all_market()
+    kline_count = save_to_db(data, today) if data else 0
+
+    # 更新指数日K
+    index_count = fetch_and_save_index_daily_kline(today)
+
+    return {'kline_count': kline_count or 0, 'index_count': index_count or 0}
+
+
+def _update_scores(today):
+    """
+    步骤2：统一计算 VCP + ADX + RS 评分
+
+    返回:
+        dict: {'vcp_count': int, 'adx_count': int, 'rs_count': int, 'score_error': bool}
+    """
     vcp_count = 0
     adx_count = 0
     rs_count = 0
     score_error = False
 
-    # 1. 更新个股日K
-    data = fetch_all_market()
-    if data:
-        kline_count = save_to_db(data, today)
-
-    # 2. 更新指数日K
-    index_count = fetch_and_save_index_daily_kline(today)
-
-    # 3. 统一计算 VCP + ADX 评分（不依赖基准指数，只跑一次）
     logger.info("=== 启动评分流水线 ===")
     try:
         index_codes = get_watchlist_index_codes()
         if not index_codes:
-            index_codes = ['000510'] # 中证A500，作为默认基准
+            index_codes = ['000510']  # 中证A500，作为默认基准
 
         codes = get_all_stock_codes()
         if codes:
@@ -317,6 +325,25 @@ def run():
         logger.error(f"评分流水线执行失败: {e}", exc_info=True)
         score_error = True
 
+    return {
+        'vcp_count': vcp_count or 0,
+        'adx_count': adx_count or 0,
+        'rs_count': rs_count or 0,
+        'score_error': score_error,
+    }
+
+
+def run():
+    today = datetime.now().strftime('%Y-%m-%d')
+    logger.info(f"=== 更新全市场日K — {today} ===")
+    start_time = time.time()
+
+    # 步骤1：更新日K数据
+    kline_result = _update_klines(today)
+
+    # 步骤2：计算评分
+    score_result = _update_scores(today)
+
     logger.info(f"=== 完成: 个股+指数+评分更新到 {today} ===")
 
     elapsed = time.time() - start_time
@@ -326,12 +353,8 @@ def run():
     # 返回统计结果供shell脚本通知用
     return {
         'date': today,
-        'kline_count': kline_count or 0,
-        'index_count': index_count or 0,
-        'vcp_count': vcp_count or 0,
-        'adx_count': adx_count or 0,
-        'rs_count': rs_count or 0,
-        'score_error': score_error,
+        **kline_result,
+        **score_result,
         'elapsed': elapsed_str,
     }
 

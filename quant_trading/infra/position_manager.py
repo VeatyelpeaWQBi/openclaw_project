@@ -17,6 +17,10 @@ class PositionManager:
 
     _target_date = None  # 由 strategy.py 注入
 
+    def set_target_date(self, target_date):
+        """设置回测目标日期"""
+        self._target_date = target_date
+
     def _now(self):
         """获取当前时间戳（回测时用 target_date）"""
         if self._target_date:
@@ -98,7 +102,7 @@ class PositionManager:
         """, (account_id, code, name, action, shares, price, amount, profit, fees,
               units_before, units_after, stop_price, reason, now))
 
-    def get_active_positions(self, account_id):
+    def get_active_positions(self, account_id: int) -> list[dict]:
         """
         获取指定账户所有持有中的持仓
 
@@ -140,7 +144,7 @@ class PositionManager:
         finally:
             conn.close()
 
-    def get_position(self, account_id, code):
+    def get_position(self, account_id: int, code: str) -> dict | None:
         """
         获取单只持仓详情
 
@@ -294,8 +298,8 @@ class PositionManager:
 
         return self.get_position(account_id, code)
 
-    def reduce_position(self, account_id, code, sell_price, shares_to_sell,
-                        account_manager=None):
+    def reduce_position(self, account_id: int, code: str, sell_price: float, shares_to_sell: int,
+                        account_manager=None) -> dict | None:
         """
         减仓（纯CRUD，卖出指定股数）
 
@@ -348,8 +352,8 @@ class PositionManager:
 
         return self.get_position(account_id, code)
 
-    def close_position(self, account_id, code, reason, sell_price,
-                       cooldown_days=10, account_manager=None):
+    def close_position(self, account_id: int, code: str, reason: str, sell_price: float,
+                       cooldown_days: int = 10, account_manager=None) -> dict | None:
         """
         平仓（纯CRUD）
 

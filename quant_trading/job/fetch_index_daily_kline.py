@@ -107,16 +107,10 @@ def save_to_db(code, df):
     # 获取指数名称
     index_name = str(df.iloc[0].get('指数中文简称', ''))
 
-    success = 0
+    rows = []
     for _, row in df.iterrows():
         date = str(row.get('日期', ''))[:10]
-
-        cursor.execute("""
-            INSERT OR REPLACE INTO index_daily_kline
-            (index_code, index_name, date, open, high, low, close,
-             volume, amount, change, change_pct, constituent_count, pe_ttm)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        rows.append((
             code, index_name, date,
             _safe_float(row.get('开盘')),
             _safe_float(row.get('最高')),
@@ -129,7 +123,14 @@ def save_to_db(code, df):
             _safe_int(row.get('样本数量')),
             _safe_float(row.get('滚动市盈率')),
         ))
-        success += 1
+
+    cursor.executemany("""
+        INSERT OR REPLACE INTO index_daily_kline
+        (index_code, index_name, date, open, high, low, close,
+         volume, amount, change, change_pct, constituent_count, pe_ttm)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, rows)
+    success = len(rows)
 
     # 更新 index_info
     cursor.execute("""

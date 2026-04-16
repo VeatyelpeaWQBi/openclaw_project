@@ -20,7 +20,7 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from core.storage import get_trading_day_offset
+from core.storage import get_trading_day_offset_from
 from strategies.trend_trading.score.vcp_core import calc_vcp_batch, calc_vcp_recent
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -30,9 +30,10 @@ logger = logging.getLogger(__name__)
 def run(days=None, end_date=None):
     """主入口"""
     if end_date is None:
-        end_date = get_trading_day_offset(0)
+        today = datetime.now().strftime('%Y-%m-%d')
+        end_date = get_trading_day_offset_from(today, 0)
         if end_date is None:
-            end_date = datetime.now().strftime('%Y-%m-%d')
+            end_date = today
 
     if days is not None:
         logger.info(f"=== VCP 近日刷新: 最近{days}天到 {end_date} ===")

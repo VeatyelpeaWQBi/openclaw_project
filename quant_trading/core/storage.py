@@ -24,14 +24,14 @@ INITIAL_FETCH_DAYS = 50
 
 # ==================== SQLite辅助方法 ====================
 
-def get_db_connection():
+def get_db_connection() -> sqlite3.Connection:
     """获取SQLite连接"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def save_daily_kline_to_sqlite(stock_code, stock_name, df):
+def save_daily_kline_to_sqlite(stock_code: str, stock_name: str, df: pd.DataFrame) -> None:
     """
     保存日K数据到SQLite（批量插入）
 
@@ -179,32 +179,7 @@ def ensure_dirs():
 
 
 
-def get_trading_day_offset(days_ago):
-    """
-    从交易日历获取N个交易日前的日期
-
-    参数:
-        days_ago: 往前推多少个交易日（0=今天或最近交易日, 1=上一交易日）
-
-    返回:
-        str: 'YYYY-MM-DD' 或 None
-    """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        try:
-            today = datetime.now().strftime('%Y-%m-%d')
-            row = conn.execute(
-                "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1 OFFSET ?",
-                (today, days_ago)
-            ).fetchone()
-            return row[0] if row else None
-        finally:
-            conn.close()
-    except Exception:
-        return None
-
-
-def get_daily_data_from_sqlite(stock_code, days=None):
+def get_daily_data_from_sqlite(stock_code: str, days: int = None) -> pd.DataFrame:
     """
     从SQLite获取单只股票日K数据
 
@@ -217,7 +192,8 @@ def get_daily_data_from_sqlite(stock_code, days=None):
         try:
             conn.row_factory = sqlite3.Row
             if days:
-                start_date = get_trading_day_offset(days)
+                today = datetime.now().strftime('%Y-%m-%d')
+                start_date = get_trading_day_offset_from(today, -days)
                 if not start_date:
                     start_date = (datetime.now() - timedelta(days=int(days * 1.5))).strftime('%Y-%m-%d')
                 df = pd.read_sql_query(
@@ -599,7 +575,7 @@ def get_all_stocks_daily_data(codes, start_date, end_date):
         return {}
 
 
-def batch_upsert_rs_score(rows):
+def batch_upsert_rs_score(rows: list[tuple]) -> int:
     """
     批量写入/更新RS Score
 
@@ -695,7 +671,7 @@ def get_tracked_indices():
         return {}
 
 
-def batch_upsert_daily_kline(rows):
+def batch_upsert_daily_kline(rows: list[tuple]) -> tuple[int, int]:
     """
     批量写入/更新个股日K
 
@@ -942,7 +918,7 @@ def get_trading_day_offset_from_end(end_date, offset):
 
 # ==================== VCP 评分存储 ====================
 
-def save_vcp_score(records):
+def save_vcp_score(records: list[dict]) -> int:
     """
     批量写入 VCP 评分结果（INSERT OR REPLACE）
 
@@ -1048,7 +1024,7 @@ def get_vcp_history(code, days=30):
 
 # ==================== ADX Score 相关方法 ====================
 
-def save_adx_score(records):
+def save_adx_score(records: list[dict]) -> int:
     """
     批量写入/更新 ADX 评分结果（INSERT OR REPLACE）
 
@@ -1128,7 +1104,7 @@ def get_adx_scores_by_date(calc_date, min_score=None, limit=None):
         conn.close()
 
 
-def get_index_amount_before_date(index_code, before_date):
+def get_index_amount_before_date(index_code: str, before_date: str) -> float:
     """
     获取指定指数在某日期之前的最近一个交易日成交额
 

@@ -24,6 +24,10 @@ class SignalChecker:
 
     _target_date = None  # 由 strategy.py 注入
 
+    def set_target_date(self, target_date):
+        """设置回测目标日期"""
+        self._target_date = target_date
+
     def check_all(self, position_manager, account, candidate_pool, kline_data):
         """
         主入口：按优先级检查所有信号
