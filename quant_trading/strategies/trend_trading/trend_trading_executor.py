@@ -335,6 +335,7 @@ class TrendTradingExecutor:
                 metadata={
                     'urgency': item.get('urgency', ''),
                     'signal_type': item.get('signal_type', ''),
+                    'position_params': item.get('position_params', {}),
                 },
             )
             commands.append(cmd)
