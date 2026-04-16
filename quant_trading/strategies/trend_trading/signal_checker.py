@@ -189,6 +189,19 @@ class SignalChecker:
         return queue
 
     @staticmethod
+    def _clean_name(name):
+        """清除名称中的HTML/Markdown标记和来源标签，只保留纯股票名"""
+        import re
+        # 去掉 <font ...>...</font>
+        name = re.sub(r'<font[^>]*>', '', name)
+        name = re.sub(r'</font>', '', name)
+        # 去掉 **
+        name = name.replace('**', '')
+        # 去掉来源标签（A500核心池、自选、热点池等）
+        name = re.sub(r'[（(][^)）]*[)）]', '', name)
+        return name.strip()
+
+    @staticmethod
     def _to_entry_system(breakout_type):
         """将突破类型转换为系统类型"""
         if '55' in str(breakout_type):
@@ -234,7 +247,7 @@ class SignalChecker:
             return {
                 'type': 'stop_loss',
                 'code': position['code'],
-                'name': position.get('name', ''),
+                'name': self._clean_name(position.get('name', '')),
                 'detail': f"现价{latest_price:.2f} 触及止损价{stop_price:.2f}，需立即卖出 [{self._format_shares_status(position)}]",
                 'urgency': 'critical',
                 'price': latest_price,
@@ -258,7 +271,7 @@ class SignalChecker:
             return {
                 'type': 'exit',
                 'code': position['code'],
-                'name': position.get('name', ''),
+                'name': self._clean_name(position.get('name', '')),
                 'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破{exit_point}日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position)}]",
                 'urgency': 'high',
                 'price': exit_sig['exit_price'],
@@ -367,7 +380,7 @@ class SignalChecker:
             return {
                 'type': 'reduce',
                 'code': position['code'],
-                'name': position.get('name', ''),
+                'name': self._clean_name(position.get('name', '')),
                 'detail': f"现价{latest_price:.2f} 达到减仓价{reduce_trigger:.2f}(1N)，当前{position.get('turtle_units', 0)}单位→减1单位 [{self._format_shares_status(position)}]",
                 'urgency': 'medium',
                 'price': latest_price,
@@ -417,18 +430,10 @@ class SignalChecker:
         if atr <= 0:
             return None
 
-        # 所属池标识（MD语法：红色加粗=A500核心池，橙色加粗=自选）
-        nickname = stock.get('account_nickname', '')
-        source = stock.get('source', '')
+        # 纯名称（不带HTML格式化，格式化由report层处理）
         name = stock.get('name', '')
-        if nickname:
-            display_name = f"{name} <font color=\"orange\">**（{nickname}自选）**</font>"
-        elif source == 'a500':
-            display_name = f"{name} <font color=\"red\">**（A500核心池）**</font>"
-        elif source == 'hotspot':
-            display_name = f"{name}（热点池）"
-        else:
-            display_name = name
+        source = stock.get('source', '')
+        nickname = stock.get('account_nickname', '')
 
         # 信号格式化
         sys_label = 'S2' if '55' in entry['type'] else 'S1'
@@ -439,7 +444,7 @@ class SignalChecker:
         return {
             'type': 'entry',
             'code': code,
-            'name': display_name,
+            'name': name,
             'detail': f"{sys_label}突破，收{entry['break_price']:.2f}(>{entry['channel_high']:.2f})，{trend_label}，{st_label}",
             'urgency': 'medium',
             'price': entry['break_price'],
@@ -447,5 +452,6 @@ class SignalChecker:
             'trend': trend,
             'supertrend': '多头' if st_bullish else '空头',
             'breakout_type': entry['type'],
-            'account_nickname': stock.get('account_nickname', ''),
+            'source': source,
+            'account_nickname': nickname,
         }
