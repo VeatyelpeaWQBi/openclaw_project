@@ -96,27 +96,33 @@ class SignalChecker:
                 signals.append(add_sig)
 
         # === 第二部分：检查候选池入场信号 ===
-        # 排除：持仓中 + 冷却中
-        holding_codes = {p['code'] for p in positions}
-        cooling_positions = position_manager.get_cooling_positions(account_id)
-        cooling_codes = {p['code'] for p in cooling_positions}
-        exclude_codes = holding_codes | cooling_codes
+        # 持仓数已达上限，跳过入场检测
+        max_holdings = account.get('max_holdings', 5)
+        if len(positions) >= max_holdings:
+            logger.info(f"持仓数已达上限({len(positions)}/{max_holdings})，跳过入场信号检测")
+            entry_signals = []
+        else:
+            # 排除：持仓中 + 冷却中
+            holding_codes = {p['code'] for p in positions}
+            cooling_positions = position_manager.get_cooling_positions(account_id)
+            cooling_codes = {p['code'] for p in cooling_positions}
+            exclude_codes = holding_codes | cooling_codes
 
-        entry_signals = []
-        for stock in (candidate_pool.merged_pool if hasattr(candidate_pool, 'merged_pool') else []):
-            code = stock.get('code', '')
-            if not code or code in exclude_codes:
-                continue
+            entry_signals = []
+            for stock in (candidate_pool.merged_pool if hasattr(candidate_pool, 'merged_pool') else []):
+                code = stock.get('code', '')
+                if not code or code in exclude_codes:
+                    continue
 
-            df = kline_data.get(code)
-            if df is None or df.empty:
-                continue
+                df = kline_data.get(code)
+                if df is None or df.empty:
+                    continue
 
-            # ⑤ 建仓检查
-            # 趋势法则：突破 + 均线多头过滤 → 入场
-            entry_sig = self.check_entry(stock, df, account)
-            if entry_sig:
-                entry_signals.append(entry_sig)
+                # ⑤ 建仓检查
+                # 趋势法则：突破 + 均线多头过滤 → 入场
+                entry_sig = self.check_entry(stock, df, account)
+                if entry_sig:
+                    entry_signals.append(entry_sig)
 
         # 多个入场信号时，按综合评分排序
         if len(entry_signals) > 1:
@@ -440,7 +446,7 @@ class SignalChecker:
         trend_label = {'多头': '均线偏多', '空头': '均线偏空'}.get(trend, '均线不明')
         st_label = 'SuperTrend多头' if st_bullish else 'SuperTrend空头'
 
-        logger.info(f"[{code}] 入场信号! {sys_label}，{trend_label}，{st_label}")
+        logger.debug(f"[{code}] 入场信号! {sys_label}，{trend_label}，{st_label}")
         return {
             'type': 'entry',
             'code': code,

@@ -47,7 +47,7 @@ def _setup_logging():
     )
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
 
     # 控制台
     console = logging.StreamHandler()
@@ -57,7 +57,7 @@ def _setup_logging():
 
     # 文件
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
