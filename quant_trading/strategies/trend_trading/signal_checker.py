@@ -39,8 +39,6 @@ class SignalChecker:
             模拟账户(simulator=1): list[dict] 交易动作队列
         """
         account_id = account['id']
-        self.account = account
-        self.account_id = account_id
         is_simulator = account.get('simulator') == 1
         signals = []
 
@@ -112,7 +110,7 @@ class SignalChecker:
 
             # ⑤ 建仓检查
             # 趋势法则：突破 + 均线多头过滤 → 入场
-            entry_sig = self.check_entry(stock, df)
+            entry_sig = self.check_entry(stock, df, account)
             if entry_sig:
                 entry_signals.append(entry_sig)
 
@@ -372,7 +370,7 @@ class SignalChecker:
             }
         return None
 
-    def check_entry(self, stock, df):
+    def check_entry(self, stock, df, account):
         """
         建仓检查
 
@@ -398,7 +396,7 @@ class SignalChecker:
             return None
 
         # 趋势条件②：突破信号（20日/55日唐奇安通道上轨）
-        entry = check_entry_signal(df, short=20, long=55, s1_filtered=self.account['turtle_s1_filter_active'])
+        entry = check_entry_signal(df, short=20, long=55, s1_filtered=account['turtle_s1_filter_active'])
         if not entry['signal']:
             return None
 

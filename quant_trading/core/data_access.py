@@ -395,43 +395,6 @@ def get_stock_daily_kline_range(stock_code, market='sh', start_date=None, end_da
     time.sleep(random.uniform(0.6, 1.2))  # 防限流
     return df
 
-
-# ==================== 4. 个股实时行情 ====================
-
-def get_stock_realtime(stock_code):
-    """
-    获取个股实时行情（AKShare 东方财富）
-    注意：实时行情暂保留EM数据源，新浪无独立实时行情接口
-    """
-
-    try:
-        df = ak.stock_zh_a_spot_em()
-        if df is None or df.empty:
-            logger.warning(f"[{stock_code}] 实时行情获取为空")
-            return {}
-        row = df[df['代码'] == stock_code]
-        if row.empty:
-            logger.warning(f"[{stock_code}] 未在行情列表中找到")
-            return {}
-        d = row.iloc[0]
-        result = {
-            'code': stock_code,
-            'price': _safe_float(d.get('最新价')),
-            'open': _safe_float(d.get('今开')),
-            'high': _safe_float(d.get('最高')),
-            'low': _safe_float(d.get('最低')),
-            'yesterday_close': _safe_float(d.get('昨收')),
-            'change_pct': _safe_float(d.get('涨跌幅')),
-            'volume': _safe_float(d.get('成交量')),
-            'amount': _safe_float(d.get('成交额')),
-        }
-        logger.debug(f"[{stock_code}] 实时行情: price={result.get('price')}, change_pct={result.get('change_pct')}%")
-        return result
-    except Exception as e:
-        logger.error(f"[{stock_code}] 实时行情获取失败: {type(e).__name__}: {e}")
-        return {}
-
-
 # ==================== 6. 市场概况（指数+情绪+成交量） ====================
 
 def get_index_realtime():
@@ -540,6 +503,8 @@ def get_market_volume_compare():
         dict: {'today_amount': 11867, 'yesterday_amount': 10789, 'change_pct': 10.0, 'is_fangliang': True}
     """
     import requests
+    from core.storage import get_index_amount_before_date
+    from datetime import datetime
 
     try:
         # 从腾讯接口获取中证全指实时成交额
@@ -549,22 +514,10 @@ def get_market_volume_compare():
         parts = resp.text.split('=')[1].strip('"').split('~')
         today_amount = _safe_float(parts[37]) / 10000  # 万元转亿元
 
-        # 获取历史数据（昨日成交额）
-        url2 = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000985,day,,,5,qfq'
-        resp2 = requests.get(url2, timeout=10)
-        data2 = resp2.json()
-        day_data = data2['data']['sh000985'].get('day', [])
-
-        # 用成交量比例估算昨日成交额
-        if len(day_data) >= 2:
-            today_vol = _safe_float(day_data[-1][5])
-            yesterday_vol = _safe_float(day_data[-2][5])
-            if today_vol > 0:
-                yesterday_amount = today_amount * (yesterday_vol / today_vol)
-            else:
-                yesterday_amount = today_amount
-        else:
-            yesterday_amount = today_amount
+        # 通过storage层获取昨日实际成交额
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        yesterday_raw = get_index_amount_before_date('000985', today_str)
+        yesterday_amount = yesterday_raw / 1e8 if yesterday_raw > 0 else today_amount  # 元转亿元
 
         today_yi = round(today_amount, 0)
         yesterday_yi = round(yesterday_amount, 0)

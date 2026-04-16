@@ -1128,6 +1128,33 @@ def get_adx_scores_by_date(calc_date, min_score=None, limit=None):
         conn.close()
 
 
+def get_index_amount_before_date(index_code, before_date):
+    """
+    获取指定指数在某日期之前的最近一个交易日成交额
+
+    参数:
+        index_code: 指数代码（如 '000985'）
+        before_date: 基准日期 'YYYY-MM-DD'
+
+    返回:
+        float: 成交额（元），无数据返回0
+    """
+    try:
+        conn = get_db_connection()
+        try:
+            row = conn.execute("""
+                SELECT amount FROM index_daily_kline
+                WHERE index_code = ? AND date < ?
+                ORDER BY date DESC LIMIT 1
+            """, (index_code, before_date)).fetchone()
+            return float(row['amount']) if row and row['amount'] else 0.0
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"获取指数成交额失败 [{index_code}]: {e}")
+        return 0.0
+
+
 def get_adx_history(code, days=30):
     """
     查询某只股票的 ADX 评分历史
