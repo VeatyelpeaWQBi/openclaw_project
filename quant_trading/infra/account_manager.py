@@ -140,7 +140,7 @@ class AccountManager:
             UPDATE account SET note = ? WHERE id = ?
         """, (f"{flow_type} {amount} ({now})", account_id))
 
-    def init_account(self, account_id: int, capital: float, nickname: str = None, simulator: int = 0) -> None:
+    def init_account(self, account_id: int, capital: float, nickname: str, simulator: int = 0) -> None:
         """
         初始化账户（如已存在则更新总资产）
 
@@ -167,7 +167,7 @@ class AccountManager:
         finally:
             conn.close()
 
-    def init_account_by_bind_id(self, bind_id, capital, nickname=None, simulator=0):
+    def init_account_by_bind_id(self, bind_id, capital, nickname, simulator=0):
         """
         通过bind_id初始化账户
         如bind_id已绑定，返回已有账户；否则使用雪花ID自动创建
