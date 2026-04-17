@@ -75,8 +75,8 @@ class PositionManager:
         }
 
     def _write_flow(self, conn, account_id, code, name, action, shares=0, price=0.0,
-                    amount=0, profit=0, fees=0, units_before=0, units_after=0,
-                    stop_price=0, reason=None):
+                    amount=0.0, profit=0.0, fees=0.0, units_before=0, units_after=0,
+                    stop_price=0.0, reason=None):
         """
         写入持仓流水记录
 
