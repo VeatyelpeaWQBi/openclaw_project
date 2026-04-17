@@ -5,9 +5,11 @@
 
 import sys
 import os
-import pandas as pd
 import sqlite3
 import logging
+
+import pandas as pd
+
 from datetime import datetime, timedelta
 
 from strategies.base import BaseStrategy

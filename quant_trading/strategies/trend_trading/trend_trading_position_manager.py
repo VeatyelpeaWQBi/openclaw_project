@@ -11,6 +11,7 @@
 """
 
 import logging
+
 from infra.position_manager import PositionManager
 from strategies.trend_trading.atr import calc_unit_size, calc_stop_price, calc_add_price, calc_exit_price
 

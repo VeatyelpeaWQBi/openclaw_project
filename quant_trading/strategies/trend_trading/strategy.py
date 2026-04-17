@@ -4,7 +4,9 @@
 """
 
 import logging
+
 from datetime import datetime, timedelta
+
 from strategies.base import BaseStrategy
 from core.storage import get_db_connection, get_trading_day_offset_from
 from infra.account_manager import AccountManager

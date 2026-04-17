@@ -9,13 +9,14 @@
 - ETF日K：新浪 (ak.fund_etf_hist_sina)
 """
 
-import akshare as ak
-import pandas as pd
+import os
 import time
 import random
-import os
-import traceback
 import logging
+import traceback
+
+import akshare as ak
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
