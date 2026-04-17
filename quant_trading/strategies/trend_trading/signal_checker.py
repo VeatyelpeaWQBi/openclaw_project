@@ -11,6 +11,7 @@
 """
 
 import logging
+
 from strategies.trend_trading.breakout import check_entry_signal, check_exit_signal
 from strategies.trend_trading.filters import trend_filter, is_eligible
 from strategies.trend_trading.atr import get_atr_value

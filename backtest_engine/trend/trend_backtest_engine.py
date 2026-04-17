@@ -12,7 +12,7 @@ import sys
 import os
 import logging
 import time as _time
-from datetime import datetime
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)

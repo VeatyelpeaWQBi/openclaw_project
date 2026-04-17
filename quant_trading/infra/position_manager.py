@@ -6,7 +6,9 @@
 
 import sqlite3
 import logging
+
 from datetime import datetime, timedelta
+
 from core.storage import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -72,7 +74,7 @@ class PositionManager:
             'total': round(total, 2),
         }
 
-    def _write_flow(self, conn, account_id, code, name, action, shares=0, price=0,
+    def _write_flow(self, conn, account_id, code, name, action, shares=0, price=0.0,
                     amount=0, profit=0, fees=0, units_before=0, units_after=0,
                     stop_price=0, reason=None):
         """
@@ -170,7 +172,7 @@ class PositionManager:
 
     def open_position(self, account_id, code, name, price, total_shares,
                       stop_price, next_add_price, shares_per_unit,
-                      account_manager=None, units=1, atr=0, entry_system=None, exit_price=0.0,
+                      account_manager=None, units=1, atr=0.0, entry_system=None, exit_price=0.0,
                       strategy_ctx=None):
         """
         开仓（纯CRUD，不做任何策略计算）
@@ -238,7 +240,7 @@ class PositionManager:
 
     def add_position(self, account_id, code, new_price, shares_per_unit,
                      new_stop_price, new_next_add_price,
-                     account_manager=None, atr=0):
+                     account_manager=None, atr=0.0):
         """
         加仓（纯CRUD，接受预计算的止损/加仓价）
         """

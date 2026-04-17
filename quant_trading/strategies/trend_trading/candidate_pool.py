@@ -4,6 +4,7 @@
 """
 
 import logging
+
 from core.storage import get_db_connection
 
 logger = logging.getLogger(__name__)

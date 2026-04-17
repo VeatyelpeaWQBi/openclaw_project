@@ -4,6 +4,7 @@
 """
 
 import logging
+
 from core.storage import get_db_connection, get_daily_data_from_sqlite
 
 logger = logging.getLogger(__name__)
