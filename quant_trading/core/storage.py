@@ -181,7 +181,7 @@ def ensure_dirs():
 
 
 
-def get_daily_data_from_sqlite(stock_code: str, days: int = None) -> pd.DataFrame:
+def get_daily_data_from_sqlite(stock_code: str, days: int) -> pd.DataFrame:
     """
     从SQLite获取单只股票日K数据
 
@@ -790,13 +790,14 @@ def get_index_daily_kline_max_date(index_code):
         return None
 
 
-def get_recent_trade_dates(trade_date, limit=5):
+def get_recent_trade_dates(trade_date, limit=5, inclusive=False):
     """
-    获取指定日期之前的最近N个交易日
+    获取指定日期之前（或含当日）的最近N个交易日
 
     参数:
         trade_date: 基准日期 'YYYY-MM-DD'
         limit: 回溯天数
+        inclusive: True=含当日(<=), False=不含当日(<)
 
     返回:
         list[str]: 交易日列表（从近到远）
@@ -804,11 +805,18 @@ def get_recent_trade_dates(trade_date, limit=5):
     try:
         conn = get_db_connection()
         try:
-            rows = conn.execute("""
-                SELECT trade_date FROM trade_calendar
-                WHERE trade_status = 1 AND trade_date < ?
-                ORDER BY trade_date DESC LIMIT ?
-            """, (trade_date, limit)).fetchall()
+            if inclusive:
+                rows = conn.execute("""
+                    SELECT trade_date FROM trade_calendar
+                    WHERE trade_status = 1 AND trade_date <= ?
+                    ORDER BY trade_date DESC LIMIT ?
+                """, (trade_date, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT trade_date FROM trade_calendar
+                    WHERE trade_status = 1 AND trade_date < ?
+                    ORDER BY trade_date DESC LIMIT ?
+                """, (trade_date, limit)).fetchall()
             return [r['trade_date'] for r in rows]
         finally:
             conn.close()
@@ -940,40 +948,6 @@ def get_stocks_daily_kline_on_date(codes, date):
     except Exception as e:
         logger.error(f"批量获取日K失败 [{date}]: {e}")
         return {}
-
-
-def get_stocks_prev_closes(codes, date):
-    """
-    批量获取多只股票指定日期的前一日收盘价
-
-    参数:
-        codes: list[str] 股票代码列表
-        date: 当日日期 'YYYY-MM-DD'
-
-    返回:
-        dict: {code: prev_close}
-    """
-    if not codes or not date:
-        return {}
-    prev_date = get_trading_day_offset_from(date, -1)
-    if not prev_date:
-        return {}
-    try:
-        conn = get_db_connection()
-        try:
-            placeholders = ','.join(['?'] * len(codes))
-            rows = conn.execute(f"""
-                SELECT code, close
-                FROM daily_kline
-                WHERE code IN ({placeholders}) AND date = ?
-            """, list(codes) + [prev_date]).fetchall()
-            return {r['code']: r['close'] for r in rows}
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.error(f"批量获取前日收盘价失败 [{prev_date}]: {e}")
-        return {}
-
 
 def is_trade_day(date_str):
     """
