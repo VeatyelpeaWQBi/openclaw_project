@@ -151,13 +151,14 @@ class RobotExecutor:
         for item in action_queue:
             action = item.get('action', '')
             code = item.get('code', '')
+            name = item.get('name', '')
 
             if action in ('开仓', '加仓') and code in latest_kline:
                 kline = latest_kline[code]
                 prev_close = prev_closes.get(code)
                 if prev_close and self._is_limit_up(code, kline, prev_close):
                     limit_price = self._get_limit_price(code, prev_close, up=True)
-                    logger.info(f"[{code}] 涨停({limit_price})，跳过{action}，等待次日")
+                    logger.info(f"[{code}{name}] 涨停({limit_price})，跳过{action}，等待次日")
                     skipped += 1
                     continue
 
