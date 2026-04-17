@@ -102,35 +102,37 @@ def _generate_summary(account_id, start_date, end_date,
 
 
 def _generate_monthly_table(monthly_records):
-    """月度收益表"""
+    """月度收益表（Markdown表格格式）"""
     if not monthly_records:
         return "**月度收益：** 无数据"
 
     lines = [
         "---",
         "**月度收益：**",
-        "```",
-        f"{'月份':<10} {'交易日':>5} {'月初资金':>12} {'月末资金':>12} {'收益':>12} {'收益率':>8} {'开':>3} {'加':>3} {'减':>3} {'平':>3}",
+        "",
+        "| 月份 | 交易日 | 月初资金 | 月末资金 | 收益 | 收益率 | 开 | 加 | 减 | 平 |",
+        "|:------|:------:|----------:|----------:|----------:|:------:|:---:|:---:|:---:|:---:|",
     ]
 
     for r in monthly_records:
         lines.append(
-            f"{r['year_month']:<10} {r['trade_days']:>5} "
-            f"{r['start_capital']:>12,.2f} {r['end_capital']:>12,.2f} "
-            f"{r['profit']:>+12,.2f} {r['profit_pct']:>+7.2f}% "
-            f"{r['open_count']:>3} {r['add_count']:>3} {r['reduce_count']:>3} {r['close_count']:>3}"
+            f"| {r['year_month']} | {r['trade_days']} | "
+            f"{r['start_capital']:,.2f} | {r['end_capital']:,.2f} | "
+            f"{r['profit']:>+,.2f} | {r['profit_pct']:>+,.2f}% | "
+            f"{r['open_count']} | {r['add_count']} | {r['reduce_count']} | {r['close_count']} |"
         )
 
-    lines.append("```")
     return '\n'.join(lines)
 
 
 def _generate_detail_log(daily_results):
-    """详细交易明细（时序排列）"""
+    """详细交易明细（Markdown表格格式）"""
     lines = [
         "---",
         "**交易明细：**",
-        "```",
+        "",
+        "| 日期 | 动作 | 股票 | 名称 | 数量 | 价格 | 成交额 | 盈亏 | 单位变化 |",
+        "|:------|:------|:------|:------|------:|------:|----------:|----------:|:----------|",
     ]
 
     trade_count = 0
@@ -161,23 +163,20 @@ def _generate_detail_log(daily_results):
                 'ADD': '加仓',
                 'REDUCE': '减仓',
                 'CLOSE': '平仓',
-                'CLOSE_STOP_LOSS': '平仓(止损)',
-                'CLOSE_TAKE_PROFIT': '平仓(止盈)',
+                'CLOSE_STOP_LOSS': '止损',
+                'CLOSE_TAKE_PROFIT': '止盈',
             }.get(action, action)
 
-            line = f"{date_str}  {action_cn:<10} {code} {name:<8} {shares:>5}股 @ {price:.2f}  成交{amount:>10,.2f}"
+            units_str = f"{units_before}→{units_after}" if units_after != units_before else "-"
+            profit_str = f"{profit:>+,.2f}" if action in ('REDUCE', 'CLOSE', 'CLOSE_STOP_LOSS', 'CLOSE_TAKE_PROFIT') else "-"
 
-            if action in ('REDUCE', 'CLOSE', 'CLOSE_STOP_LOSS', 'CLOSE_TAKE_PROFIT'):
-                line += f"  盈亏{profit:>+10,.2f}"
-
-            if units_after != units_before:
-                line += f"  单位{units_before}→{units_after}"
-
-            lines.append(line)
+            lines.append(
+                f"| {date_str} | {action_cn} | {code} | {name} | "
+                f"{shares} | {price:.2f} | {amount:,.2f} | {profit_str} | {units_str} |"
+            )
             trade_count += 1
 
     if trade_count == 0:
-        lines.append("  (无成交记录)")
+        lines.append("| (无成交记录) | | | | | | | | |")
 
-    lines.append("```")
     return '\n'.join(lines)
