@@ -217,8 +217,8 @@ class RobotExecutor:
         from strategies.trend_trading.atr import calc_stop_price, calc_add_price
 
         summary = self.account_manager.get_summary(account_id)
-        available = summary.get('available', 0) if summary else 0
-        capital = summary.get('total', 0) if summary else 0
+        available = summary.get('available_capital', 0) if summary else 0
+        capital = summary.get('total_capital', 0) if summary else 0
 
         if available <= 0 or capital <= 0:
             return action_queue, 0

@@ -31,8 +31,8 @@ def generate_report(signals, positions, account, candidates, today_opens=None):
     # === 账户概况 ===
     lines.append("")
     lines.append("💰 账户概况")
-    total = account.get('total', 0)
-    available = account.get('available', 0)
+    total = account.get('total_capital', 0)
+    available = account.get('available_capital', 0)
     realized = account.get('realized_profit', 0)
     used_pct = ((total - available) / total * 100) if total > 0 else 0
 
