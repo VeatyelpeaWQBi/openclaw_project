@@ -490,9 +490,9 @@ class TradeExecutor:
         if command.action == TradeAction.CLOSE_STOP_LOSS:
             reason = 'stop_loss'
         elif command.action == TradeAction.CLOSE_TAKE_PROFIT:
-            reason = 'exit'
+            reason = 'take_profit'
         else:
-            reason = command.reason if command.reason in ('stop_loss', 'exit') else 'exit'
+            reason = command.reason if command.reason in ('stop_loss', 'exit', 'take_profit') else 'exit'
 
         # 计算实际可卖股数（T+1限制）
         can_sell_shares = t1_status['available_shares'] if t1_status else pos['total_shares']
@@ -535,6 +535,7 @@ class TradeExecutor:
             units_before=pos['turtle_units'],
             units_after=0,
             message=f"平仓成功: {result['shares']}股@{price:.2f} 净利={result['net_profit']:.2f} ({result.get('cooldown_until', '')}冷却)",
+            close_reason=reason,  # 记录平仓真实原因
         )
 
     def _partial_close(self, account_id, command, pos, can_sell_shares, locked_shares, reason):
@@ -610,4 +611,5 @@ class TradeExecutor:
             units_before=pos['turtle_units'],
             units_after=new_units,
             message=f"部分平仓: {can_sell_shares}股@{price:.2f} 净利={net_profit:.2f} (锁定{locked_shares}股待下个交易日)",
+            close_reason=reason,
         )
