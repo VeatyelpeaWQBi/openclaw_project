@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timedelta
 
 from strategies.base import BaseStrategy
-from core.storage import get_db_connection, get_trading_day_offset_from
+from core.storage import get_db_connection, get_trading_day_offset_from, is_trade_day
 from infra.account_manager import AccountManager
 from strategies.trend_trading.trend_trading_position_manager import TrendTradingPositionManager
 from strategies.trend_trading.candidate_pool import CandidatePool
@@ -52,6 +52,17 @@ class TrendTradingStrategy(BaseStrategy):
         date_str = target_date or datetime.now().strftime('%Y-%m-%d')
         self._target_date = date_str
         logger.info(f"=== 趋势交易策略运行 — {date_str} ===")
+
+        # 实盘模式：检查是否交易日
+        if target_date is None:
+            if not is_trade_day(date_str):
+                logger.info(f"[{date_str}] 非交易日，实盘跳过运行")
+                return {
+                    'date_str': date_str,
+                    'accounts': [],
+                    'has_signal': False,
+                    'skip_reason': '非交易日',
+                }
 
         # Step 0: 查询所有活跃账户
         active_accounts = self.account_manager.get_all_active_accounts()

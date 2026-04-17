@@ -14,7 +14,7 @@ Robot Executor — 海龟机器人交易执行器
 import logging
 from datetime import datetime
 
-from core.storage import get_recent_trade_dates, get_stocks_daily_kline_on_date
+from core.storage import get_recent_trade_dates, get_stocks_daily_kline_on_date, get_stock_latest_close
 from infra.account_manager import AccountManager
 from strategies.trend_trading.trend_trading_executor import TrendTradingExecutor
 from strategies.trend_trading.atr import calc_unit_size, calc_stop_price, calc_add_price
@@ -81,6 +81,7 @@ class RobotExecutor:
     def _daily_settlement(self, account_id):
         """
         每日结算：更新 total_capital = available_capital + 持仓市值
+        停牌股票：回溯到最后有数据的日K收盘价
         """
         # 1. 获取 available_capital
         available = self.account_manager.get_available(account_id)
@@ -91,17 +92,31 @@ class RobotExecutor:
         # 3. 查询当日收盘价，计算持仓市值
         position_value = 0.0
         if positions:
-            codes = [pos['code'] for pos in positions]
             base_date = self.target_date or datetime.now().strftime('%Y-%m-%d')
             trade_dates = get_recent_trade_dates(base_date, limit=1, inclusive=True)
             if trade_dates:
                 latest_date = trade_dates[0]
+                codes = [pos['code'] for pos in positions]
                 klines = get_stocks_daily_kline_on_date(codes, latest_date)
+
                 for pos in positions:
                     code = pos['code']
+                    shares = pos['total_shares']
+
+                    # 当天有数据：直接用收盘价
                     if code in klines:
                         latest_close = float(klines[code]['close'])
-                        position_value += pos['total_shares'] * latest_close
+                        position_value += shares * latest_close
+                    else:
+                        # 停牌：回溯最近有数据的日K收盘价
+                        close_price = get_stock_latest_close(code, latest_date)
+                        if close_price:
+                            position_value += shares * close_price
+                            logger.debug(f"[{code}] 停牌，用回溯收盘价 {close_price:.2f}")
+                        else:
+                            # 无任何数据：用持仓成本价估值
+                            position_value += shares * pos['avg_cost']
+                            logger.warning(f"[{code}] 无日K数据，用成本价估值 {pos['avg_cost']:.2f}")
 
         # 4. 更新 total_capital
         total_capital = available + position_value
