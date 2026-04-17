@@ -36,7 +36,8 @@ class PositionManager:
             raise ValueError("account_id 不能为空，请传入账户ID")
 
     # 费率常量
-    COMMISSION_RATE = 0.00012    # 佣金费率 万1.2（免五，无最低限制）
+    COMMISSION_RATE = 0.00012    # 佣金费率 万1.2
+    COMMISSION_MIN = 5.0         # 佣金最低5元
     STAMP_TAX_RATE = 0.0005      # 印花税 万分之五（仅卖出）
     TRANSFER_FEE_RATE = 0.00001  # 过户费 万分之0.1
 
@@ -56,8 +57,8 @@ class PositionManager:
                 'total': 总费用
             }
         """
-        # 佣金：万1.2，免五账户（无最低限制）
-        commission = amount * self.COMMISSION_RATE
+        # 佣金：万1.2，最低5元
+        commission = max(amount * self.COMMISSION_RATE, self.COMMISSION_MIN)
 
         # 印花税：仅卖出时收取
         stamp_tax = amount * self.STAMP_TAX_RATE if is_sell else 0.0
