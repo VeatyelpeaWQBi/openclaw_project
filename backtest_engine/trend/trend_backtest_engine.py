@@ -113,6 +113,8 @@ class TrendBacktestEngine:
         monthly_acc = {}  # {year_month: {actions_count, start_capital, ...}}
 
         for i, trade_date in enumerate(trade_dates):
+            logger.info(f"进入交易日: {trade_date}")
+
             # 切片K线数据（截至当日）
             kline_data = {}
             for code, df in all_data.items():
@@ -305,19 +307,19 @@ class TrendBacktestEngine:
         if account_summary:
             acc['end_capital'] = account_summary.get('total_capital', 0)
 
-        # 统计成功执行的动作次数（从 robot_result.results，非 action_queue）
+        # 统计成功执行的动作次数（action字段是中文值）
         robot_result = result.get('robot_result', {})
         for r in robot_result.get('results', []):
             if not r.get('success'):
                 continue
             action = r.get('action', '')
-            if action == 'OPEN':
+            if action == '开仓':
                 acc['open_count'] += 1
-            elif action == 'ADD':
+            elif action == '加仓':
                 acc['add_count'] += 1
-            elif action == 'REDUCE':
+            elif action == '减仓':
                 acc['reduce_count'] += 1
-            elif action in ('CLOSE', 'CLOSE_STOP_LOSS', 'CLOSE_TAKE_PROFIT'):
+            elif action in ('平仓', '止损平仓', '止盈平仓'):
                 acc['close_count'] += 1
 
     def _get_account_balance(self, account_id):

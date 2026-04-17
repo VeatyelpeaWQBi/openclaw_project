@@ -103,6 +103,7 @@ class TradeResult:
         position_after: 操作后持仓快照
         message: 人可读的执行描述
         error: 错误信息（失败时）
+        close_reason: 平仓原因（仅平仓时有值：stop_loss/exit/take_profit）
     """
     success: bool
     status: TradeStatus
@@ -117,6 +118,7 @@ class TradeResult:
     position_after: Optional[dict] = None
     message: str = ""
     error: str = ""
+    close_reason: str = ""  # 平仓原因：stop_loss/exit/take_profit
 
     def __str__(self):
         icon = "✅" if self.success else ("⏭️" if self.status == TradeStatus.SKIPPED else "❌")
@@ -128,6 +130,8 @@ class TradeResult:
             'success': self.success,
             'status': self.status.value,
             'action': self.command.action.value,
+            'reason': self.command.reason,
+            'close_reason': self.close_reason,  # 平仓真实原因
             'code': self.command.code,
             'name': self.command.name,
             'executed_shares': self.executed_shares,

@@ -10,6 +10,8 @@
 import logging
 from datetime import datetime
 
+from core.storage import get_db_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,8 +38,8 @@ def generate_backtest_report(account_id, start_date, end_date,
 
     parts.append("")
 
-    # 详细交易明细
-    parts.append(_generate_detail_log(daily_results))
+    # 详细交易明细（从position_flow表读取）
+    parts.append(_generate_detail_from_flow(account_id))
 
     return '\n'.join(parts)
 
@@ -125,8 +127,20 @@ def _generate_monthly_table(monthly_records):
     return '\n'.join(lines)
 
 
-def _generate_detail_log(daily_results):
-    """详细交易明细（Markdown表格格式）"""
+def _generate_detail_from_flow(account_id):
+    """从position_flow表读取交易明细"""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("""
+            SELECT created_at, code, name, action, shares, price, amount, profit,
+                   units_before, units_after
+            FROM position_flow
+            WHERE account_id = ?
+            ORDER BY created_at
+        """, (account_id,)).fetchall()
+    finally:
+        conn.close()
+
     lines = [
         "---",
         "**交易明细：**",
@@ -136,45 +150,27 @@ def _generate_detail_log(daily_results):
     ]
 
     trade_count = 0
-    for dr in daily_results:
-        date_str = dr.get('date_str', '')
-        robot_result = dr.get('robot_result')
-        if not robot_result:
-            continue
+    for r in rows:
+        date_str = r['created_at'][:10] if r['created_at'] else ''
+        action = r['action'] or ''
+        code = r['code'] or ''
+        name = r['name'] or ''
+        shares = r['shares'] or 0
+        price = r['price'] or 0
+        amount = r['amount'] or 0
+        profit = r['profit'] or 0
+        units_before = r['units_before'] or 0
+        units_after = r['units_after'] or 0
 
-        results = robot_result.get('results', [])
-        for r in results:
-            if not r.get('success'):
-                continue
+        units_str = f"{units_before}→{units_after}" if units_after != units_before else "-"
+        # 减仓和平仓类显示盈亏
+        profit_str = f"{profit:>+,.2f}" if action in ('减仓', '清仓止损', '清仓止盈', '部分平仓') else "-"
 
-            action = r.get('action', '')
-            code = r.get('code', '')
-            name = r.get('name', '')
-            shares = r.get('executed_shares', 0)
-            price = r.get('executed_price', 0)
-            amount = r.get('executed_amount', 0)
-            profit = r.get('profit', 0)
-            units_before = r.get('units_before', 0)
-            units_after = r.get('units_after', 0)
-
-            # 动作中文映射
-            action_cn = {
-                'OPEN': '开仓',
-                'ADD': '加仓',
-                'REDUCE': '减仓',
-                'CLOSE': '平仓',
-                'CLOSE_STOP_LOSS': '止损',
-                'CLOSE_TAKE_PROFIT': '止盈',
-            }.get(action, action)
-
-            units_str = f"{units_before}→{units_after}" if units_after != units_before else "-"
-            profit_str = f"{profit:>+,.2f}" if action in ('REDUCE', 'CLOSE', 'CLOSE_STOP_LOSS', 'CLOSE_TAKE_PROFIT') else "-"
-
-            lines.append(
-                f"| {date_str} | {action_cn} | {code} | {name} | "
-                f"{shares} | {price:.2f} | {amount:,.2f} | {profit_str} | {units_str} |"
-            )
-            trade_count += 1
+        lines.append(
+            f"| {date_str} | {action} | {code} | {name} | "
+            f"{shares} | {price:.2f} | {amount:,.2f} | {profit_str} | {units_str} |"
+        )
+        trade_count += 1
 
     if trade_count == 0:
         lines.append("| (无成交记录) | | | | | | | | |")

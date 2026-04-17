@@ -880,6 +880,101 @@ def get_trading_day_offset_from(base_date, offset):
         return None
 
 
+def get_latest_trade_date():
+    """
+    获取最新交易日
+
+    返回:
+        str or None: 最新交易日 'YYYY-MM-DD'
+    """
+    try:
+        conn = get_db_connection()
+        try:
+            row = conn.execute("""
+                SELECT trade_date FROM trade_calendar
+                WHERE trade_status = 1
+                ORDER BY trade_date DESC LIMIT 1
+            """).fetchone()
+            return row['trade_date'] if row else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"获取最新交易日失败: {e}")
+        return None
+
+
+def get_stocks_daily_kline_on_date(codes, date):
+    """
+    批量获取多只股票指定日期的日K数据
+
+    参数:
+        codes: list[str] 股票代码列表
+        date: 日期 'YYYY-MM-DD'
+
+    返回:
+        dict: {code: {date, open, high, low, close}}
+    """
+    if not codes or not date:
+        return {}
+    try:
+        conn = get_db_connection()
+        try:
+            placeholders = ','.join(['?'] * len(codes))
+            rows = conn.execute(f"""
+                SELECT code, date, open, high, low, close
+                FROM daily_kline
+                WHERE code IN ({placeholders}) AND date = ?
+            """, list(codes) + [date]).fetchall()
+            result = {}
+            for r in rows:
+                result[r['code']] = {
+                    'date': str(r['date'])[:10],
+                    'open': r['open'],
+                    'high': r['high'],
+                    'low': r['low'],
+                    'close': r['close'],
+                }
+            return result
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"批量获取日K失败 [{date}]: {e}")
+        return {}
+
+
+def get_stocks_prev_closes(codes, date):
+    """
+    批量获取多只股票指定日期的前一日收盘价
+
+    参数:
+        codes: list[str] 股票代码列表
+        date: 当日日期 'YYYY-MM-DD'
+
+    返回:
+        dict: {code: prev_close}
+    """
+    if not codes or not date:
+        return {}
+    prev_date = get_trading_day_offset_from(date, -1)
+    if not prev_date:
+        return {}
+    try:
+        conn = get_db_connection()
+        try:
+            placeholders = ','.join(['?'] * len(codes))
+            rows = conn.execute(f"""
+                SELECT code, close
+                FROM daily_kline
+                WHERE code IN ({placeholders}) AND date = ?
+            """, list(codes) + [prev_date]).fetchall()
+            return {r['code']: r['close'] for r in rows}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"批量获取前日收盘价失败 [{prev_date}]: {e}")
+        return {}
+
+
 def is_trade_day(date_str):
     """
     判断指定日期是否为交易日
