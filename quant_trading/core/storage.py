@@ -949,6 +949,34 @@ def get_stocks_daily_kline_on_date(codes, date):
         logger.error(f"批量获取日K失败 [{date}]: {e}")
         return {}
 
+
+def get_stock_latest_close(code, date):
+    """
+    获取股票最近的收盘价（向前回溯）
+
+    参数:
+        code: 股票代码
+        date: 基准日期 'YYYY-MM-DD'
+
+    返回:
+        float: 最近收盘价，无数据返回None
+    """
+    try:
+        conn = get_db_connection()
+        try:
+            row = conn.execute("""
+                SELECT close FROM daily_kline
+                WHERE code = ? AND date <= ?
+                ORDER BY date DESC LIMIT 1
+            """, (code, date)).fetchone()
+            return float(row['close']) if row and row['close'] else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"获取最近收盘价失败 [{code}]: {e}")
+        return None
+
+
 def is_trade_day(date_str):
     """
     判断指定日期是否为交易日
