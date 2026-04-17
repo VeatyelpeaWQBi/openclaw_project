@@ -49,8 +49,11 @@ class RobotExecutor:
           1. 涨跌停拦截（涨停不买，跌停不卖）
           2. 资金校验
           3. 委托给 TrendTradingExecutor 执行
+          4. 每日结算：更新 total_capital = available + 持仓市值
         """
         if not action_queue:
+            # 无动作也要结算
+            self._daily_settlement(account_id)
             return {
                 'account_id': account_id, 'total': 0,
                 'success': 0, 'failed': 0, 'skipped': 0,
@@ -70,7 +73,40 @@ class RobotExecutor:
         result['skipped'] = result.get('skipped', 0) + skipped + size_skipped
         result['total'] = result.get('total', 0) + skipped + size_skipped
 
+        # 4. 每日结算
+        self._daily_settlement(account_id)
+
         return result
+
+    def _daily_settlement(self, account_id):
+        """
+        每日结算：更新 total_capital = available_capital + 持仓市值
+        """
+        # 1. 获取 available_capital
+        available = self.account_manager.get_available(account_id)
+
+        # 2. 获取持仓列表
+        positions = self.tt_executor.pm.get_active_positions(account_id)
+
+        # 3. 查询当日收盘价，计算持仓市值
+        position_value = 0.0
+        if positions:
+            codes = [pos['code'] for pos in positions]
+            base_date = self.target_date or datetime.now().strftime('%Y-%m-%d')
+            trade_dates = get_recent_trade_dates(base_date, limit=1, inclusive=True)
+            if trade_dates:
+                latest_date = trade_dates[0]
+                klines = get_stocks_daily_kline_on_date(codes, latest_date)
+                for pos in positions:
+                    code = pos['code']
+                    if code in klines:
+                        latest_close = float(klines[code]['close'])
+                        position_value += pos['total_shares'] * latest_close
+
+        # 4. 更新 total_capital
+        total_capital = available + position_value
+        self.account_manager.update_total_capital(account_id, total_capital)
+        logger.info(f"[账户{account_id}] 每日结算: available={available:.2f}, 持仓市值={position_value:.2f}, total={total_capital:.2f}")
 
     def _check_limit_up_down(self, action_queue):
         """

@@ -197,6 +197,7 @@ class PositionManager:
         trade_amount = price * total_shares
         fees = self._calc_fees(trade_amount, is_sell=False)
         total_cost = trade_amount + fees['total']
+        avg_cost = total_cost / total_shares  # 券商逻辑：成本含买入费用
 
         # 检查可用资金
         if account_manager and account_manager.get_available(account_id) < total_cost:
@@ -213,7 +214,7 @@ class PositionManager:
                  last_add_price, current_stop, next_add_price, exit_price, turtle_atr_value,
                  shares_per_unit, turtle_entry_system, last_buy_date, last_buy_shares, opened_at, updated_at)
                 VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (account_id, code, name, units, total_shares, price, price, price,
+            """, (account_id, code, name, units, total_shares, avg_cost, price, price,
                   stop_price, next_add_price, exit_price, atr, shares_per_unit, entry_system,
                   now[:10], total_shares, now, now))
             pos_id = cursor.lastrowid
@@ -233,7 +234,7 @@ class PositionManager:
 
         return {
             'id': pos_id, 'code': code, 'name': name, 'turtle_units': units,
-            'total_shares': total_shares, 'avg_cost': price, 'entry_price': price,
+            'total_shares': total_shares, 'avg_cost': avg_cost, 'entry_price': price,
             'current_stop': stop_price, 'next_add_price': next_add_price,
             'turtle_atr_value': atr, 'shares_per_unit': shares_per_unit, 'fees': fees,
         }
@@ -266,20 +267,22 @@ class PositionManager:
         old_units = pos['turtle_units']
         now = self._now()
 
+        # 新持仓成本 = (旧成本 + 新成交额 + 新买入费用) / 总股数
+        # 券商逻辑：每次成本变动都加上交易磨损
         conn = get_db_connection()
         try:
             conn.execute("""
                 UPDATE positions SET
                     turtle_units = turtle_units + 1,
                     total_shares = total_shares + ?,
-                    avg_cost = (avg_cost * total_shares + ? * ?) / (total_shares + ?),
+                    avg_cost = (avg_cost * total_shares + ? * ? + ?) / (total_shares + ?),
                     last_add_price = ?,
                     current_stop = ?,
                     next_add_price = ?,
                     turtle_atr_value = ?, last_buy_date = ?, last_buy_shares = ?, updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
             """, (
-                shares_per_unit, new_price, shares_per_unit, shares_per_unit,
+                shares_per_unit, new_price, shares_per_unit, fees['total'], shares_per_unit,
                 new_price, new_stop_price, new_next_add_price,
                 atr, now[:10], shares_per_unit, now, account_id, code
             ))
@@ -304,6 +307,7 @@ class PositionManager:
                         account_manager=None) -> dict | None:
         """
         减仓（纯CRUD，卖出指定股数）
+        券商逻辑：减仓后摊薄成本价
 
         参数:
             account_id: 账户ID
@@ -320,10 +324,22 @@ class PositionManager:
         if shares_to_sell <= 0:
             return None
 
+        old_avg_cost = float(pos['avg_cost'])
+        old_total_shares = int(pos['total_shares'])
+
         trade_amount = sell_price * shares_to_sell
         fees = self._calc_fees(trade_amount, is_sell=True)
         net_proceeds = trade_amount - fees['total']
-        profit = (sell_price - pos['avg_cost']) * shares_to_sell - fees['total']
+        sell_cost = old_avg_cost * shares_to_sell
+        realized_profit = net_proceeds - sell_cost  # 已实现盈利
+
+        remaining_shares = old_total_shares - shares_to_sell
+        remaining_cost = old_avg_cost * remaining_shares
+        diluted_cost = remaining_cost - realized_profit  # 摊薄成本
+        new_avg_cost = max(0.0, diluted_cost / remaining_shares) if remaining_shares > 0 else 0.0
+
+        # 标准盈亏计算（用于flow记录）
+        profit = (sell_price - old_avg_cost) * shares_to_sell - fees['total']
 
         now = self._now()
         conn = get_db_connection()
@@ -332,20 +348,19 @@ class PositionManager:
                 UPDATE positions SET
                     total_shares = total_shares - ?,
                     turtle_units = turtle_units - 1,
+                    avg_cost = ?,
                     has_reduced = 1,
                     updated_at = ?
                 WHERE account_id = ? AND code = ? AND status = 'HOLDING'
-            """, (shares_to_sell, now, account_id, code))
+            """, (shares_to_sell, new_avg_cost, now, account_id, code))
 
-            new_total = pos['total_shares'] - shares_to_sell
-            # units 由调用方负责更新（如果有需要）
             self._write_flow(conn, account_id, code, pos['name'], '减仓',
                             shares=shares_to_sell, price=sell_price, amount=trade_amount,
                             profit=round(profit, 2), fees=fees['total'],
-                            units_before=pos['turtle_units'], units_after=pos['turtle_units'])
+                            units_before=pos['turtle_units'], units_after=pos['turtle_units'] - 1)
 
             conn.commit()
-            logger.info(f"[{code}] 减仓: {shares_to_sell}股@{sell_price} 净盈亏={profit:.2f}")
+            logger.info(f"[{code}] 减仓: {shares_to_sell}股@{sell_price} 净盈亏={profit:.2f} 摊薄成本={new_avg_cost:.2f}")
         finally:
             conn.close()
 

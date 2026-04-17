@@ -306,6 +306,7 @@ class AccountManager:
     def on_sell(self, account_id: int, proceeds: float, profit: float) -> None:
         """
         卖出时增加可用资金+记录盈亏
+        注意：total_capital 由回测引擎每日结束统一重算（available + 持仓市值）
 
         参数:
             account_id: 账户ID
@@ -317,12 +318,11 @@ class AccountManager:
             now = self._now()
             conn.execute("""
                 UPDATE account SET
-                    total_capital = total_capital + ?,
                     available_capital = available_capital + ?,
                     realized_profit = realized_profit + ?,
                     updated_at = ?
                 WHERE id = ? AND active = 1
-            """, (proceeds, proceeds, profit, now, account_id))
+            """, (proceeds, profit, now, account_id))
             conn.commit()
             logger.info(f"[账户{account_id}] 卖出，盈亏: {profit}")
         finally:
@@ -664,5 +664,26 @@ class AccountManager:
             """, params)
             conn.commit()
             logger.info(f"[账户{account_id}] 仓位配置更新: unit_pct={unit_pct}, max_holdings={max_holdings}")
+        finally:
+            conn.close()
+
+    # ==================== 回测引擎调用 ====================
+
+    def update_total_capital(self, account_id, total_capital):
+        """
+        更新total_capital（回测引擎每天结束时调用）
+
+        参数:
+            account_id: 账户ID
+            total_capital: 新的总资产值（available + 持仓市值）
+        """
+        conn = get_db_connection()
+        try:
+            now = self._now()
+            conn.execute("""
+                UPDATE account SET total_capital = ?, updated_at = ? WHERE id = ?
+            """, (total_capital, now, account_id))
+            conn.commit()
+            logger.info(f"[账户{account_id}] total_capital更新: {total_capital:.2f}")
         finally:
             conn.close()
