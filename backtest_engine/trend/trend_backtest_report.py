@@ -87,23 +87,46 @@ def _generate_summary(account_id, start_date, end_date,
     # 按年汇总（如果跨年）
     years = set(r['year_month'][:4] for r in monthly_records)
     if len(years) > 1:
-        lines.append("")
-        lines.append("---")
-        lines.append("**年度汇总：**")
-        lines.append("```")
-        lines.append(f"{'年份':<8} {'收益':>12} {'收益率':>8} {'交易日':>6} {'开':>4} {'加':>4} {'减':>4} {'平':>4}")
+        # 收集年度数据
+        year_data = []
         for year in sorted(years):
             year_records = [r for r in monthly_records if r['year_month'].startswith(year)]
             y_profit = sum(r['profit'] for r in year_records)
             y_start = year_records[0].get('start_capital', 0) if year_records else 0
+            y_end = year_records[-1].get('end_capital', 0) if year_records else 0
             y_pct = (y_profit / y_start * 100) if y_start > 0 else 0
             y_days = sum(r['trade_days'] for r in year_records)
             y_open = sum(r['open_count'] for r in year_records)
             y_add = sum(r['add_count'] for r in year_records)
             y_reduce = sum(r['reduce_count'] for r in year_records)
             y_close = sum(r['close_count'] for r in year_records)
-            lines.append(f"{year:<8} {y_profit:>+12,.2f} {y_pct:>+7.2f}% {y_days:>6} {y_open:>4} {y_add:>4} {y_reduce:>4} {y_close:>4}")
-        lines.append("```")
+            year_data.append({
+                'year': year,
+                'trade_days': y_days,
+                'start_capital': y_start,
+                'end_capital': y_end,
+                'profit': y_profit,
+                'profit_pct': y_pct,
+                'open_count': y_open,
+                'add_count': y_add,
+                'reduce_count': y_reduce,
+                'close_count': y_close,
+            })
+        
+        # 年度汇总表格
+        lines.append("")
+        lines.append("---")
+        lines.append("**年度汇总：**")
+        lines.append("")
+        lines.append("| 年份 | 交易日 | 年初资金 | 年末资金 | 收益 | 收益率 | 开 | 加 | 减 | 平 |")
+        lines.append("|:------|:------:|----------:|----------:|----------:|:------:|:---:|:---:|:---:|:---:|")
+        for y in year_data:
+            lines.append(
+                f"| {y['year']} | {y['trade_days']} | "
+                f"{y['start_capital']:,.2f} | {y['end_capital']:,.2f} | "
+                f"{y['profit']:>+,.2f} | {y['profit_pct']:>+,.2f}% | "
+                f"{y['open_count']} | {y['add_count']} | {y['reduce_count']} | {y['close_count']} |"
+            )
 
     return '\n'.join(lines)
 
