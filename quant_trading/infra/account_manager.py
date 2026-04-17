@@ -347,11 +347,7 @@ class AccountManager:
             ).fetchone()
             if row is None:
                 return None
-            d = self._row_to_dict(row)
-            # 兼容旧版key
-            d['total'] = d['total_capital']
-            d['available'] = d['available_capital']
-            return d
+            return self._row_to_dict(row)
         finally:
             conn.close()
 

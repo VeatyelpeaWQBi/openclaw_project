@@ -185,7 +185,7 @@ class TradeExecutor:
 
         # 检查3：各持仓整除检查 + 实际仓位占比预警
         account_summary = self.account_manager.get_summary(account_id)
-        total_capital = account_summary.get('total', 0) if account_summary else 0
+        total_capital = account_summary.get('total_capital', 0) if account_summary else 0
 
         for pos in positions:
             units = pos.get('turtle_units', 0)

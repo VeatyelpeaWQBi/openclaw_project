@@ -100,7 +100,7 @@ class TrendTradingExecutor:
         """开仓（turtle增强）"""
         # 获取账户资金
         summary = self.account_manager.get_summary(account_id)
-        capital = summary.get('total', 0) if summary else 0
+        capital = summary.get('total_capital', 0) if summary else 0
         if capital <= 0:
             return TradeResult(
                 success=False, status=TradeStatus.FAILED,
