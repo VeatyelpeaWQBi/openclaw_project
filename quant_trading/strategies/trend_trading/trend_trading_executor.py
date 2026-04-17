@@ -319,7 +319,7 @@ class TrendTradingExecutor:
                 reason = item.get('reason', '')
                 if reason == 'stop_loss':
                     action = TradeAction.CLOSE_STOP_LOSS
-                elif reason == 'exit':
+                elif reason == 'take_profit':
                     action = TradeAction.CLOSE_TAKE_PROFIT
 
             cmd = TradeCommand(
