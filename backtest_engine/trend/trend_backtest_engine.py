@@ -178,12 +178,6 @@ class TrendBacktestEngine:
         返回:
             dict: 该账户当日的执行结果
         """
-        # 设置回测日期
-        account_manager.set_target_date(trade_date)
-        position_manager.set_target_date(trade_date)
-        signal_checker.set_target_date(trade_date)
-        robot.set_target_date(trade_date)
-
         # 查询账户
         account = account_manager.get_summary(account_id)
         if not account:
@@ -212,7 +206,7 @@ class TrendBacktestEngine:
             }
 
         # 冷却释放
-        released = position_manager.check_cooldown_release(account_id)
+        released = position_manager.check_cooldown_release(account_id, target_date=trade_date)
 
         # 加载持仓
         positions = position_manager.get_active_positions(account_id)
@@ -224,7 +218,7 @@ class TrendBacktestEngine:
 
         # 模拟账户：signals 即 action_queue
         action_queue = signals
-        robot_result = robot.execute_signals(account_id, action_queue)
+        robot_result = robot.execute_signals(account_id, action_queue, target_date=trade_date)
 
         return {
             'account_id': account_id,

@@ -28,20 +28,8 @@ class RobotExecutor:
     def __init__(self):
         self.tt_executor = TrendTradingExecutor()
         self.account_manager = AccountManager()
-        self.target_date = None
 
-    def set_target_date(self, target_date):
-        """传递 target_date 给整个执行链"""
-        self.target_date = target_date
-        self.account_manager.set_target_date(target_date)
-        self.tt_executor.pm.set_target_date(target_date)
-        self.tt_executor.tt_pm.set_target_date(target_date)
-        self.tt_executor.account_manager.set_target_date(target_date)
-        self.tt_executor.trade_executor.set_target_date(target_date)
-        self.tt_executor.trade_executor.position_manager.set_target_date(target_date)
-        self.tt_executor.trade_executor.account_manager.set_target_date(target_date)
-
-    def execute_signals(self, account_id, action_queue: list) -> dict:
+    def execute_signals(self, account_id, action_queue: list, target_date=None) -> dict:
         """
         执行信号检测器输出的动作队列
 
@@ -50,10 +38,15 @@ class RobotExecutor:
           2. 资金校验
           3. 委托给 TrendTradingExecutor 执行
           4. 每日结算：更新 total_capital = available + 持仓市值
+
+        参数:
+            account_id: 账户ID
+            action_queue: 动作队列
+            target_date: 业务日期（回测时传入）
         """
         if not action_queue:
             # 无动作也要结算
-            self._daily_settlement(account_id)
+            self._daily_settlement(account_id, target_date=target_date)
             return {
                 'account_id': account_id, 'total': 0,
                 'success': 0, 'failed': 0, 'skipped': 0,
@@ -61,27 +54,31 @@ class RobotExecutor:
             }
 
         # 1. 涨跌停拦截
-        action_queue, skipped = self._check_limit_up_down(action_queue)
+        action_queue, skipped = self._check_limit_up_down(action_queue, target_date=target_date)
 
         # 2. 资金校验
-        action_queue, size_skipped = self._adjust_open_sizes(account_id, action_queue)
+        action_queue, size_skipped = self._adjust_open_sizes(account_id, action_queue, target_date=target_date)
 
         # 3. 执行
-        result = self.tt_executor.execute_signals(account_id, action_queue)
+        result = self.tt_executor.execute_signals(account_id, action_queue, target_date=target_date)
 
         # 合并跳过的计数
         result['skipped'] = result.get('skipped', 0) + skipped + size_skipped
         result['total'] = result.get('total', 0) + skipped + size_skipped
 
         # 4. 每日结算
-        self._daily_settlement(account_id)
+        self._daily_settlement(account_id, target_date=target_date)
 
         return result
 
-    def _daily_settlement(self, account_id):
+    def _daily_settlement(self, account_id, target_date=None):
         """
         每日结算：更新 total_capital = available_capital + 持仓市值
         停牌股票：回溯到最后有数据的日K收盘价
+
+        参数:
+            account_id: 账户ID
+            target_date: 业务日期（回测时传入）
         """
         # 1. 获取 available_capital
         available = self.account_manager.get_available(account_id)
@@ -92,7 +89,7 @@ class RobotExecutor:
         # 3. 查询当日收盘价，计算持仓市值
         position_value = 0.0
         if positions:
-            base_date = self.target_date or datetime.now().strftime('%Y-%m-%d')
+            base_date = target_date or datetime.now().strftime('%Y-%m-%d')
             trade_dates = get_recent_trade_dates(base_date, limit=1, inclusive=True)
             if trade_dates:
                 latest_date = trade_dates[0]
@@ -123,12 +120,16 @@ class RobotExecutor:
         self.account_manager.update_total_capital(account_id, total_capital)
         logger.info(f"[账户{account_id}] 每日结算: available={available:.2f}, 持仓市值={position_value:.2f}, total={total_capital:.2f}")
 
-    def _check_limit_up_down(self, action_queue):
+    def _check_limit_up_down(self, action_queue, target_date=None):
         """
         涨跌停拦截
 
         买动作（开仓/加仓）+ 涨停 → 跳过
         卖动作（止损/退出/减仓）+ 跌停 → 跳过
+
+        参数:
+            action_queue: 动作队列
+            target_date: 业务日期（回测时传入）
 
         返回: (过滤后的action_queue, 跳过数量)
         """
@@ -145,7 +146,7 @@ class RobotExecutor:
             return action_queue, 0
 
         # 查询 <= target_date 的最后两个交易日
-        base_date = self.target_date or datetime.now().strftime('%Y-%m-%d')
+        base_date = target_date or datetime.now().strftime('%Y-%m-%d')
         trade_dates = get_recent_trade_dates(base_date, limit=2, inclusive=True)
 
         if len(trade_dates) < 2:
@@ -227,9 +228,14 @@ class RobotExecutor:
         limit_price = round(prev_close * (1 - pct), decimals)
         return kline['low'] == kline['close'] and kline['close'] - tolerance <= limit_price
 
-    def _adjust_open_sizes(self, account_id, action_queue):
+    def _adjust_open_sizes(self, account_id, action_queue, target_date=None):
         """
         对开仓/加仓动作计算手数 + 资金可购性校验
+
+        参数:
+            account_id: 账户ID
+            action_queue: 动作队列
+            target_date: 业务日期（回测时传入）
 
         资金不足时直接跳过（不做手数降级）
         返回: (过滤后的队列, 跳过数量)
@@ -244,7 +250,7 @@ class RobotExecutor:
         # 获取单日开仓上限
         config = self.account_manager.get_position_config(account_id)
         max_daily_open = config.get('max_daily_open', 2)
-        today_opens = self.tt_executor.pm.count_today_opens(account_id)
+        today_opens = self.tt_executor.pm.count_today_opens(account_id, target_date=target_date)
         opens_in_batch = 0  # 本批次已接受的开仓数
 
         filtered_queue = []

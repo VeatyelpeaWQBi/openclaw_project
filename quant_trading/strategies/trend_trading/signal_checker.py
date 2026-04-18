@@ -23,12 +23,6 @@ logger = logging.getLogger(__name__)
 class SignalChecker:
     """趋势交易信号检测器"""
 
-    _target_date = None  # 由 strategy.py 注入
-
-    def set_target_date(self, target_date):
-        """设置回测目标日期"""
-        self._target_date = target_date
-
     def check_all(self, position_manager, account, candidate_pool, kline_data):
         """
         主入口：按优先级检查所有信号
@@ -218,7 +212,7 @@ class SignalChecker:
     def _format_shares_status(self, position):
         """格式化持仓状态（可卖/锁定）"""
         from datetime import datetime
-        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now().strftime('%Y-%m-%d')
         total = position.get('total_shares', 0)
         last_buy_date = position.get('last_buy_date', '')
         last_buy_shares = position.get('last_buy_shares', 0)

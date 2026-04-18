@@ -76,18 +76,6 @@ def generate_snowflake_id():
 class AccountManager:
     """海龟交易法账户管理器"""
 
-    _target_date = None  # 由 strategy.py 注入
-
-    def set_target_date(self, target_date):
-        """设置回测目标日期"""
-        self._target_date = target_date
-
-    def _now(self):
-        """获取当前时间戳（回测时用 target_date）"""
-        if self._target_date:
-            return f"{self._target_date} 00:00:00"
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
     def _row_to_dict(self, row):
         """
         将sqlite3.Row转换为dict
@@ -112,7 +100,7 @@ class AccountManager:
             'note': row['note'],
         }
 
-    def _write_flow(self, conn, account_id, flow_type, amount):
+    def _write_flow(self, conn, account_id, flow_type, amount, target_date=None):
         """
         写入资金流水记录
 
@@ -121,8 +109,10 @@ class AccountManager:
             account_id: 账户ID
             flow_type: 类型（入金/出金/买入/卖出）
             amount: 金额
+            target_date: 业务日期（回测时传入）
         """
-        now = self._now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        operate_date = target_date or datetime.now().strftime('%Y-%m-%d')
         # 查询操作后的余额
         row = conn.execute(
             "SELECT available_capital FROM account WHERE id = ?",
@@ -131,9 +121,9 @@ class AccountManager:
         balance_after = float(row[0]) if row else 0.0
 
         conn.execute("""
-            INSERT INTO account_flow (account_id, type, amount, balance_after, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (account_id, flow_type, amount, balance_after, now))
+            INSERT INTO account_flow (account_id, type, amount, balance_after, created_at, operate_date)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (account_id, flow_type, amount, balance_after, now, operate_date))
 
         # 更新note
         conn.execute("""
@@ -152,7 +142,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 INSERT INTO account (id, total_capital, available_capital, realized_profit, active, nickname, simulator, updated_at, note)
                 VALUES (?, ?, ?, 0, 1, ?, ?, ?, '初始化')
@@ -219,17 +209,18 @@ class AccountManager:
         finally:
             conn.close()
 
-    def deposit(self, account_id, amount):
+    def deposit(self, account_id, amount, target_date=None):
         """
         入金
 
         参数:
             account_id: 账户ID
             amount: 入金金额
+            target_date: 业务日期（回测时传入）
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET
                     total_capital = total_capital + ?,
@@ -237,26 +228,27 @@ class AccountManager:
                     updated_at = ?
                 WHERE id = ? AND active = 1
             """, (amount, amount, now, account_id))
-            self._write_flow(conn, account_id, '入金', amount)
+            self._write_flow(conn, account_id, '入金', amount, target_date=target_date)
             conn.commit()
             logger.info(f"[账户{account_id}] 入金 {amount}")
         finally:
             conn.close()
 
-    def withdraw(self, account_id, amount):
+    def withdraw(self, account_id, amount, target_date=None):
         """
         出金（乐观锁扣款）
 
         参数:
             account_id: 账户ID
             amount: 出金金额
+            target_date: 业务日期（回测时传入）
 
         返回:
             bool: 是否成功（可用资金不足则失败）
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             cursor = conn.execute("""
                 UPDATE account SET
                     total_capital = total_capital - ?,
@@ -267,7 +259,7 @@ class AccountManager:
             if cursor.rowcount == 0:
                 logger.warning(f"[账户{account_id}] 出金失败：可用资金不足")
                 return False
-            self._write_flow(conn, account_id, '出金', amount)
+            self._write_flow(conn, account_id, '出金', amount, target_date=target_date)
             conn.commit()
             logger.info(f"[账户{account_id}] 出金 {amount}")
             return True
@@ -287,7 +279,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             cursor = conn.execute("""
                 UPDATE account SET
                     available_capital = available_capital - ?,
@@ -315,7 +307,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET
                     available_capital = available_capital + ?,
@@ -450,7 +442,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET active = ?, updated_at = ? WHERE id = ?
             """, (active, now, account_id))
@@ -470,7 +462,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET nickname = ?, updated_at = ? WHERE id = ?
             """, (nickname, now, account_id))
@@ -501,7 +493,7 @@ class AccountManager:
                 logger.warning(f"[账户{account_id}] bind_id {bind_id} 已被账户{existing[0]}绑定")
                 return False
 
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET bind_id = ?, updated_at = ? WHERE id = ?
             """, (bind_id, now, account_id))
@@ -520,7 +512,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET bind_id = NULL, updated_at = ? WHERE id = ?
             """, (now, account_id))
@@ -654,7 +646,7 @@ class AccountManager:
             return
 
         updates.append('updated_at = ?')
-        params.append(self._now())
+        params.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         params.append(account_id)
 
         conn = get_db_connection()
@@ -679,7 +671,7 @@ class AccountManager:
         """
         conn = get_db_connection()
         try:
-            now = self._now()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute("""
                 UPDATE account SET total_capital = ?, updated_at = ? WHERE id = ?
             """, (total_capital, now, account_id))

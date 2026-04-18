@@ -106,11 +106,6 @@ class TrendTradingStrategy(BaseStrategy):
         nickname = account.get('nickname', f'账户{account_id}')
         logger.info(f"[{nickname}({account_id})] 开始运行")
 
-        # 传递 target_date 给子模块
-        self.position_manager.set_target_date(self._target_date)
-        self.account_manager.set_target_date(self._target_date)
-        self.signal_checker.set_target_date(self._target_date)
-
         # Step 1: 检查账户初始化
         if account.get('total_capital', 0) <= 0:
             logger.warning(f"[{nickname}] 账户资金为0，跳过")
@@ -123,7 +118,7 @@ class TrendTradingStrategy(BaseStrategy):
             }
 
         # Step 2: 检查冷却释放
-        released = self.position_manager.check_cooldown_release(account_id)
+        released = self.position_manager.check_cooldown_release(account_id, target_date=self._target_date)
         if released:
             logger.info(f"[{nickname}] 冷却释放: {released}")
 
@@ -266,8 +261,7 @@ class TrendTradingStrategy(BaseStrategy):
         """
         from executor.robot_executor import RobotExecutor
         robot = RobotExecutor()
-        robot.set_target_date(self._target_date)
-        result = robot.execute_signals(account_id, action_queue)
+        result = robot.execute_signals(account_id, action_queue, target_date=self._target_date)
         logger.info(f"[{nickname}] 机器人执行完成: {result['summary']}")
         return result
 
@@ -298,7 +292,7 @@ class TrendTradingStrategy(BaseStrategy):
 
             # 获取今日开仓数（用于报告）
             try:
-                today_opens = self.position_manager.count_today_opens(account_id)
+                today_opens = self.position_manager.count_today_opens(account_id, target_date=date_str)
             except Exception:
                 today_opens = None
 

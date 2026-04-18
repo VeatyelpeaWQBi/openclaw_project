@@ -38,7 +38,7 @@ class TrendTradingExecutor:
 
     # ==================== 批量执行（主要入口） ====================
 
-    def execute_signals(self, account_id, action_queue: list) -> dict:
+    def execute_signals(self, account_id, action_queue: list, target_date=None) -> dict:
         """
         执行信号检测器输出的动作队列
 
@@ -51,6 +51,7 @@ class TrendTradingExecutor:
         参数:
             account_id: 账户ID
             action_queue: SignalChecker输出的动作列表
+            target_date: 业务日期（回测时传入）
 
         返回:
             dict: 执行结果汇总
@@ -68,7 +69,7 @@ class TrendTradingExecutor:
         results = []
         for cmd in sorted_commands:
             # turtle规则校验
-            can_execute, reason = self._check_turtle_rules(account_id, cmd)
+            can_execute, reason = self._check_turtle_rules(account_id, cmd, target_date=target_date)
             if not can_execute:
                 logger.warning(f"[账户{account_id}] turtle规则拦截: {cmd.code} - {reason}")
                 results.append(TradeResult(
@@ -77,7 +78,7 @@ class TrendTradingExecutor:
                 ))
                 continue
 
-            result = self.trade_executor.execute(account_id, cmd)
+            result = self.trade_executor.execute(account_id, cmd, target_date=target_date)
             results.append(result)
             logger.info(f"  → {result}")
 
@@ -96,7 +97,7 @@ class TrendTradingExecutor:
     # ==================== 单笔操作接口 ====================
 
     def open_position(self, account_id, code, name, buy_price, atr,
-                      entry_system='S1', units=1) -> TradeResult:
+                      entry_system='S1', units=1, target_date=None) -> TradeResult:
         """开仓（turtle增强）"""
         # 获取账户资金
         summary = self.account_manager.get_summary(account_id)
@@ -128,7 +129,7 @@ class TrendTradingExecutor:
             )
 
         # turtle特有：单日开仓数检查
-        today_opens = self.pm.count_today_opens(account_id)
+        today_opens = self.pm.count_today_opens(account_id, target_date=target_date)
         max_daily = config.get('max_daily_open', 2)
         if today_opens >= max_daily:
             return TradeResult(
@@ -141,9 +142,9 @@ class TrendTradingExecutor:
             action=TradeAction.OPEN, code=code, name=name, price=buy_price,
             atr=atr, units=units, turtle_entry_system=entry_system, source='manual',
         )
-        return self.trade_executor.execute(account_id, cmd)
+        return self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
-    def add_position(self, account_id, code, buy_price, atr) -> TradeResult:
+    def add_position(self, account_id, code, buy_price, atr, target_date=None) -> TradeResult:
         """加仓（turtle增强）"""
         pos = self.pm.get_position(account_id, code)
         if not pos:
@@ -166,9 +167,9 @@ class TrendTradingExecutor:
             action=TradeAction.ADD, code=code, name=name, price=buy_price,
             atr=atr, source='manual',
         )
-        return self.trade_executor.execute(account_id, cmd)
+        return self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
-    def reduce_position(self, account_id, code, sell_price) -> TradeResult:
+    def reduce_position(self, account_id, code, sell_price, target_date=None) -> TradeResult:
         """减仓（turtle增强）"""
         pos = self.pm.get_position(account_id, code)
         if not pos:
@@ -199,9 +200,9 @@ class TrendTradingExecutor:
             action=TradeAction.REDUCE, code=code, name=name, price=sell_price,
             source='manual',
         )
-        return self.trade_executor.execute(account_id, cmd)
+        return self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
-    def close_position(self, account_id, code, sell_price, reason='exit') -> TradeResult:
+    def close_position(self, account_id, code, sell_price, reason='exit', target_date=None) -> TradeResult:
         """平仓（turtle增强：S1/S2冷却天数 + 过滤逻辑）"""
         pos = self.pm.get_position(account_id, code)
         if not pos:
@@ -227,7 +228,7 @@ class TrendTradingExecutor:
             reason=reason, source='manual',
             metadata={'cooldown_days': cooldown_days},
         )
-        result = self.trade_executor.execute(account_id, cmd)
+        result = self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
         # turtle特有：S1/S2过滤逻辑
         if result.success:
@@ -241,9 +242,14 @@ class TrendTradingExecutor:
 
     # ==================== turtle规则校验 ====================
 
-    def _check_turtle_rules(self, account_id, command: TradeCommand) -> tuple:
+    def _check_turtle_rules(self, account_id, command: TradeCommand, target_date=None) -> tuple:
         """
         turtle规则前置校验
+
+        参数:
+            account_id: 账户ID
+            command: 交易指令
+            target_date: 业务日期（回测时传入）
 
         返回:
             (can_execute: bool, reason: str)
@@ -268,7 +274,7 @@ class TrendTradingExecutor:
                 return False, f"持仓数已达上限({config['max_holdings']})"
 
             # 单日开仓数
-            today_opens = self.pm.count_today_opens(account_id)
+            today_opens = self.pm.count_today_opens(account_id, target_date=target_date)
             max_daily = config.get('max_daily_open', 2)
             if today_opens >= max_daily:
                 return False, f"今日已开仓{today_opens}个(上限{max_daily})"
