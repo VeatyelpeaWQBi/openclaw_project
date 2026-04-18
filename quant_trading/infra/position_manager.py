@@ -73,7 +73,7 @@ class PositionManager:
             account_id: 账户ID
             code: 股票代码
             name: 股票名称
-            action: 动作（开仓/加仓/减仓/清仓止损/清仓止盈）
+            action: 动作（开仓/加仓/清仓止损/清仓止盈）
             shares: 本次涉及股数
             price: 本次价格
             amount: 本次金额
@@ -298,76 +298,7 @@ class PositionManager:
 
         return self.get_position(account_id, code)
 
-    def reduce_position(self, account_id: int, code: str, sell_price: float, shares_to_sell: int,
-                        account_manager=None, target_date=None) -> dict | None:
-        """
-        减仓（纯CRUD，卖出指定股数）
-        券商逻辑：减仓后摊薄成本价
-
-        参数:
-            account_id: 账户ID
-            code: 股票代码
-            sell_price: 卖出价
-            shares_to_sell: 要卖出的股数（由上层决定）
-            account_manager: AccountManager实例
-            target_date: 业务日期（回测时传入）
-        """
-        self._require_account_id(account_id)
-        pos = self.get_position(account_id, code)
-        if not pos:
-            return None
-
-        if shares_to_sell <= 0:
-            return None
-
-        old_avg_cost = float(pos['avg_cost'])
-        old_total_shares = int(pos['total_shares'])
-
-        trade_amount = sell_price * shares_to_sell
-        fees = self._calc_fees(trade_amount, is_sell=True)
-        net_proceeds = trade_amount - fees['total']
-        sell_cost = old_avg_cost * shares_to_sell
-        realized_profit = net_proceeds - sell_cost  # 已实现盈利
-
-        remaining_shares = old_total_shares - shares_to_sell
-        remaining_cost = old_avg_cost * remaining_shares
-        diluted_cost = remaining_cost - realized_profit  # 摊薄成本
-        new_avg_cost = max(0.0, diluted_cost / remaining_shares) if remaining_shares > 0 else 0.0
-
-        # 标准盈亏计算（用于flow记录）
-        profit = (sell_price - old_avg_cost) * shares_to_sell - fees['total']
-
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        conn = get_db_connection()
-        try:
-            conn.execute("""
-                UPDATE positions SET
-                    total_shares = total_shares - ?,
-                    turtle_units = turtle_units - 1,
-                    avg_cost = ?,
-                    has_reduced = 1,
-                    updated_at = ?
-                WHERE account_id = ? AND code = ? AND status = 'HOLDING'
-            """, (shares_to_sell, new_avg_cost, now, account_id, code))
-
-            self._write_flow(conn, account_id, code, pos['name'], '减仓',
-                            shares=shares_to_sell, price=sell_price, amount=trade_amount,
-                            profit=round(profit, 2), fees=fees['total'],
-                            units_before=pos['turtle_units'], units_after=pos['turtle_units'] - 1,
-                            target_date=target_date)
-
-            conn.commit()
-            logger.info(f"[{code}] 减仓: {shares_to_sell}股@{sell_price} 净盈亏={profit:.2f} 摊薄成本={new_avg_cost:.2f}")
-        finally:
-            conn.close()
-
-        if account_manager:
-            account_manager.on_sell(account_id, net_proceeds, profit)
-
-        return self.get_position(account_id, code)
-
-    def close_position(self, account_id: int, code: str, reason: str, sell_price: float,
-                       cooldown_days: int = 10, account_manager=None, target_date=None) -> dict | None:
+                       
         """
         平仓（纯CRUD）
 

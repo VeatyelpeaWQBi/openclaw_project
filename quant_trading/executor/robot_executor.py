@@ -125,7 +125,7 @@ class RobotExecutor:
         涨跌停拦截
 
         买动作（开仓/加仓）+ 涨停 → 跳过
-        卖动作（止损/退出/减仓）+ 跌停 → 跳过
+        卖动作（止损/退出）+ 跌停 → 跳过
 
         参数:
             action_queue: 动作队列
@@ -137,7 +137,7 @@ class RobotExecutor:
         codes_to_check = set()
         for item in action_queue:
             action = item.get('action', '')
-            if action in ('开仓', '加仓', '平仓', '减仓'):
+            if action in ('开仓', '加仓', '平仓'):
                 code = item.get('code', '')
                 if code:
                     codes_to_check.add(code)
@@ -178,7 +178,7 @@ class RobotExecutor:
                     skipped += 1
                     continue
 
-            if action in ('平仓', '减仓') and code in latest_kline:
+            if action in ('平仓') and code in latest_kline:
                 kline = latest_kline[code]
                 prev_close = prev_closes.get(code)
                 if prev_close and self._is_limit_down(code, kline, prev_close):

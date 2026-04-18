@@ -72,16 +72,9 @@ class SignalChecker:
             exit_sig = self.check_exit(pos, df)
             if exit_sig:
                 signals.append(exit_sig)
-                continue  # 退出后不再检查减仓/加仓
+                continue  # 退出后不再检查加仓
 
-            # ④ 减仓检查
-            # 趋势法则：盈利达1N时减1单位（仅执行一次）
-            reduce_sig = self.check_reduce(pos, latest_price)
-            if reduce_sig:
-                signals.append(reduce_sig)
-                continue  # 减仓后不再检查加仓
-
-            # ⑤ 加仓检查
+            # ④ 加仓检查
             # 趋势法则：价格每涨0.5×ATR加1单位，最多4单位
             atr = pos.get('turtle_atr_value', 0)
             if not atr:
@@ -160,7 +153,6 @@ class SignalChecker:
         action_map = {
             'stop_loss': '平仓',
             'exit': '平仓',
-            'reduce': '减仓',
             'add': '加仓',
             'entry': '开仓',
         }
@@ -342,47 +334,6 @@ class SignalChecker:
                 'code': position['code'],
                 'name': position.get('name', ''),
                 'detail': f"现价{latest_price:.2f} 达到加仓价{next_add:.2f}，当前{position.get('turtle_units', 0)}单位",
-                'urgency': 'medium',
-                'price': latest_price,
-            }
-        return None
-
-    def check_reduce(self, position, latest_price):
-        """
-        减仓检查
-
-        趋势法则：
-          盈利达1N（入场价 + 1×ATR）时减1单位
-          仅执行一次（has_reduced标记）
-
-        设计依据：
-          1N = ATR(20)，代表日均波动幅度
-          减仓1/3锁定部分利润，降低风险暴露
-          只减一次：让剩余仓位继续追逐趋势
-        """
-        # 已减过仓，不再减
-        if position.get('has_reduced', 0):
-            return None
-
-        # 至少2单位才减仓
-        if position.get('turtle_units', 0) < 2:
-            return None
-
-        entry_price = position.get('entry_price', 0)  # 首次入场价，不随加仓变化
-        atr = position.get('turtle_atr_value', 0)
-        if entry_price <= 0 or atr <= 0:
-            return None
-
-        # 盈利达1N = 入场价 + ATR
-        reduce_trigger = entry_price + atr
-
-        if latest_price >= reduce_trigger:
-            logger.info(f"[{position['code']}] 触发减仓信号! 现价{latest_price} ≥ 减仓价{reduce_trigger:.2f} (1N)")
-            return {
-                'type': 'reduce',
-                'code': position['code'],
-                'name': self._clean_name(position.get('name', '')),
-                'detail': f"现价{latest_price:.2f} 达到减仓价{reduce_trigger:.2f}(1N)，当前{position.get('turtle_units', 0)}单位→减1单位 [{self._format_shares_status(position)}]",
                 'urgency': 'medium',
                 'price': latest_price,
             }

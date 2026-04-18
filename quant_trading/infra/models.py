@@ -12,7 +12,6 @@ class TradeAction(Enum):
     """交易动作枚举"""
     OPEN = "开仓"          # 开仓买入
     ADD = "加仓"           # 加仓买入
-    REDUCE = "减仓"        # 减仓卖出（部分）
     CLOSE = "平仓"         # 清仓卖出（全部）
     CLOSE_STOP_LOSS = "止损平仓"
     CLOSE_TAKE_PROFIT = "止盈平仓"
@@ -23,7 +22,7 @@ class TradeStatus(Enum):
     SUCCESS = "成功"
     FAILED = "失败"
     SKIPPED = "跳过"       # 因条件不满足跳过（如T+1锁定）
-    PARTIAL = "部分成交"    # 减仓场景可能部分成交
+    PARTIAL = "部分成交"    # 可能部分成交
 
 
 @dataclass

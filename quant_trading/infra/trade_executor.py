@@ -58,7 +58,6 @@ class TradeExecutor:
         dispatch = {
             TradeAction.OPEN: self._execute_open,
             TradeAction.ADD: self._execute_add,
-            TradeAction.REDUCE: self._execute_reduce,
             TradeAction.CLOSE: self._execute_close,
             TradeAction.CLOSE_STOP_LOSS: self._execute_close,
             TradeAction.CLOSE_TAKE_PROFIT: self._execute_close,
@@ -79,7 +78,7 @@ class TradeExecutor:
         """
         批量执行交易指令
 
-        执行顺序：先平仓/减仓（释放资金），后加仓/开仓（消耗资金）
+        执行顺序：先平仓（释放资金），后加仓/开仓（消耗资金）
         同类型按传入顺序执行
 
         参数:
@@ -93,7 +92,7 @@ class TradeExecutor:
             return []
 
         # 分组：释放资金的动作优先执行
-        sell_actions = {TradeAction.REDUCE, TradeAction.CLOSE, TradeAction.CLOSE_STOP_LOSS, TradeAction.CLOSE_TAKE_PROFIT}
+        sell_actions = {TradeAction.CLOSE, TradeAction.CLOSE_STOP_LOSS, TradeAction.CLOSE_TAKE_PROFIT}
         buy_actions = {TradeAction.OPEN, TradeAction.ADD}
 
         sell_cmds = [c for c in commands if c.action in sell_actions]
@@ -354,78 +353,6 @@ class TradeExecutor:
             units_after=result_pos['turtle_units'],
             position_after=result_pos,
             message=f"加仓成功: {added_shares}股@{price:.2f}，当前{result_pos['turtle_units']}单位",
-        )
-
-    # ==================== 减仓 ====================
-
-    def _execute_reduce(self, account_id, command: TradeCommand, target_date=None) -> TradeResult:
-        """
-        减仓执行（通用）
-
-        前置条件：
-          1. 持仓必须存在且状态为HOLDING
-          2. T+1锁定检查：今日买入部分不可卖
-          3. 价格 > 0
-
-        策略层校验（单位数、has_reduced等）由 TrendTradingExecutor 负责
-        """
-        code = command.code
-        price = command.price
-
-        # 校验1：持仓是否存在
-        pos = self.position_manager.get_position(account_id, code)
-        if not pos:
-            return TradeResult(
-                success=False, status=TradeStatus.FAILED,
-                command=command, error=f"持仓不存在: {code}",
-            )
-
-        # 确定减仓股数
-        shares_to_sell = command.shares or pos.get('shares_per_unit', pos['total_shares'])
-
-        # 校验2：T+1锁定
-        t1_status = self.position_manager.get_position_status(account_id, code, target_date=target_date)
-        if t1_status and t1_status['locked_shares'] > 0:
-            if t1_status['available_shares'] < shares_to_sell:
-                return TradeResult(
-                    success=False, status=TradeStatus.SKIPPED,
-                    command=command,
-                    units_before=pos['turtle_units'],
-                    message=f"T+1锁定: 可卖{t1_status['available_shares']}股 < 需要{shares_to_sell}股",
-                )
-
-        # 校验3：价格有效性
-        if price <= 0:
-            return TradeResult(
-                success=False, status=TradeStatus.FAILED,
-                command=command, error=f"无效价格: {price}",
-            )
-
-        # 执行减仓
-        result_pos = self.position_manager.reduce_position(
-            account_id=account_id, code=code, sell_price=price,
-            shares_to_sell=shares_to_sell, account_manager=self.account_manager,
-            target_date=target_date,
-        )
-
-        if result_pos is None:
-            return TradeResult(
-                success=False, status=TradeStatus.FAILED,
-                command=command, error="减仓执行失败",
-            )
-
-        reduced_shares = pos['total_shares'] - result_pos['total_shares']
-        profit = (price - pos['avg_cost']) * reduced_shares
-
-        logger.info(f"[账户{account_id}] 减仓成功: {code} -{reduced_shares}股@{price} 盈亏={profit:.2f}")
-
-        return TradeResult(
-            success=True, status=TradeStatus.SUCCESS, command=command,
-            executed_shares=reduced_shares, executed_price=price,
-            executed_amount=price * reduced_shares, profit=round(profit, 2),
-            units_before=pos['turtle_units'], units_after=result_pos['turtle_units'],
-            position_after=result_pos,
-            message=f"减仓成功: {reduced_shares}股@{price:.2f}，盈亏={profit:.2f}",
         )
 
     # ==================== 平仓 ====================
