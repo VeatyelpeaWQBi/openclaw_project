@@ -572,13 +572,13 @@ class PositionManager:
                 rows = conn.execute("""
                     SELECT * FROM position_flow
                     WHERE account_id = ? AND code = ?
-                    ORDER BY created_at DESC LIMIT ?
+                    ORDER BY operate_date DESC LIMIT ?
                 """, (account_id, code, limit)).fetchall()
             else:
                 rows = conn.execute("""
                     SELECT * FROM position_flow
                     WHERE account_id = ?
-                    ORDER BY created_at DESC LIMIT ?
+                    ORDER BY operate_date DESC LIMIT ?
                 """, (account_id, limit)).fetchall()
 
             return [{
