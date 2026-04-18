@@ -5,7 +5,7 @@
 职责：
   - ATR仓位计算（shares_per_unit）
   - 止损价/加仓价/退出价计算
-  - 加仓/减仓/平仓的策略前置校验
+  - 加仓/平仓的策略前置校验
   - S1/S2冷却天数决策
   - S1过滤激活/清除
 """
@@ -149,36 +149,6 @@ class TrendTradingPositionManager:
             new_stop_price=new_stop_price,
             new_next_add_price=new_next_add_price,
             account_manager=account_manager, atr=atr,
-            target_date=target_date,
-        )
-
-    # ==================== 减仓 ====================
-
-    def reduce_position(self, account_id, code, sell_price, account_manager=None, target_date=None):
-        """
-        减仓（turtle策略：检查has_reduced + 至少2单位）
-        """
-        pos = self.pm.get_position(account_id, code)
-        if not pos:
-            return None
-        
-        # turtle特有：已减过仓
-        if pos.get('has_reduced', 0):
-            logger.warning(f"[{code}] 已减过仓，跳过")
-            return None
-        
-        # turtle特有：至少2单位
-        if pos['turtle_units'] < 2:
-            logger.warning(f"[{code}] 仅{pos['turtle_units']}单位，无法减仓")
-            return None
-        
-        shares_per_unit = pos.get('shares_per_unit', 0)
-        if shares_per_unit <= 0:
-            shares_per_unit = pos['total_shares'] // pos['turtle_units']
-        
-        return self.pm.reduce_position(
-            account_id=account_id, code=code, sell_price=sell_price,
-            shares_to_sell=shares_per_unit, account_manager=account_manager,
             target_date=target_date,
         )
 

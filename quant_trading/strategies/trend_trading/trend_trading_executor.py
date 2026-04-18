@@ -169,39 +169,6 @@ class TrendTradingExecutor:
         )
         return self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
-    def reduce_position(self, account_id, code, sell_price, target_date=None) -> TradeResult:
-        """减仓（turtle增强）"""
-        pos = self.pm.get_position(account_id, code)
-        if not pos:
-            return TradeResult(
-                success=False, status=TradeStatus.FAILED,
-                command=TradeCommand(action=TradeAction.REDUCE, code=code, price=sell_price),
-                error=f"持仓不存在: {code}",
-            )
-        name = pos.get('name', '')
-
-        # turtle特有：has_reduced 检查
-        if pos.get('has_reduced', 0):
-            return TradeResult(
-                success=False, status=TradeStatus.SKIPPED,
-                command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
-                message="已减过仓",
-            )
-
-        # turtle特有：至少2单位
-        if pos['turtle_units'] < 2:
-            return TradeResult(
-                success=False, status=TradeStatus.SKIPPED,
-                command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
-                message=f"仅{pos['turtle_units']}单位，无法减仓",
-            )
-
-        cmd = TradeCommand(
-            action=TradeAction.REDUCE, code=code, name=name, price=sell_price,
-            source='manual',
-        )
-        return self.trade_executor.execute(account_id, cmd, target_date=target_date)
-
     def close_position(self, account_id, code, sell_price, reason='exit', target_date=None) -> TradeResult:
         """平仓（turtle增强：S1/S2冷却天数 + 过滤逻辑）"""
         pos = self.pm.get_position(account_id, code)
@@ -286,15 +253,6 @@ class TrendTradingExecutor:
             if pos['turtle_units'] >= 4:
                 return False, "已达4单位上限"
 
-        elif command.action == TradeAction.REDUCE:
-            pos = self.pm.get_position(account_id, code)
-            if not pos:
-                return False, "持仓不存在"
-            if pos.get('has_reduced', 0):
-                return False, "已减过仓"
-            if pos['turtle_units'] < 2:
-                return False, f"仅{pos['turtle_units']}单位，无法减仓"
-
         elif command.action in (TradeAction.CLOSE, TradeAction.CLOSE_STOP_LOSS, TradeAction.CLOSE_TAKE_PROFIT):
             pos = self.pm.get_position(account_id, code)
             if not pos:
@@ -308,7 +266,6 @@ class TrendTradingExecutor:
         """将SignalChecker动作队列转换为TradeCommand列表"""
         action_map = {
             '平仓': TradeAction.CLOSE,
-            '减仓': TradeAction.REDUCE,
             '加仓': TradeAction.ADD,
             '开仓': TradeAction.OPEN,
         }
@@ -349,14 +306,13 @@ class TrendTradingExecutor:
         return commands
 
     def _prioritize(self, commands: list) -> list:
-        """按turtle优先级排序：止损 > 退出 > 减仓 > 加仓 > 开仓"""
+        """按turtle优先级排序：止损 > 退出 > 加仓 > 开仓"""
         priority = {
             TradeAction.CLOSE_STOP_LOSS: 0,
             TradeAction.CLOSE: 1,
             TradeAction.CLOSE_TAKE_PROFIT: 2,
-            TradeAction.REDUCE: 3,
-            TradeAction.ADD: 4,
-            TradeAction.OPEN: 5,
+            TradeAction.ADD: 3,
+            TradeAction.OPEN: 4,
         }
         return sorted(commands, key=lambda c: priority.get(c.action, 99))
 
