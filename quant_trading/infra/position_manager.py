@@ -298,7 +298,8 @@ class PositionManager:
 
         return self.get_position(account_id, code)
 
-                       
+    def close_position(self, account_id: int, code: str, reason: str, sell_price: float,
+                       cooldown_days: int = 10, account_manager=None, target_date=None) -> dict | None:        
         """
         平仓（纯CRUD）
 
