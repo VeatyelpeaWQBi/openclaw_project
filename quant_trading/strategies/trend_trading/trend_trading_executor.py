@@ -170,47 +170,37 @@ class TrendTradingExecutor:
         return self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
     def reduce_position(self, account_id, code, sell_price, target_date=None) -> TradeResult:
-        """减仓（已禁用：原版海龟无减仓规则）"""
-        # 保留方法，但返回跳过结果
+        """减仓（turtle增强）"""
         pos = self.pm.get_position(account_id, code)
-        name = pos.get('name', '') if pos else ''
-        return TradeResult(
-            success=False, status=TradeStatus.SKIPPED,
-            command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
-            message="减仓已禁用（原版海龟无减仓规则）",
-        )
+        if not pos:
+            return TradeResult(
+                success=False, status=TradeStatus.FAILED,
+                command=TradeCommand(action=TradeAction.REDUCE, code=code, price=sell_price),
+                error=f"持仓不存在: {code}",
+            )
+        name = pos.get('name', '')
 
-        # 原逻辑保留（注释）
-        # pos = self.pm.get_position(account_id, code)
-        # if not pos:
-        #     return TradeResult(
-        #         success=False, status=TradeStatus.FAILED,
-        #         command=TradeCommand(action=TradeAction.REDUCE, code=code, price=sell_price),
-        #         error=f"持仓不存在: {code}",
-        #     )
-        # name = pos.get('name', '')
-        #
-        # # turtle特有：has_reduced 检查
-        # if pos.get('has_reduced', 0):
-        #     return TradeResult(
-        #         success=False, status=TradeStatus.SKIPPED,
-        #         command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
-        #         message="已减过仓",
-        #     )
-        #
-        # # turtle特有：至少2单位
-        # if pos['turtle_units'] < 2:
-        #     return TradeResult(
-        #         success=False, status=TradeStatus.SKIPPED,
-        #         command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
-        #         message=f"仅{pos['turtle_units']}单位，无法减仓",
-        #     )
-        #
-        # cmd = TradeCommand(
-        #     action=TradeAction.REDUCE, code=code, name=name, price=sell_price,
-        #     source='manual',
-        # )
-        # return self.trade_executor.execute(account_id, cmd, target_date=target_date)
+        # turtle特有：has_reduced 检查
+        if pos.get('has_reduced', 0):
+            return TradeResult(
+                success=False, status=TradeStatus.SKIPPED,
+                command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
+                message="已减过仓",
+            )
+
+        # turtle特有：至少2单位
+        if pos['turtle_units'] < 2:
+            return TradeResult(
+                success=False, status=TradeStatus.SKIPPED,
+                command=TradeCommand(action=TradeAction.REDUCE, code=code, name=name, price=sell_price),
+                message=f"仅{pos['turtle_units']}单位，无法减仓",
+            )
+
+        cmd = TradeCommand(
+            action=TradeAction.REDUCE, code=code, name=name, price=sell_price,
+            source='manual',
+        )
+        return self.trade_executor.execute(account_id, cmd, target_date=target_date)
 
     def close_position(self, account_id, code, sell_price, reason='exit', target_date=None) -> TradeResult:
         """平仓（turtle增强：S1/S2冷却天数 + 过滤逻辑）"""
@@ -318,7 +308,7 @@ class TrendTradingExecutor:
         """将SignalChecker动作队列转换为TradeCommand列表"""
         action_map = {
             '平仓': TradeAction.CLOSE,
-            # '减仓': TradeAction.REDUCE,  # 已禁用：原版海龟无减仓规则
+            '减仓': TradeAction.REDUCE,
             '加仓': TradeAction.ADD,
             '开仓': TradeAction.OPEN,
         }
@@ -359,12 +349,12 @@ class TrendTradingExecutor:
         return commands
 
     def _prioritize(self, commands: list) -> list:
-        """按turtle优先级排序：止损 > 退出 > 加仓 > 开仓（减仓已禁用）"""
+        """按turtle优先级排序：止损 > 退出 > 减仓 > 加仓 > 开仓"""
         priority = {
             TradeAction.CLOSE_STOP_LOSS: 0,
             TradeAction.CLOSE: 1,
             TradeAction.CLOSE_TAKE_PROFIT: 2,
-            # TradeAction.REDUCE: 3,  # 已禁用：原版海龟无减仓规则
+            TradeAction.REDUCE: 3,
             TradeAction.ADD: 4,
             TradeAction.OPEN: 5,
         }
