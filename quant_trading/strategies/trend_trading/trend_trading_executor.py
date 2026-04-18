@@ -63,7 +63,7 @@ class TrendTradingExecutor:
                 'results': [], 'summary': '无交易动作',
             }
 
-        commands = self._to_commands(action_queue)
+        commands = self._to_commands(account_id, action_queue)
         sorted_commands = self._prioritize(commands)
 
         results = []
@@ -262,8 +262,8 @@ class TrendTradingExecutor:
 
     # ==================== 动作队列转换 ====================
 
-    def _to_commands(self, action_queue: list) -> list:
-        """将SignalChecker动作队列转换为TradeCommand列表"""
+    def _to_commands(self, account_id, action_queue: list) -> list:
+        """将SignalChecker动作队列转换为TradeCommand列表（ADD信号计算止损价）"""
         action_map = {
             '平仓': TradeAction.CLOSE,
             '加仓': TradeAction.ADD,
@@ -285,6 +285,22 @@ class TrendTradingExecutor:
                 elif reason == 'take_profit':
                     action = TradeAction.CLOSE_TAKE_PROFIT
 
+            # 构建position_params
+            position_params = item.get('position_params', {})
+            
+            # ADD信号：调用策略层计算止损价
+            if action == TradeAction.ADD:
+                code = item.get('code', '')
+                price = item.get('price', 0)
+                atr = item.get('atr', 0)
+                add_params = self.tt_pm._calc_add_params(account_id, code, price, atr)
+                if add_params:
+                    position_params['stop_price'] = add_params['new_stop_price']
+                    position_params['next_add_price'] = add_params['new_next_add_price']
+                else:
+                    logger.warning(f"[{code}] 加仓参数计算失败，跳过")
+                    continue
+
             cmd = TradeCommand(
                 action=action,
                 code=item.get('code', ''),
@@ -298,7 +314,7 @@ class TrendTradingExecutor:
                 metadata={
                     'urgency': item.get('urgency', ''),
                     'signal_type': item.get('signal_type', ''),
-                    'position_params': item.get('position_params', {}),
+                    'position_params': position_params,
                 },
             )
             commands.append(cmd)
