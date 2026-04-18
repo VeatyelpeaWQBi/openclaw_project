@@ -73,9 +73,6 @@ class TrendBacktestEngine:
         finally:
             conn.close()
 
-        # 清理旧回测数据
-        self._clean_backtest_data(account_id)
-
         # Step 1: 获取交易日列表
         trade_dates = get_trade_dates(start_date, end_date)
 
@@ -242,16 +239,6 @@ class TrendBacktestEngine:
                 'released_cooldown': released,
             },
         }
-
-    def _clean_backtest_data(self, account_id):
-        """清理指定账户的旧回测数据"""
-        conn = get_db_connection()
-        try:
-            conn.execute("DELETE FROM backtest_monthly WHERE account_id = ?", (account_id,))
-            conn.commit()
-            logger.info(f"已清理账户{account_id}的旧回测数据")
-        finally:
-            conn.close()
 
     def _get_watchlist_codes(self, account_id):
         """从watchlist获取需要预加载的股票代码"""
