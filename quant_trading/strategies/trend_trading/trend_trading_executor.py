@@ -288,7 +288,27 @@ class TrendTradingExecutor:
             # 构建position_params
             position_params = item.get('position_params', {})
             
-            # ADD信号：调用策略层计算止损价
+            # OPEN信号：调用策略层计算止损价和加仓价
+            if action == TradeAction.OPEN:
+                code = item.get('code', '')
+                price = item.get('price', 0)
+                atr = item.get('atr', 0)
+                
+                # 获取账户资金
+                summary = self.account_manager.get_summary(account_id)
+                capital = summary.get('total_capital', 0) if summary else 0
+                
+                open_params = self.tt_pm._calc_open_params(capital, price, atr)
+                if open_params:
+                    position_params['shares_per_unit'] = open_params['shares_per_unit']
+                    position_params['total_shares'] = open_params['total_shares']
+                    position_params['stop_price'] = open_params['stop_price']
+                    position_params['next_add_price'] = open_params['next_add_price']
+                else:
+                    logger.warning(f"[{code}] 开仓参数计算失败（1手超5%仓位），跳过")
+                    continue
+
+            # ADD信号：调用策略层计算止损价（平均成本-2N）
             if action == TradeAction.ADD:
                 code = item.get('code', '')
                 price = item.get('price', 0)

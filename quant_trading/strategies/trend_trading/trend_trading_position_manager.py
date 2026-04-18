@@ -197,6 +197,48 @@ class TrendTradingPositionManager:
             target_date=target_date,
         )
 
+    # ==================== 开仓参数计算 ====================
+
+    def _calc_open_params(self, capital, price, atr, units=1):
+        """
+        计算开仓参数（不执行开仓）
+        
+        turtle策略：
+          shares_per_unit = capital / (price × ATR × 1%风险系数)
+          stop_price = 入场价 - 2×ATR
+          next_add_price = 入场价 + 0.5×ATR
+        
+        参数:
+            capital: 总资金
+            price: 入场价
+            atr: ATR值
+            units: 开仓单位数（默认1）
+        
+        返回:
+            dict: {
+                'shares_per_unit': int,
+                'total_shares': int,
+                'stop_price': float,
+                'next_add_price': float,
+            }
+        """
+        from strategies.trend_trading.atr import calc_unit_size, calc_stop_price, calc_add_price
+        
+        shares_per_unit = calc_unit_size(capital, atr, price)
+        if shares_per_unit <= 0:
+            return None  # 1手超5%仓位，不可开仓
+        
+        total_shares = shares_per_unit * units
+        stop_price = calc_stop_price(price, atr)
+        next_add_price = calc_add_price(price, atr)
+        
+        return {
+            'shares_per_unit': shares_per_unit,
+            'total_shares': total_shares,
+            'stop_price': stop_price,
+            'next_add_price': next_add_price,
+        }
+
     # ==================== 每日ATR更新 ====================
 
     def update_atr_values(self, account_id, kline_data):
