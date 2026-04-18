@@ -58,7 +58,6 @@ class TradeExecutor:
         dispatch = {
             TradeAction.OPEN: self._execute_open,
             TradeAction.ADD: self._execute_add,
-            TradeAction.REDUCE: self._execute_reduce,
             TradeAction.CLOSE: self._execute_close,
             TradeAction.CLOSE_STOP_LOSS: self._execute_close,
             TradeAction.CLOSE_TAKE_PROFIT: self._execute_close,
@@ -93,7 +92,7 @@ class TradeExecutor:
             return []
 
         # 分组：释放资金的动作优先执行
-        sell_actions = {TradeAction.REDUCE, TradeAction.CLOSE, TradeAction.CLOSE_STOP_LOSS, TradeAction.CLOSE_TAKE_PROFIT}
+        sell_actions = {TradeAction.CLOSE, TradeAction.CLOSE_STOP_LOSS, TradeAction.CLOSE_TAKE_PROFIT}
         buy_actions = {TradeAction.OPEN, TradeAction.ADD}
 
         sell_cmds = [c for c in commands if c.action in sell_actions]
