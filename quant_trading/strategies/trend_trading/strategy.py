@@ -133,6 +133,10 @@ class TrendTradingStrategy(BaseStrategy):
         # Step 5: 加载K线数据
         kline_data = self._load_kline_data(positions, candidates)
 
+        # Step 5.5: 每日更新持仓股ATR值
+        if positions:
+            atr_updates = self.position_manager.update_atr_values(account_id, kline_data)
+
         # Step 6: 信号检测
         signals = self.signal_checker.check_all(
             self.position_manager,

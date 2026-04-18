@@ -164,3 +164,42 @@ class TrendTradingPositionManager:
             account_manager=account_manager,
             target_date=target_date,
         )
+
+    # ==================== 每日ATR更新 ====================
+
+    def update_atr_values(self, account_id, kline_data):
+        """
+        每日更新持仓股的ATR值
+
+        参数:
+            account_id: 账户ID
+            kline_data: {code: DataFrame} 当日K线数据
+
+        返回:
+            dict: {code: new_atr} 更新结果
+        """
+        from strategies.trend_trading.atr import get_atr_value
+
+        positions = self.get_active_positions(account_id)
+        if not positions:
+            return {}
+
+        updates = {}
+        for pos in positions:
+            code = pos['code']
+            df = kline_data.get(code)
+            if df is None or df.empty:
+                continue
+
+            new_atr = get_atr_value(df)
+            if new_atr <= 0:
+                continue
+
+            # 更新DB
+            self.pm._update_atr_value(account_id, code, new_atr)
+            updates[code] = new_atr
+
+        if updates:
+            logger.info(f"[账户{account_id}] 更新ATR: {len(updates)}只")
+
+        return updates

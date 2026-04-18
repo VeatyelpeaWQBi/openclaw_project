@@ -235,7 +235,6 @@ CREATE TABLE IF NOT EXISTS positions (
     last_add_price REAL,                 -- 上次加仓价
     current_stop REAL,                   -- 当前止损价
     next_add_price REAL,                 -- 下次加仓价
-    exit_price REAL,                     -- 退出价
     turtle_atr_value REAL,               -- ATR值
     cooldown_until TEXT,                 -- 冷却截止日
     opened_at TEXT,                      -- 开仓时间
