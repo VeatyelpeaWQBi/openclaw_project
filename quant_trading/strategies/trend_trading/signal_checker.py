@@ -74,12 +74,12 @@ class SignalChecker:
                 signals.append(exit_sig)
                 continue  # 退出后不再检查减仓/加仓
 
-            # ④ 减仓检查（已禁用：原版海龟无减仓规则，触发价与加仓冲突）
+            # ④ 减仓检查
             # 趋势法则：盈利达1N时减1单位（仅执行一次）
-            # reduce_sig = self.check_reduce(pos, latest_price)
-            # if reduce_sig:
-            #     signals.append(reduce_sig)
-            #     continue  # 减仓后不再检查加仓
+            reduce_sig = self.check_reduce(pos, latest_price)
+            if reduce_sig:
+                signals.append(reduce_sig)
+                continue  # 减仓后不再检查加仓
 
             # ⑤ 加仓检查
             # 趋势法则：价格每涨0.5×ATR加1单位，最多4单位
