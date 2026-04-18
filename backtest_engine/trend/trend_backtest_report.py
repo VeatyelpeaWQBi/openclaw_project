@@ -160,11 +160,11 @@ def _generate_detail_from_flow(account_id):
     conn = get_db_connection()
     try:
         rows = conn.execute("""
-            SELECT created_at, code, name, action, shares, price, amount, profit,
+            SELECT operate_date, code, name, action, shares, price, amount, profit,
                    units_before, units_after
             FROM position_flow
             WHERE account_id = ?
-            ORDER BY created_at
+            ORDER BY operate_date
         """, (account_id,)).fetchall()
     finally:
         conn.close()
@@ -179,7 +179,7 @@ def _generate_detail_from_flow(account_id):
 
     trade_count = 0
     for r in rows:
-        date_str = r['created_at'][:10] if r['created_at'] else ''
+        date_str = r['operate_date'] or ''
         action = r['action'] or ''
         code = r['code'] or ''
         name = r['name'] or ''

@@ -538,7 +538,7 @@ class AccountManager:
             rows = conn.execute("""
                 SELECT * FROM account_flow
                 WHERE account_id = ?
-                ORDER BY created_at DESC
+                ORDER BY operate_date DESC
                 LIMIT ?
             """, (account_id, limit)).fetchall()
             return [{
