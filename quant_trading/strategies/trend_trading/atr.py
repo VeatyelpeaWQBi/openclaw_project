@@ -83,6 +83,27 @@ def calc_add_price(last_price, atr, threshold=0.5):
     return round(last_price + threshold * atr, 2)
 
 
+def calc_avg_cost_after_add(old_avg_cost, old_shares, add_price, add_shares, fees=0):
+    """
+    计算加仓后的平均成本
+    
+    海龟改良：基于平均成本计算止损线，而非加仓价
+    
+    参数:
+        old_avg_cost: 加仓前的平均成本
+        old_shares: 加仓前的总股数
+        add_price: 加仓价
+        add_shares: 加仓股数
+        fees: 加仓手续费
+    
+    返回:
+        float: 新的平均成本
+    """
+    total_cost = old_avg_cost * old_shares + add_price * add_shares + fees
+    total_shares = old_shares + add_shares
+    return round(total_cost / total_shares, 2)
+
+
 def calc_exit_price(df, period=10):
     """
     计算退出信号价（N日最低价）
