@@ -139,8 +139,17 @@ class TrendTradingPositionManager:
         if shares_per_unit <= 0:
             shares_per_unit = pos['total_shares'] // pos['turtle_units'] if pos['turtle_units'] > 0 else 0
         
-        # turtle特有：计算新止损价和下次加仓价
-        new_stop_price = calc_stop_price(new_price, atr)
+        # turtle特有：计算新平均成本
+        from strategies.trend_trading.atr import calc_avg_cost_after_add
+        
+        old_avg_cost = pos.get('avg_cost', new_price)
+        old_shares = pos.get('total_shares', 0)
+        # 加仓手续费估算（买入金额的万分之三）
+        est_fees = new_price * shares_per_unit * 0.0003
+        new_avg_cost = calc_avg_cost_after_add(old_avg_cost, old_shares, new_price, shares_per_unit, est_fees)
+        
+        # turtle改良：基于平均成本计算止损价，加仓线仍用加仓价
+        new_stop_price = calc_stop_price(new_avg_cost, atr)
         new_next_add_price = calc_add_price(new_price, atr)
         
         return self.pm.add_position(
