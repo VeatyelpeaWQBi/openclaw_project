@@ -50,7 +50,7 @@ def _generate_summary(account_id, start_date, end_date,
     # 统计总动作
     total_open = sum(r.get('open_count', 0) for r in monthly_records)
     total_add = sum(r.get('add_count', 0) for r in monthly_records)
-    # total_reduce 已禁用（原版海龟无减仓规则）
+    total_reduce = sum(r.get('reduce_count', 0) for r in monthly_records)
     total_close = sum(r.get('close_count', 0) for r in monthly_records)
 
     # 起始/期末资金
@@ -81,7 +81,7 @@ def _generate_summary(account_id, start_date, end_date,
         f"**期末资金：** {end_capital:,.2f}",
         f"**总盈亏：** {total_profit:+,.2f} ({total_profit_pct:+.2f}%)",
         f"",
-        f"**交易统计：** 开仓{total_open}次 | 加仓{total_add}次 | 平仓{total_close}次",
+        f"**交易统计：** 开仓{total_open}次 | 加仓{total_add}次 | 减仓{total_reduce}次 | 平仓{total_close}次",
     ]
 
     # 按年汇总（如果跨年）
@@ -98,7 +98,7 @@ def _generate_summary(account_id, start_date, end_date,
             y_days = sum(r['trade_days'] for r in year_records)
             y_open = sum(r['open_count'] for r in year_records)
             y_add = sum(r['add_count'] for r in year_records)
-            # y_reduce 已禁用（原版海龟无减仓规则）
+            y_reduce = sum(r['reduce_count'] for r in year_records)
             y_close = sum(r['close_count'] for r in year_records)
             year_data.append({
                 'year': year,
@@ -109,6 +109,7 @@ def _generate_summary(account_id, start_date, end_date,
                 'profit_pct': y_pct,
                 'open_count': y_open,
                 'add_count': y_add,
+                'reduce_count': y_reduce,
                 'close_count': y_close,
             })
         
@@ -117,14 +118,14 @@ def _generate_summary(account_id, start_date, end_date,
         lines.append("---")
         lines.append("**年度汇总：**")
         lines.append("")
-        lines.append("| 年份 | 交易日 | 年初资金 | 年末资金 | 收益 | 收益率 | 开 | 加 | 平 |")
-        lines.append("|:------|:------:|----------:|----------:|----------:|:------:|:---:|:---:|:---:|")
+        lines.append("| 年份 | 交易日 | 年初资金 | 年末资金 | 收益 | 收益率 | 开 | 加 | 减 | 平 |")
+        lines.append("|:------|:------:|----------:|----------:|----------:|:------:|:---:|:---:|:---:|:---:|")
         for y in year_data:
             lines.append(
                 f"| {y['year']} | {y['trade_days']} | "
                 f"{y['start_capital']:,.2f} | {y['end_capital']:,.2f} | "
                 f"{y['profit']:>+,.2f} | {y['profit_pct']:>+,.2f}% | "
-                f"{y['open_count']} | {y['add_count']} | {y['close_count']} |"
+                f"{y['open_count']} | {y['add_count']} | {y['reduce_count']} | {y['close_count']} |"
             )
 
     return '\n'.join(lines)
@@ -139,8 +140,8 @@ def _generate_monthly_table(monthly_records):
         "---",
         "**月度收益：**",
         "",
-        "| 月份 | 交易日 | 月初资金 | 月末资金 | 收益 | 收益率 | 开 | 加 | 平 |",
-        "|:------|:------:|----------:|----------:|----------:|:------:|:---:|:---:|:---:|",
+        "| 月份 | 交易日 | 月初资金 | 月末资金 | 收益 | 收益率 | 开 | 加 | 减 | 平 |",
+        "|:------|:------:|----------:|----------:|----------:|:------:|:---:|:---:|:---:|:---:|",
     ]
 
     for r in monthly_records:
@@ -148,7 +149,7 @@ def _generate_monthly_table(monthly_records):
             f"| {r['year_month']} | {r['trade_days']} | "
             f"{r['start_capital']:,.2f} | {r['end_capital']:,.2f} | "
             f"{r['profit']:>+,.2f} | {r['profit_pct']:>+,.2f}% | "
-            f"{r['open_count']} | {r['add_count']} | {r['close_count']} |"
+            f"{r['open_count']} | {r['add_count']} | {r['reduce_count']} | {r['close_count']} |"
         )
 
     return '\n'.join(lines)
