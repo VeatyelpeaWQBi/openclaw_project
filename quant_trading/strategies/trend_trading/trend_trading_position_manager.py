@@ -126,6 +126,31 @@ class TrendTradingPositionManager:
         """
         加仓（turtle策略：计算新止损/加仓价）
         """
+        params = self._calc_add_params(account_id, code, new_price, atr)
+        if not params:
+            return None
+        
+        return self.pm.add_position(
+            account_id=account_id, code=code, new_price=new_price,
+            shares_per_unit=params['shares_per_unit'],
+            new_stop_price=params['new_stop_price'],
+            new_next_add_price=params['new_next_add_price'],
+            account_manager=account_manager, atr=atr,
+            target_date=target_date,
+        )
+
+    def _calc_add_params(self, account_id, code, new_price, atr):
+        """
+        计算加仓参数（不执行加仓）
+        
+        返回:
+            dict: {
+                'shares_per_unit': int,
+                'new_stop_price': float,
+                'new_next_add_price': float,
+                'new_avg_cost': float,
+            }
+        """
         pos = self.pm.get_position(account_id, code)
         if not pos:
             return None
@@ -152,14 +177,12 @@ class TrendTradingPositionManager:
         new_stop_price = calc_stop_price(new_avg_cost, atr)
         new_next_add_price = calc_add_price(new_price, atr)
         
-        return self.pm.add_position(
-            account_id=account_id, code=code, new_price=new_price,
-            shares_per_unit=shares_per_unit,
-            new_stop_price=new_stop_price,
-            new_next_add_price=new_next_add_price,
-            account_manager=account_manager, atr=atr,
-            target_date=target_date,
-        )
+        return {
+            'shares_per_unit': shares_per_unit,
+            'new_stop_price': new_stop_price,
+            'new_next_add_price': new_next_add_price,
+            'new_avg_cost': new_avg_cost,
+        }
 
     # ==================== 平仓 ====================
 

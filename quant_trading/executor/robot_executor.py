@@ -17,7 +17,7 @@ from datetime import datetime
 from core.storage import get_recent_trade_dates, get_stocks_daily_kline_on_date, get_stock_latest_close
 from infra.account_manager import AccountManager
 from strategies.trend_trading.trend_trading_executor import TrendTradingExecutor
-from strategies.trend_trading.atr import calc_unit_size, calc_stop_price, calc_add_price
+from strategies.trend_trading.atr import calc_unit_size
 
 logger = logging.getLogger(__name__)
 
@@ -286,8 +286,7 @@ class RobotExecutor:
                     continue
 
                 total_shares = shares_per_unit
-                stop_price = calc_stop_price(price, atr)
-                next_add_price = calc_add_price(price, atr)
+                # 止损价和加仓价由策略层计算，不在执行层计算
 
             else:
                 # 加仓：使用DB中已有的shares_per_unit（开仓时固定，不重算）
@@ -303,8 +302,7 @@ class RobotExecutor:
                     skipped += 1
                     continue
                 total_shares = shares_per_unit
-                stop_price = calc_stop_price(price, atr)
-                next_add_price = calc_add_price(price, atr)
+                # 止损价和加仓价由策略层计算，不在执行层计算
 
             estimated_cost = total_shares * price * 1.00013
 
@@ -318,12 +316,10 @@ class RobotExecutor:
             # 写入手数
             item['shares'] = total_shares
 
-            # 补充 position_params
+            # 补充 position_params（只传手数，止损/加仓价由策略层计算）
             item['position_params'] = {
                 'shares_per_unit': shares_per_unit,
                 'total_shares': total_shares,
-                'stop_price': stop_price,
-                'next_add_price': next_add_price,
             }
 
             available -= total_shares * price * 1.00013
