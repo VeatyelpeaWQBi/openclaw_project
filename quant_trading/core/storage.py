@@ -1251,3 +1251,35 @@ def get_adx_history(code, days=30):
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+# ==================== 持仓ATR更新 ====================
+
+def update_position_atr(account_id: int, code: str, new_atr: float) -> bool:
+    """
+    更新持仓的ATR值
+
+    参数:
+        account_id: 账户ID
+        code: 股票代码
+        new_atr: 新ATR值
+
+    返回:
+        bool: 是否成功更新
+    """
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            UPDATE positions SET
+                turtle_atr_value = ?,
+                updated_at = ?
+            WHERE account_id = ? AND code = ? AND status = 'HOLDING'
+        """, (new_atr, now, account_id, code))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"更新ATR失败 [账户{account_id} {code}]: {e}")
+        return False
+    finally:
+        conn.close()

@@ -256,7 +256,7 @@ class TradeExecutor:
             total_shares=total_shares, stop_price=stop_price,
             next_add_price=next_add_price, shares_per_unit=shares_per_unit,
             account_manager=self.account_manager, units=units, atr=atr,
-            entry_system=turtle_entry_system, exit_price=0.0,
+            entry_system=turtle_entry_system,
             target_date=target_date,
         )
 

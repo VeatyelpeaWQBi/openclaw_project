@@ -336,6 +336,7 @@ class SignalChecker:
                 'detail': f"现价{latest_price:.2f} 达到加仓价{next_add:.2f}，当前{position.get('turtle_units', 0)}单位",
                 'urgency': 'medium',
                 'price': latest_price,
+                'atr': atr,
             }
         return None
 

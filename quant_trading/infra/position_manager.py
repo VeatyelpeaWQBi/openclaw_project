@@ -162,7 +162,7 @@ class PositionManager:
 
     def open_position(self, account_id, code, name, price, total_shares,
                       stop_price, next_add_price, shares_per_unit,
-                      account_manager=None, units=1, atr=0.0, entry_system=None, exit_price=0.0,
+                      account_manager=None, units=1, atr=0.0, entry_system=None,
                       strategy_ctx=None, target_date=None):
         """
         开仓（纯CRUD，不做任何策略计算）
@@ -203,11 +203,11 @@ class PositionManager:
             cursor = conn.execute("""
                 INSERT INTO positions
                 (account_id, code, name, status, turtle_units, total_shares, avg_cost, entry_price,
-                 last_add_price, current_stop, next_add_price, exit_price, turtle_atr_value,
+                 last_add_price, current_stop, next_add_price, turtle_atr_value,
                  shares_per_unit, turtle_entry_system, last_buy_date, last_buy_shares, opened_at, updated_at)
-                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (account_id, code, name, units, total_shares, avg_cost, price, price,
-                  stop_price, next_add_price, exit_price, atr, shares_per_unit, entry_system,
+                  stop_price, next_add_price, atr, shares_per_unit, entry_system,
                   last_buy_date, total_shares, opened_at, now))
             pos_id = cursor.lastrowid
 
@@ -531,3 +531,15 @@ class PositionManager:
             } for r in rows]
         finally:
             conn.close()
+
+    def _update_atr_value(self, account_id, code, new_atr):
+        """
+        更新持仓的ATR值（委托storage）
+
+        参数:
+            account_id: 账户ID
+            code: 股票代码
+            new_atr: 新ATR值
+        """
+        from core.storage import update_position_atr
+        update_position_atr(account_id, code, new_atr)
