@@ -269,7 +269,6 @@ class TrendBacktestEngine:
                 'end_capital': None,
                 'open_count': 0,
                 'add_count': 0,
-                'reduce_count': 0,
                 'close_count': 0,
             }
 
@@ -298,8 +297,6 @@ class TrendBacktestEngine:
                 acc['open_count'] += 1
             elif action == '加仓':
                 acc['add_count'] += 1
-            elif action == '减仓':
-                acc['reduce_count'] += 1
             elif action in ('平仓', '止损平仓', '止盈平仓'):
                 acc['close_count'] += 1
 
@@ -346,7 +343,6 @@ class TrendBacktestEngine:
                     'profit_pct': round(profit_pct, 2),
                     'open_count': acc['open_count'],
                     'add_count': acc['add_count'],
-                    'reduce_count': acc['reduce_count'],
                     'close_count': acc['close_count'],
                 }
                 records.append(record)
@@ -355,12 +351,12 @@ class TrendBacktestEngine:
                     INSERT OR REPLACE INTO backtest_monthly
                     (account_id, year_month, start_date, end_date, trade_days,
                      start_capital, end_capital, profit, profit_pct,
-                     open_count, add_count, reduce_count, close_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     open_count, add_count, close_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     account_id, year_month, acc['start_date'], acc['end_date'],
                     acc['trade_days'], start_cap, end_cap, profit, profit_pct,
-                    acc['open_count'], acc['add_count'], acc['reduce_count'], acc['close_count'],
+                    acc['open_count'], acc['add_count'], acc['close_count'],
                 ))
 
             conn.commit()

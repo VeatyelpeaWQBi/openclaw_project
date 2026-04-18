@@ -4,7 +4,7 @@
 
 职责：
   - ATR仓位大小计算
-  - turtle规则前置校验（冷却、4单位上限、has_reduced）
+  - turtle规则前置校验（冷却、4单位上限）
   - 仓位控制（持仓数上限、单日开仓数）
   - 将 turtle 动作队列转换为通用 TradeCommand
   - 执行优先级排序
