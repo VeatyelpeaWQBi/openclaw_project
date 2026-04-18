@@ -35,31 +35,20 @@ class TradeExecutor:
         result = executor.execute(account_id=12345, command=cmd)
     """
 
-    _target_date = None  # 由 strategy.py 注入
-
-    def set_target_date(self, target_date):
-        """设置回测目标日期"""
-        self._target_date = target_date
-
     def __init__(self):
         self.position_manager = PositionManager()
         self.account_manager = AccountManager()
 
-    def _now(self):
-        """获取当前时间戳（回测时用 target_date）"""
-        if self._target_date:
-            return f"{self._target_date} 00:00:00"
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
     # ==================== 公开接口 ====================
 
-    def execute(self, account_id, command: TradeCommand) -> TradeResult:
+    def execute(self, account_id, command: TradeCommand, target_date=None) -> TradeResult:
         """
         执行一条交易指令（统一入口）
 
         参数:
             account_id: 账户ID
             command: 交易指令
+            target_date: 业务日期（回测时传入）
 
         返回:
             TradeResult: 执行结果
@@ -84,7 +73,7 @@ class TradeExecutor:
                 error=f"未知交易动作: {command.action}",
             )
 
-        return handler(account_id, command)
+        return handler(account_id, command, target_date=target_date)
 
     def execute_batch(self, account_id, commands: list) -> list:
         """
@@ -127,7 +116,7 @@ class TradeExecutor:
 
     # ==================== 仓位控制 ====================
 
-    def check_position_limits(self, account_id, is_new_position=False, target_code=None):
+    def check_position_limits(self, account_id, is_new_position=False, target_code=None, target_date=None):
         """
         检查账户仓位控制状态
 
@@ -135,6 +124,7 @@ class TradeExecutor:
             account_id: 账户ID
             is_new_position: 是否为新开仓（增加持仓标的数）
             target_code: 加仓时的目标标的代码（检查该标的unit上限）
+            target_date: 业务日期（回测时传入）
 
         返回:
             dict: {
@@ -163,7 +153,7 @@ class TradeExecutor:
                 will_exceed = True
                 warnings.append(f"持仓标的数({holding_count})已达上限({max_holdings})，不可开新仓")
             # 单日开仓数检查
-            today_opens = self.position_manager.count_today_opens(account_id)
+            today_opens = self.position_manager.count_today_opens(account_id, target_date=target_date)
             if today_opens >= max_daily_open:
                 will_exceed = True
                 warnings.append(f"今日已开仓{today_opens}个标的，达到单日上限({max_daily_open})")
@@ -223,7 +213,7 @@ class TradeExecutor:
 
     # ==================== 开仓 ====================
 
-    def _execute_open(self, account_id, command: TradeCommand) -> TradeResult:
+    def _execute_open(self, account_id, command: TradeCommand, target_date=None) -> TradeResult:
         """
         开仓执行（通用）
 
@@ -268,6 +258,7 @@ class TradeExecutor:
             next_add_price=next_add_price, shares_per_unit=shares_per_unit,
             account_manager=self.account_manager, units=units, atr=atr,
             entry_system=turtle_entry_system, exit_price=0.0,
+            target_date=target_date,
         )
 
         if result_pos is None:
@@ -290,7 +281,7 @@ class TradeExecutor:
 
     # ==================== 加仓 ====================
 
-    def _execute_add(self, account_id, command: TradeCommand) -> TradeResult:
+    def _execute_add(self, account_id, command: TradeCommand, target_date=None) -> TradeResult:
         """
         加仓执行（通用）
 
@@ -334,6 +325,7 @@ class TradeExecutor:
             shares_per_unit=shares_per_unit,
             new_stop_price=new_stop_price, new_next_add_price=new_next_add_price,
             account_manager=self.account_manager, atr=atr,
+            target_date=target_date,
         )
 
         if result_pos is None:
@@ -366,7 +358,7 @@ class TradeExecutor:
 
     # ==================== 减仓 ====================
 
-    def _execute_reduce(self, account_id, command: TradeCommand) -> TradeResult:
+    def _execute_reduce(self, account_id, command: TradeCommand, target_date=None) -> TradeResult:
         """
         减仓执行（通用）
 
@@ -392,7 +384,7 @@ class TradeExecutor:
         shares_to_sell = command.shares or pos.get('shares_per_unit', pos['total_shares'])
 
         # 校验2：T+1锁定
-        t1_status = self.position_manager.get_position_status(account_id, code)
+        t1_status = self.position_manager.get_position_status(account_id, code, target_date=target_date)
         if t1_status and t1_status['locked_shares'] > 0:
             if t1_status['available_shares'] < shares_to_sell:
                 return TradeResult(
@@ -413,6 +405,7 @@ class TradeExecutor:
         result_pos = self.position_manager.reduce_position(
             account_id=account_id, code=code, sell_price=price,
             shares_to_sell=shares_to_sell, account_manager=self.account_manager,
+            target_date=target_date,
         )
 
         if result_pos is None:
@@ -437,7 +430,7 @@ class TradeExecutor:
 
     # ==================== 平仓 ====================
 
-    def _execute_close(self, account_id, command: TradeCommand) -> TradeResult:
+    def _execute_close(self, account_id, command: TradeCommand, target_date=None) -> TradeResult:
         """
         平仓执行（清仓全部卖出）
 
@@ -467,7 +460,7 @@ class TradeExecutor:
             )
 
         # 校验2：T+1锁定
-        t1_status = self.position_manager.get_position_status(account_id, code)
+        t1_status = self.position_manager.get_position_status(account_id, code, target_date=target_date)
         if t1_status and t1_status['available_shares'] <= 0:
             return TradeResult(
                 success=False,
@@ -502,7 +495,7 @@ class TradeExecutor:
         if locked_shares > 0 and can_sell_shares < pos['total_shares']:
             logger.info(f"[{code}] T+1锁定: 总持仓{pos['total_shares']}股, 可卖{can_sell_shares}股, 锁定{locked_shares}股")
             # 部分平仓：先卖出可卖部分
-            return self._partial_close(account_id, command, pos, can_sell_shares, locked_shares, reason)
+            return self._partial_close(account_id, command, pos, can_sell_shares, locked_shares, reason, target_date=target_date)
 
         # 全部可卖，正常平仓
         # cooldown_days 由策略层决定，通用默认10天
@@ -511,6 +504,7 @@ class TradeExecutor:
             account_id=account_id, code=code, reason=reason,
             sell_price=price, cooldown_days=cooldown_days,
             account_manager=self.account_manager,
+            target_date=target_date,
         )
 
         if result is None:
@@ -538,9 +532,18 @@ class TradeExecutor:
             close_reason=reason,  # 记录平仓真实原因
         )
 
-    def _partial_close(self, account_id, command, pos, can_sell_shares, locked_shares, reason):
+    def _partial_close(self, account_id, command, pos, can_sell_shares, locked_shares, reason, target_date=None):
         """
         部分平仓（T+1场景：今日有加仓，只能卖出可卖部分）
+
+        参数:
+            account_id: 账户ID
+            command: 交易指令
+            pos: 持仓信息
+            can_sell_shares: 可卖股数
+            locked_shares: 锁定股数
+            reason: 平仓原因
+            target_date: 业务日期（回测时传入）
 
         策略：
           - 可卖部分：手动计算盈亏，更新持仓数据
@@ -558,7 +561,7 @@ class TradeExecutor:
         fees = self.position_manager._calc_fees(sell_amount, is_sell=True)
         net_profit = gross_profit - fees['total']
 
-        now = self._now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         from core.storage import get_db_connection
 
         conn = get_db_connection()
@@ -587,7 +590,8 @@ class TradeExecutor:
                 shares=can_sell_shares, price=price, amount=sell_amount,
                 profit=round(net_profit, 2), fees=fees['total'],
                 units_before=pos['turtle_units'], units_after=new_units,
-                reason=f"{reason}(T+1部分平仓, 锁定{locked_shares}股)"
+                reason=f"{reason}(T+1部分平仓, 锁定{locked_shares}股)",
+                target_date=target_date,
             )
 
             conn.commit()

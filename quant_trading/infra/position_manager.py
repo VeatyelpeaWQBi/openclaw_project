@@ -17,18 +17,6 @@ logger = logging.getLogger(__name__)
 class PositionManager:
     """持仓管理器（纯CRUD层）"""
 
-    _target_date = None  # 由 strategy.py 注入
-
-    def set_target_date(self, target_date):
-        """设置回测目标日期"""
-        self._target_date = target_date
-
-    def _now(self):
-        """获取当前时间戳（回测时用 target_date）"""
-        if self._target_date:
-            return f"{self._target_date} 00:00:00"
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
     @staticmethod
     def _require_account_id(account_id):
         """校验account_id必须传入"""
@@ -76,7 +64,7 @@ class PositionManager:
 
     def _write_flow(self, conn, account_id, code, name, action, shares=0, price=0.0,
                     amount=0.0, profit=0.0, fees=0.0, units_before=0, units_after=0,
-                    stop_price=0.0, reason=None):
+                    stop_price=0.0, reason=None, target_date=None):
         """
         写入持仓流水记录
 
@@ -94,15 +82,17 @@ class PositionManager:
             units_after: 操作后单位数
             stop_price: 止损价
             reason: 原因说明
+            target_date: 业务日期（回测时传入，实盘时为None）
         """
-        now = self._now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        operate_date = target_date or datetime.now().strftime('%Y-%m-%d')
         conn.execute("""
             INSERT INTO position_flow
             (account_id, code, name, action, shares, price, amount, profit, fees,
-             units_before, units_after, stop_price, reason, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             units_before, units_after, stop_price, reason, created_at, operate_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (account_id, code, name, action, shares, price, amount, profit, fees,
-              units_before, units_after, stop_price, reason, now))
+              units_before, units_after, stop_price, reason, now, operate_date))
 
     def get_active_positions(self, account_id: int) -> list[dict]:
         """
@@ -173,7 +163,7 @@ class PositionManager:
     def open_position(self, account_id, code, name, price, total_shares,
                       stop_price, next_add_price, shares_per_unit,
                       account_manager=None, units=1, atr=0.0, entry_system=None, exit_price=0.0,
-                      strategy_ctx=None):
+                      strategy_ctx=None, target_date=None):
         """
         开仓（纯CRUD，不做任何策略计算）
 
@@ -190,7 +180,7 @@ class PositionManager:
             units: 单位数
             atr: ATR值（原样存储）
             entry_system: 入场系统（原样存储）
-            exit_price: 退出价
+            target_date: 业务日期（回测时传入）
         """
         self._require_account_id(account_id)
 
@@ -204,7 +194,9 @@ class PositionManager:
             logger.warning(f"[账户{account_id}] 开仓失败：资金不足 (需要{total_cost:.2f})")
             return None
 
-        now = self._now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        last_buy_date = target_date[:10] if target_date else datetime.now().strftime('%Y-%m-%d')
+        opened_at = f"{target_date} 00:00:00" if target_date else now
 
         conn = get_db_connection()
         try:
@@ -216,13 +208,14 @@ class PositionManager:
                 VALUES (?, ?, ?, 'HOLDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (account_id, code, name, units, total_shares, avg_cost, price, price,
                   stop_price, next_add_price, exit_price, atr, shares_per_unit, entry_system,
-                  now[:10], total_shares, now, now))
+                  last_buy_date, total_shares, opened_at, now))
             pos_id = cursor.lastrowid
 
             self._write_flow(conn, account_id, code, name, '开仓',
                             shares=total_shares, price=price, amount=trade_amount,
                             profit=0, fees=fees['total'],
-                            units_before=0, units_after=units, stop_price=stop_price)
+                            units_before=0, units_after=units, stop_price=stop_price,
+                            target_date=target_date)
 
             conn.commit()
             logger.info(f"[账户{account_id}] 开仓 {code} {name} {total_shares}股@{price} 费用={fees['total']:.2f}")
@@ -241,7 +234,7 @@ class PositionManager:
 
     def add_position(self, account_id, code, new_price, shares_per_unit,
                      new_stop_price, new_next_add_price,
-                     account_manager=None, atr=0.0):
+                     account_manager=None, atr=0.0, target_date=None):
         """
         加仓（纯CRUD，接受预计算的止损/加仓价）
         """
@@ -265,7 +258,8 @@ class PositionManager:
             return None
 
         old_units = pos['turtle_units']
-        now = self._now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        last_buy_date = target_date[:10] if target_date else datetime.now().strftime('%Y-%m-%d')
 
         # 新持仓成本 = (旧成本 + 新成交额 + 新买入费用) / 总股数
         # 券商逻辑：每次成本变动都加上交易磨损
@@ -284,14 +278,15 @@ class PositionManager:
             """, (
                 shares_per_unit, new_price, shares_per_unit, fees['total'], shares_per_unit,
                 new_price, new_stop_price, new_next_add_price,
-                atr, now[:10], shares_per_unit, now, account_id, code
+                atr, last_buy_date, shares_per_unit, now, account_id, code
             ))
 
             new_units = old_units + 1
             self._write_flow(conn, account_id, code, pos['name'], '加仓',
                             shares=shares_per_unit, price=new_price, amount=trade_amount,
                             profit=0, fees=fees['total'],
-                            units_before=old_units, units_after=new_units, stop_price=new_stop_price)
+                            units_before=old_units, units_after=new_units, stop_price=new_stop_price,
+                            target_date=target_date)
 
             conn.commit()
             logger.info(f"[账户{account_id}] 加仓 {code} {shares_per_unit}股@{new_price} 费用={fees['total']:.2f}")
@@ -304,7 +299,7 @@ class PositionManager:
         return self.get_position(account_id, code)
 
     def reduce_position(self, account_id: int, code: str, sell_price: float, shares_to_sell: int,
-                        account_manager=None) -> dict | None:
+                        account_manager=None, target_date=None) -> dict | None:
         """
         减仓（纯CRUD，卖出指定股数）
         券商逻辑：减仓后摊薄成本价
@@ -315,6 +310,7 @@ class PositionManager:
             sell_price: 卖出价
             shares_to_sell: 要卖出的股数（由上层决定）
             account_manager: AccountManager实例
+            target_date: 业务日期（回测时传入）
         """
         self._require_account_id(account_id)
         pos = self.get_position(account_id, code)
@@ -341,7 +337,7 @@ class PositionManager:
         # 标准盈亏计算（用于flow记录）
         profit = (sell_price - old_avg_cost) * shares_to_sell - fees['total']
 
-        now = self._now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db_connection()
         try:
             conn.execute("""
@@ -357,7 +353,8 @@ class PositionManager:
             self._write_flow(conn, account_id, code, pos['name'], '减仓',
                             shares=shares_to_sell, price=sell_price, amount=trade_amount,
                             profit=round(profit, 2), fees=fees['total'],
-                            units_before=pos['turtle_units'], units_after=pos['turtle_units'] - 1)
+                            units_before=pos['turtle_units'], units_after=pos['turtle_units'] - 1,
+                            target_date=target_date)
 
             conn.commit()
             logger.info(f"[{code}] 减仓: {shares_to_sell}股@{sell_price} 净盈亏={profit:.2f} 摊薄成本={new_avg_cost:.2f}")
@@ -370,7 +367,7 @@ class PositionManager:
         return self.get_position(account_id, code)
 
     def close_position(self, account_id: int, code: str, reason: str, sell_price: float,
-                       cooldown_days: int = 10, account_manager=None) -> dict | None:
+                       cooldown_days: int = 10, account_manager=None, target_date=None) -> dict | None:
         """
         平仓（纯CRUD）
 
@@ -381,6 +378,7 @@ class PositionManager:
             sell_price: 卖出价
             cooldown_days: 冷却天数（由上层决定）
             account_manager: AccountManager实例
+            target_date: 业务日期（回测时传入）
         """
         self._require_account_id(account_id)
         pos = self.get_position(account_id, code)
@@ -396,9 +394,10 @@ class PositionManager:
         # 流水动作
         flow_action = '清仓止损' if reason == 'stop_loss' else '清仓止盈' if net_profit > 0 else '清仓止损'
 
-        base_date = datetime.strptime(self._target_date, '%Y-%m-%d') if self._target_date else datetime.now()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        base_date_str = target_date or datetime.now().strftime('%Y-%m-%d')
+        base_date = datetime.strptime(base_date_str, '%Y-%m-%d')
         cooldown_until = (base_date + timedelta(days=cooldown_days)).strftime('%Y-%m-%d')
-        now = self._now()
 
         conn = get_db_connection()
         try:
@@ -415,7 +414,7 @@ class PositionManager:
                             shares=pos['total_shares'], price=sell_price, amount=trade_amount,
                             profit=round(net_profit, 2), fees=fees['total'],
                             units_before=pos['turtle_units'], units_after=0,
-                            reason=reason)
+                            reason=reason, target_date=target_date)
 
             conn.commit()
             logger.info(f"[账户{account_id}] {flow_action} {code} 净利={net_profit:.2f}")
@@ -433,40 +432,42 @@ class PositionManager:
             'cooldown_until': cooldown_until,
         }
 
-    def count_today_opens(self, account_id):
+    def count_today_opens(self, account_id, target_date=None):
         """
         查询今日已开仓标的数
 
         参数:
             account_id: 账户ID
+            target_date: 业务日期（回测时传入）
 
         返回:
             int: 今日开仓次数
         """
         self._require_account_id(account_id)
-        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
+        today = target_date or datetime.now().strftime('%Y-%m-%d')
         conn = get_db_connection()
         try:
             row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM position_flow WHERE account_id = ? AND action = '开仓' AND created_at LIKE ?",
-                (account_id, today + '%')
+                "SELECT COUNT(*) as cnt FROM position_flow WHERE account_id = ? AND action = '开仓' AND operate_date = ?",
+                (account_id, today)
             ).fetchone()
             return int(row['cnt']) if row else 0
         finally:
             conn.close()
 
-    def check_cooldown_release(self, account_id):
+    def check_cooldown_release(self, account_id, target_date=None):
         """
         检查并释放到期冷却持仓（状态改为CLOSED）
 
         参数:
             account_id: 账户ID（必须）
+            target_date: 业务日期（回测时传入）
 
         返回:
             list: 已释放的持仓代码列表
         """
         self._require_account_id(account_id)
-        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
+        today = target_date or datetime.now().strftime('%Y-%m-%d')
         conn = get_db_connection()
         try:
             rows = conn.execute("""
@@ -480,7 +481,7 @@ class PositionManager:
                 conn.execute("""
                     UPDATE positions SET status = 'CLOSED', updated_at = ?
                     WHERE account_id = ? AND status = 'COOLING' AND cooldown_until <= ?
-                """, (self._now(), account_id, today))
+                """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), account_id, today))
                 conn.commit()
 
             return released
@@ -508,13 +509,14 @@ class PositionManager:
         finally:
             conn.close()
 
-    def get_position_status(self, account_id, code):
+    def get_position_status(self, account_id, code, target_date=None):
         """
         获取持仓状态（含T+1锁仓信息）
 
         参数:
             account_id: 账户ID
             code: 股票代码
+            target_date: 业务日期（回测时传入）
 
         返回:
             dict: {
@@ -529,7 +531,7 @@ class PositionManager:
         if not pos:
             return None
 
-        today = self._target_date or datetime.now().strftime('%Y-%m-%d')
+        today = target_date or datetime.now().strftime('%Y-%m-%d')
         total = pos.get('total_shares', 0)
         last_buy_date = pos.get('last_buy_date', '')
         last_buy_shares = pos.get('last_buy_shares', 0)

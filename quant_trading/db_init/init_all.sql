@@ -240,12 +240,12 @@ CREATE TABLE IF NOT EXISTS positions (
     cooldown_until TEXT,                 -- 冷却截止日
     opened_at TEXT,                      -- 开仓时间
     closed_at TEXT,                      -- 平仓时间
-    updated_at TEXT,                     -- 更新时间
     turtle_entry_system TEXT,            -- 入场系统（S1/S2）
     has_reduced INTEGER DEFAULT 0,       -- 是否已减仓
     last_buy_date TEXT,                  -- 最后买入日
     last_buy_shares INTEGER DEFAULT 0,   -- 最后买入股数
-    shares_per_unit INTEGER DEFAULT 0    -- 每单位股数
+    shares_per_unit INTEGER DEFAULT 0,   -- 每单位股数
+    updated_at TEXT                      -- 更新时间
 );
 
 -- ============================================

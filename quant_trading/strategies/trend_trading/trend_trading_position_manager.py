@@ -21,12 +21,6 @@ logger = logging.getLogger(__name__)
 class TrendTradingPositionManager:
     """趋势交易策略持仓管理器"""
 
-    _target_date = None  # 由 strategy.py 注入
-
-    def set_target_date(self, target_date):
-        """设置回测目标日期"""
-        self._target_date = target_date
-
     def __init__(self):
         self.pm = PositionManager()
 
@@ -41,17 +35,17 @@ class TrendTradingPositionManager:
     def get_position(self, account_id, code):
         return self.pm.get_position(account_id, code)
 
-    def count_today_opens(self, account_id):
-        return self.pm.count_today_opens(account_id)
+    def count_today_opens(self, account_id, target_date=None):
+        return self.pm.count_today_opens(account_id, target_date=target_date)
 
-    def check_cooldown_release(self, account_id):
-        return self.pm.check_cooldown_release(account_id)
+    def check_cooldown_release(self, account_id, target_date=None):
+        return self.pm.check_cooldown_release(account_id, target_date=target_date)
 
     def get_total_units(self, account_id):
         return self.pm.get_total_units(account_id)
 
-    def get_position_status(self, account_id, code):
-        return self.pm.get_position_status(account_id, code)
+    def get_position_status(self, account_id, code, target_date=None):
+        return self.pm.get_position_status(account_id, code, target_date=target_date)
 
     def get_position_flow(self, account_id, code=None, limit=20):
         return self.pm.get_position_flow(account_id, code, limit)
@@ -75,7 +69,7 @@ class TrendTradingPositionManager:
     # ==================== 开仓 ====================
 
     def open_position(self, account_id, code, name, price, atr, units=1,
-                      account_manager=None, capital=100000):
+                      account_manager=None, capital=100000, target_date=None):
         """
         开仓（turtle策略）
         
@@ -88,6 +82,7 @@ class TrendTradingPositionManager:
             units: 单位数，默认1
             account_manager: AccountManager实例
             capital: 账户总资金（用于计算仓位）
+            target_date: 业务日期（回测时传入）
         """
         # turtle特有计算
         shares_per_unit = calc_unit_size(capital, atr, price)
@@ -102,11 +97,12 @@ class TrendTradingPositionManager:
             next_add_price=next_add_price, shares_per_unit=shares_per_unit,
             account_manager=account_manager, units=units, atr=atr,
             entry_system='S1',  # 默认S1，外部可覆盖
+            target_date=target_date,
         )
 
     def open_position_with_system(self, account_id, code, name, price, atr,
                                    entry_system='S1', units=1,
-                                   account_manager=None, capital=100000):
+                                   account_manager=None, capital=100000, target_date=None):
         """
         指定入场系统的开仓
         """
@@ -121,11 +117,12 @@ class TrendTradingPositionManager:
             next_add_price=next_add_price, shares_per_unit=shares_per_unit,
             account_manager=account_manager, units=units, atr=atr,
             entry_system=entry_system,
+            target_date=target_date,
         )
 
     # ==================== 加仓 ====================
 
-    def add_position(self, account_id, code, new_price, atr, account_manager=None):
+    def add_position(self, account_id, code, new_price, atr, account_manager=None, target_date=None):
         """
         加仓（turtle策略：计算新止损/加仓价）
         """
@@ -152,11 +149,12 @@ class TrendTradingPositionManager:
             new_stop_price=new_stop_price,
             new_next_add_price=new_next_add_price,
             account_manager=account_manager, atr=atr,
+            target_date=target_date,
         )
 
     # ==================== 减仓 ====================
 
-    def reduce_position(self, account_id, code, sell_price, account_manager=None):
+    def reduce_position(self, account_id, code, sell_price, account_manager=None, target_date=None):
         """
         减仓（turtle策略：检查has_reduced + 至少2单位）
         """
@@ -181,11 +179,12 @@ class TrendTradingPositionManager:
         return self.pm.reduce_position(
             account_id=account_id, code=code, sell_price=sell_price,
             shares_to_sell=shares_per_unit, account_manager=account_manager,
+            target_date=target_date,
         )
 
     # ==================== 平仓 ====================
 
-    def close_position(self, account_id, code, reason, sell_price, cooldown_days=10, account_manager=None):
+    def close_position(self, account_id, code, reason, sell_price, cooldown_days=10, account_manager=None, target_date=None):
         """
         平仓（纯委托，冷却天数由调用方决定）
         """
@@ -193,4 +192,5 @@ class TrendTradingPositionManager:
             account_id=account_id, code=code, reason=reason,
             sell_price=sell_price, cooldown_days=cooldown_days,
             account_manager=account_manager,
+            target_date=target_date,
         )
