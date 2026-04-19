@@ -498,8 +498,7 @@ def filter_entry_signals(signals: list, config: dict = None) -> list:
     # 记录筛选结果
     if len(signals) != len(filtered):
         filtered_codes = [s['code'] for s in filtered]
-        rejected = [s for s in signals if s['code'] not in filtered_codes]
         logger.info(f"[二次筛选] 筛选前{len(signals)}个，筛选后{len(filtered)}个，"
-                    f"通过{len(filtered_codes)}个: {[(s['code'], s.get('composite_score', 0)) for s in filtered_codes]}")
+                    f"通过{len(filtered)}个: {[(s['code'], s.get('composite_score', 0)) for s in filtered]}")
     
     return filtered
