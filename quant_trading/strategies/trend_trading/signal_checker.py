@@ -23,6 +23,9 @@ from strategies.trend_trading.breakout import check_entry_signal, check_exit_sig
 from strategies.trend_trading.filters import trend_filter, is_eligible
 from strategies.trend_trading.atr import get_atr_value
 from core.indicators import is_supertrend_bullish
+from config.entry_filter import ENTRY_FILTER_CONFIG
+from strategies.trend_trading.score.composite_score import rank_signals
+from datetime import datetime as _dt
 
 logger = logging.getLogger(__name__)
 
@@ -119,14 +122,15 @@ class SignalChecker:
                 if entry_sig:
                     entry_signals.append(entry_sig)
 
-        # 多个入场信号时，按综合评分排序
-        if len(entry_signals) > 1:
-            from strategies.trend_trading.score.composite_score import rank_signals
-            from datetime import datetime as _dt
+        # 入场信号按综合评分排序（所有信号都需要评分）
+        if entry_signals:
             signal_date = _dt.now().strftime('%Y-%m-%d')
             entry_signals = rank_signals(entry_signals, signal_date)
             logger.info(f"入场信号按综合评分排序: "
                         f"{[(s['code'], s.get('composite_score', '?')) for s in entry_signals]}")
+
+            # 二次筛选：基于当日平均分动态过滤低质量信号
+            entry_signals = filter_entry_signals(entry_signals)
 
         signals.extend(entry_signals)
 
@@ -430,3 +434,67 @@ class SignalChecker:
             'source': source,
             'account_nickname': nickname,
         }
+
+
+def filter_entry_signals(signals: list, config: dict = None) -> list:
+    """
+    开仓信号二次筛选
+    
+    基于当日信号平均分动态设定个股入场门槛：
+    - 弱势市场（平均分<50）：个股分>80才开仓
+    - 正常市场（平均分50~55）：个股分>平均分+10才开仓
+    - 强势市场（平均分>55）：个股分>平均分才开仓
+    
+    参数:
+        signals: 当日所有开仓信号列表，每个信号包含 {'code', 'composite_score', ...}
+        config: 配置项（可选，默认使用全局配置）
+    
+    返回:
+        list: 通过筛选的信号列表（按综合分降序排列）
+    """
+    if not signals:
+        return []
+    
+    # 使用传入配置或默认配置
+    cfg = config or ENTRY_FILTER_CONFIG
+    
+    # 计算当日平均分
+    daily_avg_score = sum(s.get('composite_score', 0.0) for s in signals) / len(signals)
+    
+    # 从配置读取阈值
+    weak_threshold = cfg['weak_market_threshold']
+    strong_threshold = cfg['strong_market_threshold']
+    weak_score_limit = cfg['weak_market_score_limit']
+    normal_bonus = cfg['normal_market_bonus']
+    
+    # 确定个股入场门槛
+    if daily_avg_score < weak_threshold:
+        # 弱势市场：只跟踪最强抱团股
+        threshold = weak_score_limit
+        market_status = '弱势'
+    elif daily_avg_score <= strong_threshold:
+        # 正常市场：要求适度超额
+        threshold = daily_avg_score + normal_bonus
+        market_status = '正常'
+    else:
+        # 强势市场：跟随趋势
+        threshold = daily_avg_score
+        market_status = '强势'
+    
+    logger.info(f"[二次筛选] 当日平均分{daily_avg_score:.2f}，市场状态[{market_status}]，"
+                f"个股门槛>{threshold:.2f}")
+    
+    # 筛选达标信号
+    filtered = [s for s in signals if s.get('composite_score', 0.0) > threshold]
+    
+    # 按综合分降序排列（开仓顺序）
+    filtered.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
+    
+    # 记录筛选结果
+    if len(signals) != len(filtered):
+        filtered_codes = [s['code'] for s in filtered]
+        rejected = [s for s in signals if s['code'] not in filtered_codes]
+        logger.info(f"[二次筛选] 筛选前{len(signals)}个，筛选后{len(filtered)}个，"
+                    f"拒绝{len(rejected)}个: {[(s['code'], s.get('composite_score', 0)) for s in rejected]}")
+    
+    return filtered
