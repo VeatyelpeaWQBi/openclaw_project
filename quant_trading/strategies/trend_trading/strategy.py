@@ -118,7 +118,7 @@ class TrendTradingStrategy(BaseStrategy):
             }
 
         # Step 2: 检查冷却释放
-        released = self.position_manager.check_cooldown_release(account_id, target_date=self._target_date)
+        released = self.position_manager.check_cooldown_release(account_id, target_date=date_str)
         if released:
             logger.info(f"[{nickname}] 冷却释放: {released}")
 
@@ -131,7 +131,7 @@ class TrendTradingStrategy(BaseStrategy):
         logger.info(f"[{nickname}] 候选池: {len(candidates)} 只")
 
         # Step 5: 加载K线数据
-        kline_data = self._load_kline_data(positions, candidates)
+        kline_data = self._load_kline_data(positions, candidates, target_date=date_str)
 
         # Step 5.5: 每日更新持仓股ATR值
         if positions:
@@ -143,6 +143,7 @@ class TrendTradingStrategy(BaseStrategy):
             account,
             self.candidate_pool,
             kline_data,
+            target_date=self._target_date,
         )
 
         # Step 7: 汇总结果
@@ -196,7 +197,7 @@ class TrendTradingStrategy(BaseStrategy):
                 },
             }
 
-    def _load_kline_data(self, positions, candidates):
+    def _load_kline_data(self, positions, candidates, target_date=None):
         """从SQLite批量加载K线数据（不调API，获取不到的跳过）"""
         import pandas as pd
         from collections import defaultdict
@@ -209,10 +210,11 @@ class TrendTradingStrategy(BaseStrategy):
             return {}
 
         # 从交易日历获取350个交易日前的日期（基于 target_date 或今天）
-        base_date = self._target_date or datetime.now().strftime('%Y-%m-%d')
+        base_date = target_date or datetime.now().strftime('%Y-%m-%d')
         start_date = get_trading_day_offset_from(base_date, -350)
         if not start_date:
-            start_date = (datetime.now() - timedelta(days=500)).strftime('%Y-%m-%d')
+            # fallback：使用base_date而非now()，避免回测时日期穿越
+            start_date = (datetime.strptime(base_date, '%Y-%m-%d') - timedelta(days=500)).strftime('%Y-%m-%d')
 
         # 批量SQL查询
         conn = get_db_connection()

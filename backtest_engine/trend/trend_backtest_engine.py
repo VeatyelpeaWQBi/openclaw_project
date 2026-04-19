@@ -214,6 +214,7 @@ class TrendBacktestEngine:
         # 信号检测
         signals = signal_checker.check_all(
             position_manager, account, candidate_pool, kline_data,
+            target_date=trade_date,
         )
 
         # 模拟账户：signals 即 action_queue
