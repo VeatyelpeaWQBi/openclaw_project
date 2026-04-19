@@ -3,11 +3,18 @@
 检查止损、退出、加仓、预警、入场等信号
 
 趋势交易信号优先级（从高到低）：
-  1. 止损：收盘价 ≤ 入场价 - 2×ATR → 立即退出
-  2. 退出：收盘价 < N日唐奇安通道下轨 → 趋势结束退出
+  1. 止损：收盘价 ≤ 止损价 → 立即退出（无条件）
+  2. 退出：收盘价 < 20日唐奇安通道下轨 → 趋势反转退出
+     🔒 统一使用20日反向突破（S2），避免10日退出被洗盘干扰
   3. 加仓：收盘价 ≥ 上次加仓价 + 0.5×ATR → 加1单位（最多4单位）
   4. 预警：距止损 < 3% → 提醒主人关注
   5. 建仓：空仓 + N日突破 + 均线多头 → 入场信号
+
+改良逻辑（2026-04-19）：
+  - 统一S2退出：所有持仓（S1/S2入场）统一使用20日反向突破退出
+  - 避免洗盘干扰：20日最低价给强势股更多回调空间
+  - 设计依据：强势股回调通常3-7天，不会持续20天以上
+  - 新易盛案例：S1(10日)5月27退出亏损-828，S2(20日)11月14退出盈利+68448
 """
 
 import logging
@@ -67,8 +74,8 @@ class SignalChecker:
             if warn:
                 signals.append(warn)
 
-            # ③ 退出检查
-            # 趋势法则：System1用10日反向突破，System2用20日反向突破
+            # ③ 退出检查（统一S2）
+            # 改良逻辑：所有持仓统一使用20日反向突破退出，避免洗盘干扰
             exit_sig = self.check_exit(pos, df)
             if exit_sig:
                 signals.append(exit_sig)
@@ -249,23 +256,38 @@ class SignalChecker:
 
     def check_exit(self, position, df):
         """
-        趋势退出检查（S1/S2配对）
+        趋势退出检查（统一S2）
 
-        趋势法则：
-          S1(20日突破入场): 收盘价 < 过去10日最低价 → 退出
-          S2(55日突破入场): 收盘价 < 过去20日最低价 → 退出
+        改良逻辑（2026-04-19）：
+          统一使用20日反向突破退出（无论S1/S2入场）
+          避免10日退出被洗盘干扰，捕获完整趋势
+
+        设计依据：
+          - 强势股回调通常3-7天，不会持续20天以上
+          - 20日最低价给强势股更多回调空间
+          - 新易盛案例：10月14日S1触发后股价反弹，S2继续持有吃到高点
+
+        参数:
+            position: 持仓信息（含turtle_entry_system）
+            df: 日K DataFrame
+
+        返回:
+            dict: 退出信号 或 None
         """
-        turtle_entry_system = position.get('turtle_entry_system')
-        exit_point = 20 if turtle_entry_system == 'S2' else 10
+        # 统一使用20日反向突破退出
+        exit_point = 20
+
+        # 记录原系统类型（用于日志）
+        turtle_entry_system = position.get('turtle_entry_system', 'S1')
 
         exit_sig = check_exit_signal(df, exit_point=exit_point)
         if exit_sig['signal']:
-            logger.info(f"[{position['code']}] {turtle_entry_system or 'S1'}触发退出: {exit_sig['type']}")
+            logger.info(f"[{position['code']}] S2退出触发(原{turtle_entry_system}): {exit_sig['type']}")
             return {
                 'type': 'exit',
                 'code': position['code'],
                 'name': self._clean_name(position.get('name', '')),
-                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破{exit_point}日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position)}]",
+                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破20日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position)}]",
                 'urgency': 'high',
                 'price': exit_sig['exit_price'],
             }
