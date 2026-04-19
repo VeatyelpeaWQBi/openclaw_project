@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class SignalChecker:
     """趋势交易信号检测器"""
 
-    def check_all(self, position_manager, account, candidate_pool, kline_data):
+    def check_all(self, position_manager, account, candidate_pool, kline_data, target_date=None):
         """
         主入口：按优先级检查所有信号
 
@@ -42,6 +42,7 @@ class SignalChecker:
             account: 账户对象（含id/simulator/filter_active等）
             candidate_pool: 候选池
             kline_data: K线数据
+            target_date: 目标日期 'YYYY-MM-DD'（回测模式必填，实盘模式可默认取当日）
 
         返回:
             手工账户(simulator=0): list[dict] 信号列表
@@ -65,7 +66,7 @@ class SignalChecker:
 
             # ① 止损检查（最高优先级）
             # 趋势法则：价格触及止损线必须立即退出，不考虑其他信号
-            sl = self.check_stop_loss(pos, latest_price)
+            sl = self.check_stop_loss(pos, latest_price, target_date=target_date)
             if sl:
                 signals.append(sl)
                 continue  # 止损后不再检查退出/加仓
@@ -79,7 +80,7 @@ class SignalChecker:
 
             # ③ 退出检查（统一S2）
             # 改良逻辑：所有持仓统一使用20日反向突破退出，避免洗盘干扰
-            exit_sig = self.check_exit(pos, df)
+            exit_sig = self.check_exit(pos, df, target_date=target_date)
             if exit_sig:
                 signals.append(exit_sig)
                 continue  # 退出后不再检查加仓
@@ -124,7 +125,9 @@ class SignalChecker:
 
         # 入场信号按综合评分排序（所有信号都需要评分）
         if entry_signals:
-            signal_date = _dt.now().strftime('%Y-%m-%d')
+            # 回测模式：使用传入的target_date
+            # 实盘模式：未传入时默认取当日
+            signal_date = target_date if target_date else _dt.now().strftime('%Y-%m-%d')
             entry_signals = rank_signals(entry_signals, signal_date)
             logger.info(f"入场信号按综合评分排序: "
                         f"{[(s['code'], s.get('composite_score', '?')) for s in entry_signals]}")
@@ -212,10 +215,12 @@ class SignalChecker:
             return 'S2'
         return 'S1'
 
-    def _format_shares_status(self, position):
+    def _format_shares_status(self, position, target_date=None):
         """格式化持仓状态（可卖/锁定）"""
         from datetime import datetime
-        today = datetime.now().strftime('%Y-%m-%d')
+        # 回测模式：使用传入的target_date
+        # 实盘模式：使用当前日期
+        today = target_date if target_date else datetime.now().strftime('%Y-%m-%d')
         total = position.get('total_shares', 0)
         last_buy_date = position.get('last_buy_date', '')
         last_buy_shares = position.get('last_buy_shares', 0)
@@ -228,7 +233,7 @@ class SignalChecker:
             return f"持仓{total}股(可卖{available}/锁定{locked})"
         return f"持仓{total}股"
 
-    def check_stop_loss(self, position, latest_price):
+    def check_stop_loss(self, position, latest_price, target_date=None):
         """
         止损检查
 
@@ -252,13 +257,13 @@ class SignalChecker:
                 'type': 'stop_loss',
                 'code': position['code'],
                 'name': self._clean_name(position.get('name', '')),
-                'detail': f"现价{latest_price:.2f} 触及止损价{stop_price:.2f}，需立即卖出 [{self._format_shares_status(position)}]",
+                'detail': f"现价{latest_price:.2f} 触及止损价{stop_price:.2f}，需立即卖出 [{self._format_shares_status(position, target_date=target_date)}]",
                 'urgency': 'critical',
                 'price': latest_price,
             }
         return None
 
-    def check_exit(self, position, df):
+    def check_exit(self, position, df, target_date=None):
         """
         趋势退出检查（统一S2）
 
@@ -291,7 +296,7 @@ class SignalChecker:
                 'type': 'exit',
                 'code': position['code'],
                 'name': self._clean_name(position.get('name', '')),
-                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破20日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position)}]",
+                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破20日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position, target_date=target_date)}]",
                 'urgency': 'high',
                 'price': exit_sig['exit_price'],
             }
@@ -495,6 +500,6 @@ def filter_entry_signals(signals: list, config: dict = None) -> list:
         filtered_codes = [s['code'] for s in filtered]
         rejected = [s for s in signals if s['code'] not in filtered_codes]
         logger.info(f"[二次筛选] 筛选前{len(signals)}个，筛选后{len(filtered)}个，"
-                    f"拒绝{len(rejected)}个: {[(s['code'], s.get('composite_score', 0)) for s in rejected]}")
+                    f"通过{len(filtered_codes)}个: {[(s['code'], s.get('composite_score', 0)) for s in filtered_codes]}")
     
     return filtered

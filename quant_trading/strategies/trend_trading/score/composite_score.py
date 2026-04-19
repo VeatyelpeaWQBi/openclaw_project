@@ -19,9 +19,6 @@ from core.storage import (
     get_rs_score_by_code,
     get_vcp_score_by_code,
     get_adx_score_by_code,
-    get_latest_rs_score,
-    get_latest_vcp_score,
-    get_latest_adx_score,
 )
 from strategies.trend_trading.score._base import get_trade_dates
 
@@ -53,24 +50,6 @@ def _get_prev_trade_date(signal_date):
     if len(dates) < 2:
         return None
     return dates[-2]
-
-
-def _normalize_score(raw_score, min_val, max_val):
-    """
-    将原始评分归一化到 0-100
-
-    参数:
-        raw_score: 原始分数
-        min_val: 理论最小值
-        max_val: 理论最大值
-
-    返回:
-        float: 0-100 评分
-    """
-    if raw_score is None:
-        return 0.0
-    return max(0.0, min(100.0, (raw_score - min_val) / (max_val - min_val) * 100.0))
-
 
 def get_composite_score(code, signal_date, benchmark_code=DEFAULT_BENCHMARK,
                         prev_trade_date=None):
@@ -106,10 +85,8 @@ def get_composite_score(code, signal_date, benchmark_code=DEFAULT_BENCHMARK,
     missing = []
     actual_dates = {}
 
-    # RS：取信号日当天，无数据则取最新
+    # RS：取信号日当天数据，无数据则标记缺失
     rs_row = get_rs_score_by_code(code, signal_date, benchmark_code)
-    if not rs_row:
-        rs_row = get_latest_rs_score(code, benchmark_code)
     rs_raw = rs_row['rs_score'] if rs_row else None
     rs_score = rs_raw if rs_raw is not None else 0.0
     if rs_raw is None:
@@ -117,7 +94,7 @@ def get_composite_score(code, signal_date, benchmark_code=DEFAULT_BENCHMARK,
     else:
         actual_dates['rs'] = rs_row.get('calc_date')
 
-    # VCP：取前一个交易日（突破前形态），无数据则取最新
+    # VCP：取前一个交易日（突破前形态）数据，无数据则标记缺失
     if prev_trade_date is None:
         prev_trade_date = _get_prev_trade_date(signal_date)
     vcp_raw = None
@@ -128,20 +105,13 @@ def get_composite_score(code, signal_date, benchmark_code=DEFAULT_BENCHMARK,
             vcp_raw = vcp_row['score']
             vcp_date = prev_trade_date
     if vcp_raw is None:
-        vcp_row = get_latest_vcp_score(code, skip_latest=True)
-        if vcp_row:
-            vcp_raw = vcp_row['score']
-            vcp_date = vcp_row.get('calc_date')
-    if vcp_raw is None:
         missing.append('VCP')
 
     # VCP原始范围：-40 ~ +95，归一化到 0-100
-    vcp_score = _normalize_score(vcp_raw, -40, 95) if vcp_raw is not None else 0.0
+    vcp_score = vcp_raw if vcp_raw is not None else 0.0
 
-    # ADX：取信号日当天，无数据则取最新
+    # ADX：取信号日当天数据，无数据则标记缺失
     adx_row = get_adx_score_by_code(code, signal_date)
-    if not adx_row:
-        adx_row = get_latest_adx_score(code)
     adx_raw = adx_row['adx_score_val'] if adx_row else None
     adx_score = adx_raw if adx_raw is not None else 0.0
     if adx_raw is None:
