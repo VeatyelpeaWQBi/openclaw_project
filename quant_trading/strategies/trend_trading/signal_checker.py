@@ -468,7 +468,7 @@ def filter_entry_signals(signals: list, config: dict = None) -> list:
     weak_threshold = cfg['weak_market_threshold']
     strong_threshold = cfg['strong_market_threshold']
     weak_score_limit = cfg['weak_market_score_limit']
-    normal_bonus = cfg['normal_market_bonus']
+    normal_bonus = cfg['normal_market_bonus_times']
     
     # 确定个股入场门槛
     if daily_avg_score < weak_threshold:
@@ -477,7 +477,7 @@ def filter_entry_signals(signals: list, config: dict = None) -> list:
         market_status = '弱势'
     elif daily_avg_score <= strong_threshold:
         # 正常市场：要求适度超额
-        threshold = daily_avg_score + normal_bonus
+        threshold = daily_avg_score * normal_bonus
         market_status = '正常'
     else:
         # 强势市场：跟随趋势

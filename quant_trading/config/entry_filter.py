@@ -12,12 +12,12 @@
 
 ENTRY_FILTER_CONFIG = {
     # 市场状态划分阈值
-    'weak_market_threshold': 28.65,      # 弱势市场平均分阈值（<此值为弱势）
-    'strong_market_threshold': 35,    # 强势市场平均分阈值（>此值为强势）
+    'weak_market_threshold': 45.0,      # 弱势市场平均分阈值（<此值为弱势）
+    'strong_market_threshold': 55.0,    # 强势市场平均分阈值（>此值为强势）
     
     # 弱势市场个股门槛
-    'weak_market_score_limit': 70.0,    # 弱势市场个股综合分门槛
+    'weak_market_score_limit': 75.0,    # 弱势市场个股综合分门槛
     
     # 正常市场个股门槛
-    'normal_market_bonus': 20.0,        # 正常市场个股分 = 平均分 + 此值
+    'normal_market_bonus_times': 1.5,        # 正常市场个股分 = 平均分 * 此值
 }
