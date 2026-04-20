@@ -229,7 +229,7 @@ def run_all(days=None):
 
         # 随机间隔 2~5 秒防 ban
         if idx < len(indexes) - 1:
-            delay = random.uniform(0.5, 1)
+            delay = random.uniform(3, 5)
             logger.info(f"  等待 {delay:.1f}秒...")
             time.sleep(delay)
 
