@@ -1,10 +1,7 @@
 """
 盯盘助手 - 大盘和题材数据汇总引擎
-从游牧型T+1策略迁移，删除筛选股票逻辑，仅保留大盘和题材数据汇总
 """
 
-import sys
-import os
 import sqlite3
 import logging
 
@@ -20,13 +17,7 @@ from core.indicators import is_supertrend_bullish, calculate_volume_ratio
 from core.storage import merge_and_save_kline, get_daily_data_from_sqlite, INITIAL_FETCH_DAYS
 from core.paths import DB_PATH
 
-# config 目录在 openclaw_project 根目录，加入 sys.path 以导入 sectors
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_CONFIG_DIR = os.path.join(_PROJECT_ROOT, 'config')
-if _CONFIG_DIR not in sys.path:
-    sys.path.insert(0, _CONFIG_DIR)
-
-from sectors import is_attack_sector
+from config.sectors import is_attack_sector
 from filters import filter_etf_candidates
 
 logger = logging.getLogger(__name__)
@@ -230,15 +221,53 @@ class WatchMonitorStrategy:
     def generate_report(self, result: dict) -> str:
         """生成报告（委托 report.py）"""
         from report import generate_report
-        
+
         # 转换为旧格式以兼容 report.py
         legacy_result = {
             'date_str': result['date_str'],
             'top_sectors': result['top_sectors'],
             'top10_attack': result['top10_attack'],
-            'candidates': [],  # 不再筛选个股
-            'all_analyzed': [],  # 不再分析个股
+            'sector_details': result.get('sector_details', []),
+            'candidates': [],
+            'all_analyzed': [],
             'has_signal': result['has_signal'],
             'skip_reason': result.get('skip_reason', ''),
         }
         return generate_report(legacy_result)
+
+
+def main():
+    """主入口：运行盯盘助手策略并输出报告"""
+    # 配置日志
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    start_time = datetime.now()
+    logger.info("=" * 50)
+    logger.info("盯盘助手启动")
+    logger.info("=" * 50)
+
+    # 执行策略
+    strategy = WatchMonitorStrategy()
+    result = strategy.run()
+
+    # 生成报告
+    report = strategy.generate_report(result)
+
+    # 输出报告
+    print("\n" + report)
+
+    # 保存报告
+    from core.storage import save_report
+    save_report(result['date_str'], report)
+
+    elapsed = (datetime.now() - start_time).total_seconds()
+    logger.info(f"运行完成，耗时 {elapsed:.1f} 秒")
+
+    return result
+
+
+if __name__ == '__main__':
+    main()
