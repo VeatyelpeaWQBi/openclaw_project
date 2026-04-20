@@ -67,36 +67,35 @@ def generate_report(result):
                 # 根据涨跌趋势和分化系数判断市场状态
                 if ratio < 0:  # 分化系数为负：上证和中证全指方向相反
                     if sh_change > 0 and zz_change < 0:
-                        desc = '鳄鱼张嘴（指数红个股跌，主力拉指数掩护出货，危险！）'
+                        desc = '🐊 鳄鱼张嘴（指数红个股跌，主力拉指数掩护出货，危险！）'
                     else:
-                        desc = '题材先行（权重跌，题材涨，风格可能在切换）'
+                        desc = '🦅 题材先行（权重跌，题材涨，风格可能在切换）'
                 elif sh_change > 0.3:  # 上涨趋势
                     if ratio > 1.2:
-                        desc = '权重搭台，题材唱戏（大盘稳，题材涨，赚钱效应明显）'
+                        desc = '🟢 权重搭台，题材唱戏（大盘稳，题材涨，赚钱效应明显）'
                     elif ratio < 0.8:
-                        desc = '只赚指数不赚钱（涨指数不涨题材，赚钱效应弱）'
+                        desc = '🟡 只赚指数不赚钱（涨指数不涨题材，赚钱效应弱）'
                     else:
-                        desc = '普涨行情'
+                        desc = '🟢 普涨行情'
                 elif sh_change < -0.3:  # 下跌趋势
                     if ratio > 1.2:
-                        desc = '题材踩踏（散户恐慌抛售题材股，亏钱效应炸裂）'
+                        desc = '🔴 题材踩踏（散户恐慌抛售题材股，亏钱效应炸裂）'
                     elif ratio < 0.8:
-                        desc = '权重补跌（大盘跌，题材稳，可能见底）'
+                        desc = '🟡 权重补跌（大盘跌，题材稳，可能见底）'
                     else:
-                        desc = '市场弱势，单边下跌，小心系统性风险'
+                        desc = '🟠 市场弱势，单边下跌，小心系统性风险'
                 else:  # 震荡
                     if abs(ratio - 1) > 0.3:
-                        desc = '二八分化（板块轮动快，板块选对吃肉选错吃面）'
+                        desc = '🜲 二八分化（板块轮动快，板块选对吃肉选错吃面）'
                     else:
-                        desc = '横盘磨叽（多空僵持，观望为主）'
+                        desc = '⚪ 横盘磨叽（多空僵持，观望为主）'
                 lines.append(f"> 上证(加权): {sh_change:+.2f}% | 中证全指(等权): {zz_change:+.2f}%")
                 lines.append(f"> 分化系数: **{ratio:.2f}**")
                 lines.append(f"> {desc}")
             lines.append("")
 
         # 市场情绪
-        if sentiment:
-            lines.append("## 市场情绪")
+            lines.append("## 💭 市场情绪")
             lines.append("")
             up = sentiment.get('up', 0)
             down = sentiment.get('down', 0)
@@ -105,11 +104,11 @@ def generate_report(result):
             if up + down > 0:
                 ratio_str = f"1:{down/up:.1f}" if up > 0 else "-"
                 if down > up * 2:
-                    mood = '偏空'
+                    mood = '🔴偏空'
                 elif up > down:
-                    mood = '偏多'
+                    mood = '🟢偏多'
                 else:
-                    mood = '震荡'
+                    mood = '🟡震荡'
                 lines.append(f"> 上涨: **{up}**只({limit_up}涨停) | 下跌: **{down}**只({limit_down}跌停)")
                 lines.append(f"> 涨跌比: **{ratio_str}** → {mood}")
                 activity_rate = sentiment.get('activity_rate', 0)
@@ -135,7 +134,7 @@ def generate_report(result):
         return '\n'.join(lines)
 
     # 热门板块（进攻型板块加粗）
-    lines.append("## 今日热门板块TOP10")
+    lines.append("## 🔥 今日热门板块TOP10")
     lines.append("")
     top10_attack_names = set()
     for atk in result.get('top10_attack', []):
@@ -154,7 +153,7 @@ def generate_report(result):
     top10_attack = result.get('top10_attack', [])
     if top10_attack:
         attack_names = [s['name'] for s in top10_attack]
-        lines.append(f"> 进攻型板块: {', '.join(attack_names)}")
+        lines.append(f"> 🎯 进攻型板块: {', '.join(attack_names)}")
         lines.append("")
 
     # 板块详细数据
