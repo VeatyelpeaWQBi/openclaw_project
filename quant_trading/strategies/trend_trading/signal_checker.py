@@ -4,17 +4,17 @@
 
 趋势交易信号优先级（从高到低）：
   1. 止损：收盘价 ≤ 止损价 → 立即退出（无条件）
-  2. 退出：收盘价 < 20日唐奇安通道下轨 → 趋势反转退出
-     🔒 统一使用20日反向突破（S2），避免10日退出被洗盘干扰
+  2. 退出：收盘价 < N日唐奇安通道下轨 → 趋势反转退出
+     S1入场 → 10日反向突破退出
+     S2入场 → 20日反向突破退出
   3. 加仓：收盘价 ≥ 上次加仓价 + 0.5×ATR → 加1单位（最多4单位）
   4. 预警：距止损 < 3% → 提醒主人关注
   5. 建仓：空仓 + N日突破 + 均线多头 → 入场信号
 
-改良逻辑（2026-04-19）：
-  - 统一S2退出：所有持仓（S1/S2入场）统一使用20日反向突破退出
-  - 避免洗盘干扰：20日最低价给强势股更多回调空间
-  - 设计依据：强势股回调通常3-7天，不会持续20天以上
-  - 新易盛案例：S1(10日)5月27退出亏损-828，S2(20日)11月14退出盈利+68448
+原版逻辑（恢复）：
+  - S1入场用10日退出，S2入场用20日退出
+  - S1是短期系统，快速响应趋势反转
+  - S2是长期系统，给更多回调空间
 """
 
 import logging
@@ -265,16 +265,16 @@ class SignalChecker:
 
     def check_exit(self, position, df, target_date=None):
         """
-        趋势退出检查（统一S2）
+        趋势退出检查（S1/S2分离）
 
-        改良逻辑（2026-04-19）：
-          统一使用20日反向突破退出（无论S1/S2入场）
-          避免10日退出被洗盘干扰，捕获完整趋势
+        原版逻辑：
+          S1入场 → 10日反向突破退出
+          S2入场 → 20日反向突破退出
 
         设计依据：
-          - 强势股回调通常3-7天，不会持续20天以上
-          - 20日最低价给强势股更多回调空间
-          - 新易盛案例：10月14日S1触发后股价反弹，S2继续持有吃到高点
+          - S1是短期系统（20日突破），用10日退出快速响应
+          - S2是长期系统（55日突破），用20日退出给更多空间
+          - 分离退出避免S1信号被过长时间持仓拖累
 
         参数:
             position: 持仓信息（含turtle_entry_system）
@@ -283,20 +283,18 @@ class SignalChecker:
         返回:
             dict: 退出信号 或 None
         """
-        # 统一使用20日反向突破退出
-        exit_point = 20
-
-        # 记录原系统类型（用于日志）
+        # 根据入场系统选择退出周期
         turtle_entry_system = position.get('turtle_entry_system', 'S1')
+        exit_point = 10 if turtle_entry_system == 'S1' else 20
 
         exit_sig = check_exit_signal(df, exit_point=exit_point)
         if exit_sig['signal']:
-            logger.info(f"[{position['code']}] S2退出触发(原{turtle_entry_system}): {exit_sig['type']}")
+            logger.info(f"[{position['code']}] {turtle_entry_system}退出触发: {exit_sig['type']}")
             return {
                 'type': 'exit',
                 'code': position['code'],
                 'name': self._clean_name(position.get('name', '')),
-                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破20日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position, target_date=target_date)}]",
+                'detail': f"收盘价{exit_sig['exit_price']:.2f} 跌破{exit_point}日通道下轨{exit_sig['channel_low']:.2f} [{self._format_shares_status(position, target_date=target_date)}]",
                 'urgency': 'high',
                 'price': exit_sig['exit_price'],
             }
