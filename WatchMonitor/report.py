@@ -1,6 +1,7 @@
 """
 盯盘助手报告生成模块
-拆分成3个独立部分：大盘分析 + 持仓池风险 + 候选池抄底
+拆分成4个独立部分：大盘分析 + 持仓池风险上半 + 持仓池扫雷下半(可选) + 候选池抄底
+扫雷部分仅在检测到扫雷风险时生成
 """
 
 import logging
@@ -197,25 +198,25 @@ def generate_market_report(result):
 
 def generate_position_report():
     """
-    生成持仓池风险信号报告（部分2）
-    - 无风险信号时不显示扫雷警告
-    - 无风险信号个股展示技术概要分析
-    
+    生成持仓池风险信号报告上半部分（部分2）
+    - 显示持仓基本信息、风险信号、技术概要分析
+    - 扫雷风险单独作为下半部分报告
+
     返回:
-        str: 持仓池风险信号报告文本
+        str: 持仓池风险信号报告文本（不含扫雷）
     """
     lines = []
     lines.append("## 🚨 持仓池风险信号")
     lines.append("")
-    
+
     try:
         signals_result = detect_all_signals()
         position_risks = signals_result['position_risks']
-        
+
         if not position_risks:
             lines.append("持仓池为空")
             return '\n'.join(lines)
-        
+
         for pr in position_risks:
             code = pr['code']
             name = pr['name']
@@ -226,31 +227,31 @@ def generate_position_report():
             signals = pr['signals']
             mine_result = pr['mine_result']
             indicators = pr.get('indicators', {})  # 技术指标
-            
+
             # 持仓基本信息
             profit_sign = '+' if profit_pct >= 0 else ''
             profit_color = 'red' if profit_pct > 0 else 'green' if profit_pct < 0 else ''
-            
+
             lines.append(f"- **{name} ({code})** — {position_type}持仓")
             if profit_color:
                 lines.append(f"  - 成本{entry_price:.2f} | 现价<font color=\"{profit_color}\">{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)</font>")
             else:
                 lines.append(f"  - 成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
             lines.append("")
-            
+
             # 筛选真实风险信号（排除扫雷）
             risk_signals = [s for s in signals if s['type'] != 'mine_warning']
-            
+
             # 先显示风险信号（如果有）
             if risk_signals:
                 # 按严重度排序显示
                 severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
                 sorted_signals = sorted(risk_signals, key=lambda x: severity_order.get(x.get('severity', 'info'), 99))
-                
+
                 for sig in sorted_signals:
                     severity = sig.get('severity', 'info')
                     message = sig.get('message', '')
-                    
+
                     # 根据严重度选择图标
                     if severity == 'fatal':
                         icon = '🔴🔴'
@@ -266,23 +267,23 @@ def generate_position_report():
                         icon = '✅'
                     else:
                         icon = '💡'
-                    
+
                     lines.append(f"  - {icon} {message}")
             else:
                 lines.append("  - ✅ 暂无风险信号")
             lines.append("")
-            
+
             # ========== 技术概要分析（所有情况下都显示） ==========
             if indicators:
                 lines.append("  - 📊 技术概要:")
-                
+
                 # SuperTrend状态（简化为SuTd）+ 反转预警
                 st_dir = indicators.get('st_direction')
                 st_upper = indicators.get('st_upper_band')  # 阻力线
                 st_lower = indicators.get('st_lower_band')  # 支撑线
-                
+
                 st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
-                
+
                 # SuperTrend反转预警
                 st_warning = ''
                 if st_dir == 1 and st_lower and current_price:  # 多头状态
@@ -299,9 +300,9 @@ def generate_position_report():
                         st_warning = f"（空→多切换点{st_upper:.2f}，距+{-gap_pct:.1f}%）"
                     else:
                         st_warning = f"（⚠️已突破空→多切换点{st_upper:.2f}）"
-                
+
                 lines.append(f"    - SuTd: {st_dir_text} {st_warning}")
-                
+
                 # RSI状态
                 rsi = indicators.get('rsi_14')
                 rsi_text = f"RSI: {rsi:.1f}" if rsi else "RSI: N/A"
@@ -314,13 +315,13 @@ def generate_position_report():
                     else:
                         rsi_status = '(中性)'
                 lines.append(f"    - {rsi_text}{rsi_status}")
-                
+
                 # 均线关系
                 ma5 = indicators.get('ma5')
                 ma10 = indicators.get('ma10')
                 ma20 = indicators.get('ma20')
                 ma60 = indicators.get('ma60')
-                
+
                 ma_status = []
                 if ma5 and current_price:
                     ma_status.append('MA5上方' if current_price > ma5 else 'MA5下方')
@@ -330,9 +331,9 @@ def generate_position_report():
                     ma_status.append('MA20上方' if current_price > ma20 else 'MA20下方')
                 if ma60 and current_price:
                     ma_status.append('MA60上方' if current_price > ma60 else 'MA60下方')
-                
+
                 lines.append(f"    - 均线位置: {' '.join(ma_status) if ma_status else 'N/A'}")
-                
+
                 # 均线斜率
                 ma5_slope = indicators.get('ma5_slope')
                 ma10_slope = indicators.get('ma10_slope')
@@ -341,10 +342,10 @@ def generate_position_report():
                     slope_status.append('MA5⬆' if ma5_slope == 1 else 'MA5⬇' if ma5_slope == -1 else 'MA5→')
                 if ma10_slope:
                     slope_status.append('MA10⬆' if ma10_slope == 1 else 'MA10⬇' if ma10_slope == -1 else 'MA10→')
-                
+
                 if slope_status:
                     lines.append(f"    - 均线趋势: {' '.join(slope_status)}")
-                
+
                 # 综合判断
                 if st_dir == 1 and 'MA5上方' in ma_status and 'MA10上方' in ma_status:
                     lines.append(f"    - 📈 短期趋势向上")
@@ -352,19 +353,77 @@ def generate_position_report():
                     lines.append(f"    - 📉 短期趋势向下")
                 else:
                     lines.append(f"    - 📊 趋势震荡")
-            
-            # 扫雷警告（从signals中获取详细信息）
-            mine_signal = [s for s in signals if s['type'] == 'mine_warning']
-            if mine_signal:
-                lines.append(f"  - {mine_signal[0]['message']}")
 
             lines.append("")
-            
+
     except Exception as e:
         logger.warning(f"检测持仓池风险信号失败: {e}")
         lines.append("检测失败，请查看日志")
-    
+
     return '\n'.join(lines)
+
+
+def generate_position_mine_report():
+    """
+    生成持仓池扫雷风险报告（部分2下半部分）
+    - 仅显示扫雷风险项
+    - 如果全部无扫雷项则返回空字符串
+
+    返回:
+        str: 扫雷风险报告文本，无扫雷项时返回空字符串
+    """
+    lines = []
+    has_mine = False  # 标记是否有扫雷项
+
+    try:
+        signals_result = detect_all_signals()
+        position_risks = signals_result['position_risks']
+
+        if not position_risks:
+            return ''  # 持仓池为空，无扫雷报告
+
+        for pr in position_risks:
+            code = pr['code']
+            name = pr['name']
+            current_price = pr['current_price']
+            signals = pr['signals']
+            mine_result = pr['mine_result']
+
+            # 扫雷警告（从signals中获取详细信息）
+            mine_signals = [s for s in signals if s['type'] == 'mine_warning']
+
+            if mine_signals:
+                if not has_mine:
+                    # 第一个扫雷项，添加标题
+                    lines.append("## 💣 持仓池扫雷风险")
+                    lines.append("")
+                    has_mine = True
+
+                lines.append(f"- **{name} ({code})** — 现价{current_price:.2f}")
+
+                for ms in mine_signals:
+                    message = ms.get('message', '')
+                    lines.append(f"  - {message}")
+
+                # 如果有mine_result详细信息，也显示
+                if mine_result:
+                    # mine_result可能包含更多扫雷细节
+                    mine_items = mine_result.get('items', [])
+                    if mine_items:
+                        for item in mine_items:
+                            item_desc = item.get('description', '')
+                            if item_desc:
+                                lines.append(f"    - {item_desc}")
+
+                lines.append("")
+
+    except Exception as e:
+        logger.warning(f"检测持仓池扫雷风险失败: {e}")
+        if has_mine:
+            lines.append("扫雷检测失败，请查看日志")
+        return '\n'.join(lines) if has_mine else ''
+
+    return '\n'.join(lines) if has_mine else ''
 
 
 def generate_candidate_report():
@@ -434,67 +493,85 @@ def generate_candidate_report():
 
 def generate_report(result):
     """
-    生成完整报告（备用，合并3个部分）
-    
+    生成完整报告（备用，合并4个部分）
+    - 扫雷部分为空时不包含
+
     参数:
         result: WatchMonitorStrategy.run() 的返回值
-        
+
     返回:
         str: 完整报告文本
     """
     lines = []
-    
+
     # 部分1：大盘分析
     market_report = generate_market_report(result)
     lines.append(market_report)
     lines.append("")
     lines.append("***")
     lines.append("")
-    
-    # 部分2：持仓池风险
+
+    # 部分2上半：持仓池风险（不含扫雷）
     position_report = generate_position_report()
     lines.append(position_report)
     lines.append("")
     lines.append("***")
     lines.append("")
-    
+
+    # 部分2下半：持仓池扫雷风险（仅在有扫雷项时显示）
+    mine_report = generate_position_mine_report()
+    if mine_report:
+        lines.append(mine_report)
+        lines.append("")
+        lines.append("***")
+        lines.append("")
+
     # 部分3：候选池抄底
     candidate_report = generate_candidate_report()
     lines.append(candidate_report)
     lines.append("")
     lines.append("***")
     lines.append(f"报告已保存")
-    
+
     return '\n'.join(lines)
 
 
-def save_report_parts(date_str, part1, part2, part3):
+def save_report_parts(date_str, part1, part2_upper, part2_mine, part3):
     """
-    保存3个部分的报告文件
-    
+    保存4个部分的报告文件
+    - part2_mine（扫雷部分）为空时不保存
+
     参数:
         date_str: 日期字符串
         part1: 大盘分析报告
-        part2: 持仓池风险报告
+        part2_upper: 持仓池风险报告上半部分（不含扫雷）
+        part2_mine: 持仓池扫雷风险报告下半部分（可能为空）
         part3: 候选池抄底报告
-        
+
     返回:
-        tuple: (path1, path2, path3)
+        tuple: (path1, path2_upper, path2_mine或None, path3)
     """
     from core.storage import ensure_dirs
     ensure_dirs()
-    
+
     path1 = os.path.join(REPORTS_DIR, f'report_{date_str}_part1.md')
-    path2 = os.path.join(REPORTS_DIR, f'report_{date_str}_part2.md')
+    path2_upper = os.path.join(REPORTS_DIR, f'report_{date_str}_part2_upper.md')
     path3 = os.path.join(REPORTS_DIR, f'report_{date_str}_part3.md')
-    
+
     with open(path1, 'w', encoding='utf-8') as f:
         f.write(part1)
-    
-    with open(path2, 'w', encoding='utf-8') as f:
-        f.write(part2)
-    
+
+    with open(path2_upper, 'w', encoding='utf-8') as f:
+        f.write(part2_upper)
+
     with open(path3, 'w', encoding='utf-8') as f:
         f.write(part3)
-    
-    return (path1, path2, path3)
+
+    # 扫雷部分仅在非空时保存
+    path2_mine = None
+    if part2_mine:
+        path2_mine = os.path.join(REPORTS_DIR, f'report_{date_str}_part2_mine.md')
+        with open(path2_mine, 'w', encoding='utf-8') as f:
+            f.write(part2_mine)
+
+    return (path1, path2_upper, path2_mine, path3)
