@@ -623,14 +623,14 @@ def check_high_long_upper_shadow(df, lookback=20):
     return None
 
 
-def check_breakdown_big_bull_candle(df, lookback=20, min_change_pct=3.5):
+def check_breakdown_big_bull_candle(df, lookback=20, min_change_pct=5.0):
     """
-    检测跌破新高大阳线底部
+    检测跌破新高大阳线底部（5%以上为大阳线）
 
     参数:
         df: DataFrame
         lookback: 回看天数，默认20
-        min_change_pct: 大阳线涨幅阈值，默认3.5%
+        min_change_pct: 大阳线涨幅阈值，默认5.0%
 
     返回:
         dict 或 None
@@ -647,7 +647,7 @@ def check_breakdown_big_bull_candle(df, lookback=20, min_change_pct=3.5):
         return None
 
     # 找新高位置的大阳线
-    # 从新高点往前找，找到涨幅超过阈值(3.5%)的阳线
+    # 从新高点往前找，找到涨幅超过阈值(5%)的阳线
     for i in range(max(0, new_high_idx - 5), min(len(df), new_high_idx + 3)):
         row = df.iloc[i]
         open_price = row['open']
@@ -663,23 +663,76 @@ def check_breakdown_big_bull_candle(df, lookback=20, min_change_pct=3.5):
         
         if is_bullish and change_pct >= min_change_pct and near_new_high:
             # 找到了新高位置的大阳线
-            big_bull_low = low_price
+            big_bull_open = open_price
             big_bull_date = str(row['date'])[:10] if 'date' in df.columns else None
             big_bull_change = change_pct
             
-            # 判断当前价格是否跌破大阳线底部
+            # 判断当前价格是否跌破大阳线开盘价
             current_close = df['close'].iloc[-1]
             
-            if current_close < big_bull_low:
+            if current_close < big_bull_open:
                 return {
                     'type': 'breakdown_big_bull_candle',
                     'severity': 'high',
-                    'message': f'跌破新高大阳线底部（大阳线涨幅{big_bull_change:.1f}%，底部{big_bull_low:.2f}）',
-                    'big_bull_low': big_bull_low,
+                    'message': f'跌破新高大阳线开盘价（大阳线涨幅{big_bull_change:.1f}%，开盘{big_bull_open:.2f}）',
+                    'big_bull_open': big_bull_open,
                     'big_bull_date': big_bull_date,
                     'big_bull_change': big_bull_change,
                     'current_close': current_close,
                     'new_high': new_high_price
+                }
+    
+    return None
+
+
+def check_breakdown_medium_bull_candle(df, lookback=20, min_change_pct=2.5, max_change_pct=5.0):
+    """
+    检测跌破中阳线开盘价（2.5%~5%为中阳线）
+    不限制在新高点附近，检查回看期内所有中阳线
+
+    参数:
+        df: DataFrame
+        lookback: 回看天数，默认20
+        min_change_pct: 中阳线最小涨幅，默认2.5%
+        max_change_pct: 中阳线最大涨幅，默认5.0%
+
+    返回:
+        dict 或 None
+    """
+    if df.empty or len(df) < lookback + 1:
+        return None
+
+    # 遍历回看期内的所有K线，找中阳线
+    recent_data = df.iloc[-lookback:]
+    
+    for i in range(len(recent_data)):
+        idx = len(df) - lookback + i
+        row = df.iloc[idx]
+        open_price = row['open']
+        close_price = row['close']
+        
+        # 判断是否为阳线且涨幅在中阳线范围内
+        is_bullish = close_price > open_price
+        change_pct = (close_price - open_price) / open_price * 100 if open_price > 0 else 0
+        
+        if is_bullish and min_change_pct <= change_pct < max_change_pct:
+            # 找到了中阳线
+            medium_bull_open = open_price
+            medium_bull_date = str(row['date'])[:10] if 'date' in df.columns else None
+            medium_bull_change = change_pct
+            
+            # 判断当前价格是否跌破中阳线开盘价
+            current_close = df['close'].iloc[-1]
+            
+            if current_close < medium_bull_open:
+                return {
+                    'type': 'breakdown_medium_bull_candle',
+                    'severity': 'medium',
+                    'message': f'跌破中阳线开盘价（中阳线涨幅{medium_bull_change:.1f}%，开盘{medium_bull_open:.2f}，日期{medium_bull_date}）',
+                    'medium_bull_open': medium_bull_open,
+                    'medium_bull_date': medium_bull_date,
+                    'medium_bull_change': medium_bull_change,
+                    'current_close': current_close
                 }
     
     return None

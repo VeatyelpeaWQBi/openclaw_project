@@ -95,9 +95,9 @@ def generate_market_report(result):
                         desc = '🜲 二八分化（板块轮动快，板块选对吃肉选错吃面）'
                     else:
                         desc = '⚪ 横盘磨叽（多空僵持，观望为主）'
-                lines.append(f"  上证(加权): {sh_change:+.2f}% | 中证全指(等权): {zz_change:+.2f}%")
-                lines.append(f"  分化系数: **{ratio:.2f}**")
-                lines.append(f"  {desc}")
+                lines.append(f"- 上证(加权): {sh_change:+.2f}% | 中证全指(等权): {zz_change:+.2f}%")
+                lines.append(f"- 分化系数: **{ratio:.2f}**")
+                lines.append(f"- {desc}")
             lines.append("")
 
         # 市场情绪
@@ -116,11 +116,11 @@ def generate_market_report(result):
                     mood = '🟢偏多'
                 else:
                     mood = '🟡震荡'
-                lines.append(f"  上涨: **{up}**只({limit_up}涨停) | 下跌: **{down}**只({limit_down}跌停)")
-                lines.append(f"  涨跌比: **{ratio_str}** → {mood}")
+                lines.append(f"- 上涨: **{up}**只({limit_up}涨停) | 下跌: **{down}**只({limit_down}跌停)")
+                lines.append(f"- 涨跌比: **{ratio_str}** → {mood}")
                 activity_rate = sentiment.get('activity_rate', 0)
                 if activity_rate:
-                    lines.append(f"  活跃度: **{activity_rate:.2f}%**")
+                    lines.append(f"- 活跃度: **{activity_rate:.2f}%**")
 
         # 成交量
         if volume:
@@ -151,16 +151,16 @@ def generate_market_report(result):
             pct = round(s.get('change_percent', 0), 2)
             sign = '+' if pct > 0 else ''
             if name in top10_attack_names:
-                lines.append(f"  {i}. **{name}**: **{sign}{pct}%**")
+                lines.append(f"- {i}. **{name}**: **{sign}{pct}%**")
             else:
-                lines.append(f"  {i}. {name}: **{sign}{pct}%**")
+                lines.append(f"- {i}. {name}: **{sign}{pct}%**")
         lines.append("")
 
         # 进攻型板块
         top10_attack = result.get('top10_attack', [])
         if top10_attack:
             attack_names = [s['name'] for s in top10_attack]
-            lines.append(f"  🎯 进攻型板块: {', '.join(attack_names)}")
+            lines.append(f"- 🎯 进攻型板块: {', '.join(attack_names)}")
             lines.append("")
 
         # 板块详细数据
@@ -177,7 +177,7 @@ def generate_market_report(result):
                 sign = '+' if change_pct > 0 else ''
                 attack_flag = '进攻型' if is_attack else ''
                 
-                lines.append(f"  **{name}** ({sign}{change_pct:.2f}%) {attack_flag}")
+                lines.append(f"- **{name}** ({sign}{change_pct:.2f}%) {attack_flag}")
                 lines.append(f"     成分股: **{stock_count}**只")
                 
                 if lead_stocks:
@@ -231,81 +231,19 @@ def generate_position_report():
             profit_sign = '+' if profit_pct >= 0 else ''
             profit_color = 'red' if profit_pct > 0 else 'green' if profit_pct < 0 else ''
             
-            lines.append(f"**{name} ({code})** — {position_type}持仓")
+            lines.append(f"- **{name} ({code})** — {position_type}持仓")
             if profit_color:
-                lines.append(f"成本{entry_price:.2f} | 现价<font color=\"{profit_color}\">{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)</font>")
+                lines.append(f"  - 成本{entry_price:.2f} | 现价<font color=\"{profit_color}\">{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)</font>")
             else:
-                lines.append(f"成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
+                lines.append(f"  - 成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
             lines.append("")
             
             # 筛选真实风险信号（排除扫雷）
             risk_signals = [s for s in signals if s['type'] != 'mine_warning']
             
-            if not risk_signals:
-                # 无风险信号：显示技术概要
-                lines.append("✅ 暂无风险信号")
-                lines.append("")
-                
-                # 技术概要分析
-                if indicators:
-                    lines.append("📊 技术概要:")
-                    
-                    # SuperTrend状态
-                    st_dir = indicators.get('st_direction')
-                    st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
-                    
-                    # RSI状态
-                    rsi = indicators.get('rsi_14')
-                    rsi_text = f"RSI: {rsi:.1f}" if rsi else "RSI: N/A"
-                    rsi_status = ''
-                    if rsi:
-                        if rsi > 70:
-                            rsi_status = '(超买)'
-                        elif rsi < 30:
-                            rsi_status = '(超卖)'
-                        else:
-                            rsi_status = '(中性)'
-                    
-                    # 均线关系
-                    ma5 = indicators.get('ma5')
-                    ma10 = indicators.get('ma10')
-                    ma20 = indicators.get('ma20')
-                    ma60 = indicators.get('ma60')
-                    
-                    ma_status = []
-                    if ma5 and current_price:
-                        ma_status.append('MA5上方' if current_price > ma5 else 'MA5下方')
-                    if ma10 and current_price:
-                        ma_status.append('MA10上方' if current_price > ma10 else 'MA10下方')
-                    if ma20 and current_price:
-                        ma_status.append('MA20上方' if current_price > ma20 else 'MA20下方')
-                    if ma60 and current_price:
-                        ma_status.append('MA60上方' if current_price > ma60 else 'MA60下方')
-                    
-                    # 均线斜率
-                    ma5_slope = indicators.get('ma5_slope')
-                    ma10_slope = indicators.get('ma10_slope')
-                    slope_status = []
-                    if ma5_slope:
-                        slope_status.append('MA5⬆' if ma5_slope == 1 else 'MA5⬇' if ma5_slope == -1 else 'MA5→')
-                    if ma10_slope:
-                        slope_status.append('MA10⬆' if ma10_slope == 1 else 'MA10⬇' if ma10_slope == -1 else 'MA10→')
-                    
-                    lines.append(f"  SuperTrend: {st_dir_text} | {rsi_text}{rsi_status}")
-                    lines.append(f"  均线位置: {' '.join(ma_status) if ma_status else 'N/A'}")
-                    if slope_status:
-                        lines.append(f"  均线趋势: {' '.join(slope_status)}")
-                    
-                    # 综合判断
-                    if st_dir == 1 and 'MA5上方' in ma_status and 'MA10上方' in ma_status:
-                        lines.append(f"  📈 短期趋势向上")
-                    elif st_dir == -1 and 'MA5下方' in ma_status:
-                        lines.append(f"  📉 短期趋势向下")
-                    else:
-                        lines.append(f"  📊 趋势震荡")
-                    
-            else:
-                # 有风险信号：按严重度排序显示
+            # 先显示风险信号（如果有）
+            if risk_signals:
+                # 按严重度排序显示
                 severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
                 sorted_signals = sorted(risk_signals, key=lambda x: severity_order.get(x.get('severity', 'info'), 99))
                 
@@ -329,12 +267,97 @@ def generate_position_report():
                     else:
                         icon = '💡'
                     
-                    lines.append(f"{icon} {message}")
-                
-                # 只有在有风险信号时才显示扫雷警告
-                if mine_result and mine_result.get('has_mine'):
-                    lines.append(f"⚠️ 扫雷检测有风险")
+                    lines.append(f"  - {icon} {message}")
+            else:
+                lines.append("  - ✅ 暂无风险信号")
+            lines.append("")
             
+            # ========== 技术概要分析（所有情况下都显示） ==========
+            if indicators:
+                lines.append("  - 📊 技术概要:")
+                
+                # SuperTrend状态（简化为SuTd）+ 反转预警
+                st_dir = indicators.get('st_direction')
+                st_upper = indicators.get('st_upper_band')  # 阻力线
+                st_lower = indicators.get('st_lower_band')  # 支撑线
+                
+                st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
+                
+                # SuperTrend反转预警
+                st_warning = ''
+                if st_dir == 1 and st_lower and current_price:  # 多头状态
+                    # 多空切换点是支撑线，跌破转为空头
+                    gap_pct = (current_price - st_lower) / st_lower * 100
+                    if gap_pct > 0:
+                        st_warning = f"（多→空切换点{st_lower:.2f}，距-{gap_pct:.1f}%）"
+                    else:
+                        st_warning = f"（⚠️已跌破多→空切换{st_lower:.2f}）"
+                elif st_dir == -1 and st_upper and current_price:  # 空头状态
+                    # 多空切换点是阻力线，突破转为多头
+                    gap_pct = (current_price - st_upper) / st_upper * 100
+                    if gap_pct < 0:
+                        st_warning = f"（空→多切换点{st_upper:.2f}，距+{-gap_pct:.1f}%）"
+                    else:
+                        st_warning = f"（⚠️已突破空→多切换点{st_upper:.2f}）"
+                
+                lines.append(f"    - SuTd: {st_dir_text} {st_warning}")
+                
+                # RSI状态
+                rsi = indicators.get('rsi_14')
+                rsi_text = f"RSI: {rsi:.1f}" if rsi else "RSI: N/A"
+                rsi_status = ''
+                if rsi:
+                    if rsi > 70:
+                        rsi_status = '(超买)'
+                    elif rsi < 30:
+                        rsi_status = '(超卖)'
+                    else:
+                        rsi_status = '(中性)'
+                lines.append(f"    - {rsi_text}{rsi_status}")
+                
+                # 均线关系
+                ma5 = indicators.get('ma5')
+                ma10 = indicators.get('ma10')
+                ma20 = indicators.get('ma20')
+                ma60 = indicators.get('ma60')
+                
+                ma_status = []
+                if ma5 and current_price:
+                    ma_status.append('MA5上方' if current_price > ma5 else 'MA5下方')
+                if ma10 and current_price:
+                    ma_status.append('MA10上方' if current_price > ma10 else 'MA10下方')
+                if ma20 and current_price:
+                    ma_status.append('MA20上方' if current_price > ma20 else 'MA20下方')
+                if ma60 and current_price:
+                    ma_status.append('MA60上方' if current_price > ma60 else 'MA60下方')
+                
+                lines.append(f"    - 均线位置: {' '.join(ma_status) if ma_status else 'N/A'}")
+                
+                # 均线斜率
+                ma5_slope = indicators.get('ma5_slope')
+                ma10_slope = indicators.get('ma10_slope')
+                slope_status = []
+                if ma5_slope:
+                    slope_status.append('MA5⬆' if ma5_slope == 1 else 'MA5⬇' if ma5_slope == -1 else 'MA5→')
+                if ma10_slope:
+                    slope_status.append('MA10⬆' if ma10_slope == 1 else 'MA10⬇' if ma10_slope == -1 else 'MA10→')
+                
+                if slope_status:
+                    lines.append(f"    - 均线趋势: {' '.join(slope_status)}")
+                
+                # 综合判断
+                if st_dir == 1 and 'MA5上方' in ma_status and 'MA10上方' in ma_status:
+                    lines.append(f"    - 📈 短期趋势向上")
+                elif st_dir == -1 and 'MA5下方' in ma_status:
+                    lines.append(f"    - 📉 短期趋势向下")
+                else:
+                    lines.append(f"    - 📊 趋势震荡")
+            
+            # 扫雷警告（从signals中获取详细信息）
+            mine_signal = [s for s in signals if s['type'] == 'mine_warning']
+            if mine_signal:
+                lines.append(f"  - {mine_signal[0]['message']}")
+
             lines.append("")
             
     except Exception as e:
@@ -380,19 +403,17 @@ def generate_candidate_report():
             drop_sign = '+' if drop_pct >= 0 else ''
             drop_color = 'red' if drop_pct > 0 else 'green' if drop_pct < 0 else ''
             
-            lines.append(f"  **{name} ({code})** — {watch_type}")
+            lines.append(f"- **{name} ({code})** — {watch_type}")
             if drop_color:
                 lines.append(f"  关注价{watch_price:.2f} | 现价<font color=\"{drop_color}\">{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)</font>")
             else:
                 lines.append(f"  关注价{watch_price:.2f} | 现价{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)")
-            lines.append("")
             
             # 评分行
             if stars:
                 lines.append(f"  {stars} 抄底评分: **{score}分**（{score_level})")
             else:
                 lines.append(f"  抄底评分: {score}分（{score_level})")
-            lines.append("")
             
             # 信号列表（只显示关键信号）
             if signals:
@@ -400,7 +421,7 @@ def generate_candidate_report():
                     if sig['type'] in ['no_data', 'mine_warning']:
                         continue
                     message = sig.get('message', '')
-                    lines.append(f"  {message}")
+                    lines.append(f"  - {message}")
             
             lines.append("")
             

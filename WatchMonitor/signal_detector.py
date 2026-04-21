@@ -35,7 +35,8 @@ from core.indicators import (
     identify_candle_patterns,
     check_volume_stagnation,
     check_high_long_upper_shadow,
-    check_breakdown_big_bull_candle
+    check_breakdown_big_bull_candle,
+    check_breakdown_medium_bull_candle
 )
 
 logger = logging.getLogger(__name__)
@@ -157,7 +158,73 @@ def detect_position_risk_signals(position: Dict) -> Dict:
             'value': ma_val
         })
     
-    # ========== 2. 均线死叉检测 ==========
+    # ========== 2. MA5斜率预警检测 ==========
+    ma5_slope = indicators.get('ma5_slope')
+    
+    # 2.1 MA5即将拐头向下（当前向上，但明天可能向下）
+    if ma5_slope == 1:  # MA5斜率向上
+        if len(df) >= 5:
+            deduct_price = df['close'].iloc[-5]  # 5天前收盘价（抵扣价）
+            current_close = df['close'].iloc[-1]
+            
+            # 如果当前收盘价低于抵扣价，明天MA5会下降
+            if current_close < deduct_price:
+                # 计算需要涨多少才能维持MA5向上
+                required_change_pct = ((deduct_price - current_close) / current_close * 100) if current_close > 0 else 0
+                
+                message = f"⚠️ MA5即将拐头向下（当前向上，但如果明天跌破{deduct_price:.2f}（需跌{-required_change_pct:+.1f}%），MA5将拐头向下）"
+                severity = 'warning'
+                
+                result['signals'].append({
+                    'type': 'ma5_turning_down_warning',
+                    'severity': severity,
+                    'message': message,
+                    'deduct_price': deduct_price,
+                    'required_change_pct': required_change_pct
+                })
+    
+    # 2.2 MA5斜率向下检测
+    if ma5_slope == -1:  # MA5斜率向下
+        # 计算抵扣价：5天前的收盘价
+        if len(df) >= 5:
+            deduct_price = df['close'].iloc[-5]  # 5天前收盘价
+            current_close = df['close'].iloc[-1]
+            
+            # 计算明天需要涨多少才能达到抵扣价
+            required_change_pct = ((deduct_price - current_close) / current_close * 100) if current_close > 0 else 0
+            
+            # 获取MA5和MA10当前值
+            ma5 = indicators.get('ma5')
+            ma10 = indicators.get('ma10')
+            
+            # 如果MA5接近MA10（差距小于3%），预警即将死叉
+            if ma5 and ma10 and abs(ma5 - ma10) / ma10 < 0.03:
+                # 计算明天避免死叉需要的价格
+                # 需要计算：MA5_new >= MA10_new
+                # MA5_new = (close[-4]+close[-3]+close[-2]+close[-1]+close_tomorrow)/5
+                # MA10_new = (close[-9]+...+close[-1]+close_tomorrow)/10
+                # 简化：close_tomorrow需要>=某个值让MA5_new>=MA10_new
+                
+                # 避免死叉需要的明天收盘价（近似计算）
+                # 如果MA5略高于MA10，需要close_tomorrow足够高才能维持MA5>=MA10
+                # 简化：取抵扣价作为预警价格
+                
+                message = f"⚠️ MA5斜率向下，如果明天无法涨到{deduct_price:.2f}之上（需涨{required_change_pct:+.1f}%），将持续向下，即将死叉MA10"
+                severity = 'medium'
+            else:
+                # 只是MA5向下，没有即将死叉
+                message = f"⚠️ MA5斜率向下，如果明天无法涨到{deduct_price:.2f}之上（需涨{required_change_pct:+.1f}%），将持续向下"
+                severity = 'warning'
+            
+            result['signals'].append({
+                'type': 'ma5_turning_down',
+                'severity': severity,
+                'message': message,
+                'deduct_price': deduct_price,
+                'required_change_pct': required_change_pct
+            })
+    
+    # ========== 3. 均线死叉检测 ==========
     for fast, slow in [(5, 10), (5, 20)]:
         cross_signal = check_ma_cross(df, fast, slow)
         if cross_signal and cross_signal['type'] == 'death_cross':
@@ -213,15 +280,26 @@ def detect_position_risk_signals(position: Dict) -> Dict:
             'message': '高位长上影线'
         })
     
-    # 跌破新高大阳线底部
+    # 跌破新高大阳线开盘价（5%以上）
     breakdown_bull = check_breakdown_big_bull_candle(df)
     if breakdown_bull:
         result['signals'].append({
             'type': 'breakdown_big_bull_candle',
             'severity': 'high',
             'message': breakdown_bull['message'],
-            'big_bull_low': breakdown_bull.get('big_bull_low'),
+            'big_bull_open': breakdown_bull.get('big_bull_open'),
             'big_bull_change': breakdown_bull.get('big_bull_change')
+        })
+    
+    # 跌破新高中阳线开盘价（2.5%~5%）
+    breakdown_medium_bull = check_breakdown_medium_bull_candle(df)
+    if breakdown_medium_bull:
+        result['signals'].append({
+            'type': 'breakdown_medium_bull_candle',
+            'severity': 'medium',
+            'message': breakdown_medium_bull['message'],
+            'medium_bull_open': breakdown_medium_bull.get('medium_bull_open'),
+            'medium_bull_change': breakdown_medium_bull.get('medium_bull_change')
         })
     
     # 顶背离
@@ -284,11 +362,50 @@ def detect_position_risk_signals(position: Dict) -> Dict:
     mine_result = call_mine_clearance(code)
     result['mine_result'] = mine_result
     if mine_result and mine_result.get('has_mine'):
-        result['signals'].append({
-            'type': 'mine_warning',
-            'severity': 'warning',
-            'message': '⚠️ 扫雷检测有风险'
-        })
+        details = mine_result.get('mine_details', {})
+        
+        # 提取风险类型和原因
+        risk_types = []
+        risk_reasons = []
+        risk_reason_detail = []
+        
+        # 处理DataFrame返回的数据
+        if isinstance(details, dict):
+            f_type = details.get('f_type', {})
+            t_type = details.get('t_type', {})
+            reason = details.get('reason', {})
+            
+            # 过滤无效值的列表
+            invalid_values = ['暂无风险项', 'N/A', '无', 'nan', 'NaN', '', None]
+            
+            # 如果是字典（DataFrame.to_dict()的结果），转为列表并过滤无效值
+            if isinstance(f_type, dict):
+                risk_types = list(set([v for k, v in f_type.items() if pd.notna(v) and v not in invalid_values]))
+            if isinstance(t_type, dict):
+                risk_reasons = list(set([v for k, v in t_type.items() if pd.notna(v) and v not in invalid_values]))
+            if isinstance(reason, dict):
+                risk_reason_detail = list(set([v for k, v in reason.items() if pd.notna(v) and v not in invalid_values]))
+        
+        # 构造详细消息（最多5条）
+        message_parts = []
+        
+        if risk_types:
+            message_parts.append(f"类型: {', '.join(risk_types[:5])}")
+        if risk_reasons:
+            message_parts.append(f"风险: {', '.join(risk_reasons[:5])}")
+        if risk_reason_detail and len(message_parts) < 5:
+            # 如果还有空间，添加详细原因
+            remaining = 5 - len(message_parts)
+            message_parts.extend([f"原因: {r}" for r in risk_reason_detail[:remaining]])
+        
+        # 只有当有实际风险项时才添加扫雷警告
+        if message_parts:
+            message = '⚠️ 扫雷检测有风险 — ' + ' | '.join(message_parts)
+            result['signals'].append({
+                'type': 'mine_warning',
+                'severity': 'warning',
+                'message': message
+            })
     
     return result
 
