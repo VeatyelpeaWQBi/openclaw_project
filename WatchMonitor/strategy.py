@@ -237,7 +237,7 @@ class WatchMonitorStrategy:
 
 
 def main():
-    """主入口：运行盯盘助手策略并输出报告"""
+    """主入口：运行盯盘助手策略并输出3部分报告"""
     # 配置日志
     logging.basicConfig(
         level=logging.INFO,
@@ -252,16 +252,27 @@ def main():
     # 执行策略
     strategy = WatchMonitorStrategy()
     result = strategy.run()
+    date_str = result['date_str']
 
-    # 生成报告
-    report = strategy.generate_report(result)
-
+    # 导入报告生成模块
+    from report import generate_market_report, generate_position_report, generate_candidate_report, save_report_parts
+    
+    # 生成3部分报告
+    part1 = generate_market_report(result)
+    part2 = generate_position_report()
+    part3 = generate_candidate_report()
+    
     # 输出报告
-    print("\n" + report)
+    print("\n===== 部分1：大盘分析 =====")
+    print(part1)
+    print("\n===== 部分2：持仓池风险 =====")
+    print(part2)
+    print("\n===== 部分3：候选池抄底 =====")
+    print(part3)
 
-    # 保存报告
-    from core.storage import save_report
-    save_report(result['date_str'], report)
+    # 保存3个报告文件
+    paths = save_report_parts(date_str, part1, part2, part3)
+    logger.info(f"报告已保存: {paths[0]}, {paths[1]}, {paths[2]}")
 
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info(f"运行完成，耗时 {elapsed:.1f} 秒")

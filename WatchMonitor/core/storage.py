@@ -1,6 +1,6 @@
 """
 数据存储模块 - 盯盘助手专用
-仅保留尾盘T+1程序必需的存储方法
+支持持仓池/候选池和技术指标存储
 """
 
 import os
@@ -251,3 +251,430 @@ def get_index_amount_before_date(index_code: str, before_date: str) -> float:
     except Exception as e:
         logger.error(f"获取指数成交额失败 [{index_code}]: {e}")
         return 0.0
+
+
+# ==================== 持仓池/候选池表初始化 ====================
+
+def init_pool_tables():
+    """
+    初始化持仓池和候选池表
+    """
+    conn = get_db_connection()
+    try:
+        # 持仓池表
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS position_pool (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                entry_price REAL NOT NULL,
+                entry_date TEXT NOT NULL,
+                shares INTEGER NOT NULL DEFAULT 0,
+                position_type TEXT NOT NULL DEFAULT '趋势',
+                stop_loss REAL,
+                take_profit REAL,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        # 候选池表
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS candidate_pool (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                watch_price REAL NOT NULL,
+                watch_date TEXT NOT NULL,
+                target_price REAL,
+                watch_type TEXT NOT NULL DEFAULT '趋势回调',
+                watch_reason TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        conn.commit()
+        logger.info("持仓池/候选池表初始化完成")
+    except Exception as e:
+        logger.error(f"初始化池表失败: {e}")
+    finally:
+        conn.close()
+
+
+# ==================== 持仓池操作 ====================
+
+def add_position(code: str, name: str, entry_price: float, entry_date: str,
+                 shares: int = 0, position_type: str = '趋势',
+                 stop_loss: float = None, take_profit: float = None,
+                 notes: str = None) -> bool:
+    """
+    添加持仓到持仓池
+    """
+    conn = get_db_connection()
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        conn.execute("""
+            INSERT INTO position_pool
+            (code, name, entry_price, entry_date, shares, position_type,
+             stop_loss, take_profit, notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (code, name, entry_price, entry_date, shares, position_type,
+              stop_loss, take_profit, notes, now, now))
+        conn.commit()
+        logger.info(f"添加持仓: {code}({name})")
+        return True
+    except sqlite3.IntegrityError:
+        logger.warning(f"持仓已存在: {code}")
+        return False
+    except Exception as e:
+        logger.error(f"添加持仓失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def remove_position(code: str) -> bool:
+    """
+    从持仓池删除持仓
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM position_pool WHERE code = ?", (code,))
+        conn.commit()
+        logger.info(f"删除持仓: {code}")
+        return True
+    except Exception as e:
+        logger.error(f"删除持仓失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def update_position(code: str, **kwargs) -> bool:
+    """
+    更新持仓信息
+    可更新字段: stop_loss, take_profit, shares, notes, position_type
+    """
+    if not kwargs:
+        return False
+
+    allowed_fields = ['stop_loss', 'take_profit', 'shares', 'notes', 'position_type']
+    update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+    if not update_fields:
+        logger.warning(f"无有效更新字段: {kwargs}")
+        return False
+
+    conn = get_db_connection()
+    try:
+        update_fields['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sql = "UPDATE position_pool SET " + ", ".join([f"{k}=?" for k in update_fields.keys()]) + " WHERE code=?"
+        params = list(update_fields.values()) + [code]
+        conn.execute(sql, params)
+        conn.commit()
+        logger.info(f"更新持仓: {code}")
+        return True
+    except Exception as e:
+        logger.error(f"更新持仓失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_all_positions() -> list:
+    """
+    获取所有持仓
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("SELECT * FROM position_pool ORDER BY created_at DESC").fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"获取持仓列表失败: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_position_by_code(code: str) -> dict:
+    """
+    根据代码获取持仓详情
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT * FROM position_pool WHERE code = ?", (code,)).fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"获取持仓详情失败: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+# ==================== 候选池操作 ====================
+
+def add_candidate(code: str, name: str, watch_price: float, watch_date: str,
+                  target_price: float = None, watch_type: str = '趋势回调',
+                  watch_reason: str = None, notes: str = None) -> bool:
+    """
+    添加候选到候选池
+    """
+    conn = get_db_connection()
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        conn.execute("""
+            INSERT INTO candidate_pool
+            (code, name, watch_price, watch_date, target_price, watch_type,
+             watch_reason, notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (code, name, watch_price, watch_date, target_price, watch_type,
+              watch_reason, notes, now, now))
+        conn.commit()
+        logger.info(f"添加候选: {code}({name})")
+        return True
+    except sqlite3.IntegrityError:
+        logger.warning(f"候选已存在: {code}")
+        return False
+    except Exception as e:
+        logger.error(f"添加候选失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def remove_candidate(code: str) -> bool:
+    """
+    从候选池删除候选
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM candidate_pool WHERE code = ?", (code,))
+        conn.commit()
+        logger.info(f"删除候选: {code}")
+        return True
+    except Exception as e:
+        logger.error(f"删除候选失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def update_candidate(code: str, **kwargs) -> bool:
+    """
+    更新候选信息
+    可更新字段: target_price, watch_type, watch_reason, notes
+    """
+    if not kwargs:
+        return False
+
+    allowed_fields = ['target_price', 'watch_type', 'watch_reason', 'notes']
+    update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+    if not update_fields:
+        logger.warning(f"无有效更新字段: {kwargs}")
+        return False
+
+    conn = get_db_connection()
+    try:
+        update_fields['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sql = "UPDATE candidate_pool SET " + ", ".join([f"{k}=?" for k in update_fields.keys()]) + " WHERE code=?"
+        params = list(update_fields.values()) + [code]
+        conn.execute(sql, params)
+        conn.commit()
+        logger.info(f"更新候选: {code}")
+        return True
+    except Exception as e:
+        logger.error(f"更新候选失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_all_candidates() -> list:
+    """
+    获取所有候选
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("SELECT * FROM candidate_pool ORDER BY created_at DESC").fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"获取候选列表失败: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_candidate_by_code(code: str) -> dict:
+    """
+    根据代码获取候选详情
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT * FROM candidate_pool WHERE code = ?", (code,)).fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"获取候选详情失败: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+# ==================== 技术指标表 ====================
+
+def init_technical_indicators_table():
+    """
+    初始化技术指标表
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS technical_indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL,
+                calc_date TEXT NOT NULL,
+                
+                -- 均线指标
+                ma5 REAL,
+                ma10 REAL,
+                ma20 REAL,
+                ma60 REAL,
+                ma120 REAL,
+                ma250 REAL,
+                ma5_slope REAL,
+                ma10_slope REAL,
+                ma20_slope REAL,
+                
+                -- SuperTrend指标
+                st_upper_band REAL,
+                st_lower_band REAL,
+                st_direction INTEGER,
+                st_atr REAL,
+                
+                -- MACD指标
+                macd_dif REAL,
+                macd_dea REAL,
+                macd_histogram REAL,
+                
+                -- RSI指标
+                rsi_14 REAL,
+                
+                -- 量比
+                volume_ratio_5 REAL,
+                volume_ratio_20 REAL,
+                
+                -- K线形态
+                is_long_upper_shadow INTEGER DEFAULT 0,
+                is_long_lower_shadow INTEGER DEFAULT 0,
+                is_bullish_candle INTEGER DEFAULT 0,
+                is_bearish_candle INTEGER DEFAULT 0,
+                
+                -- 元数据
+                created_at TEXT NOT NULL,
+                
+                UNIQUE(code, calc_date)
+            )
+        """)
+
+        # 索引
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ti_code_date ON technical_indicators(code, calc_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ti_date ON technical_indicators(calc_date)")
+
+        conn.commit()
+        logger.info("技术指标表初始化完成")
+    except Exception as e:
+        logger.error(f"初始化技术指标表失败: {e}")
+    finally:
+        conn.close()
+
+
+def save_technical_indicators(code: str, indicators: dict) -> bool:
+    """
+    保存技术指标到数据库
+    """
+    if not indicators or 'calc_date' not in indicators:
+        logger.warning(f"技术指标数据无效: {code}")
+        return False
+
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO technical_indicators
+            (code, calc_date, ma5, ma10, ma20, ma60, ma120, ma250,
+             ma5_slope, ma10_slope, ma20_slope,
+             st_upper_band, st_lower_band, st_direction, st_atr,
+             macd_dif, macd_dea, macd_histogram,
+             rsi_14, volume_ratio_5, volume_ratio_20,
+             is_long_upper_shadow, is_long_lower_shadow,
+             is_bullish_candle, is_bearish_candle,
+             created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            code, indicators.get('calc_date'),
+            indicators.get('ma5'), indicators.get('ma10'), indicators.get('ma20'),
+            indicators.get('ma60'), indicators.get('ma120'), indicators.get('ma250'),
+            indicators.get('ma5_slope'), indicators.get('ma10_slope'), indicators.get('ma20_slope'),
+            indicators.get('st_upper_band'), indicators.get('st_lower_band'),
+            indicators.get('st_direction'), indicators.get('st_atr'),
+            indicators.get('macd_dif'), indicators.get('macd_dea'), indicators.get('macd_histogram'),
+            indicators.get('rsi_14'),
+            indicators.get('volume_ratio_5'), indicators.get('volume_ratio_20'),
+            indicators.get('is_long_upper_shadow', 0), indicators.get('is_long_lower_shadow', 0),
+            indicators.get('is_bullish_candle', 0), indicators.get('is_bearish_candle', 0),
+            indicators.get('created_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        ))
+        conn.commit()
+        logger.debug(f"保存技术指标: {code} {indicators.get('calc_date')}")
+        return True
+    except Exception as e:
+        logger.error(f"保存技术指标失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_technical_indicators(code: str, calc_date: str) -> dict:
+    """
+    获取指定日期的技术指标
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT * FROM technical_indicators WHERE code = ? AND calc_date = ?",
+                          (code, calc_date)).fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"获取技术指标失败: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_technical_indicators_range(code: str, start_date: str, end_date: str) -> list:
+    """
+    获取指定时间范围的技术指标
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("""
+            SELECT * FROM technical_indicators
+            WHERE code = ? AND calc_date >= ? AND calc_date <= ?
+            ORDER BY calc_date
+        """, (code, start_date, end_date)).fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"获取技术指标范围失败: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def init_all_tables():
+    """
+    初始化所有新增表
+    """
+    init_pool_tables()
+    init_technical_indicators_table()
+    logger.info("所有新增表初始化完成")
