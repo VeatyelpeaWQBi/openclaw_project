@@ -129,8 +129,17 @@ def generate_market_report(result):
             yesterday = volume.get('yesterday_amount', 0)
             change_pct = volume.get('change_pct', 0)
             is_fang = volume.get('is_fangliang', False)
+            is_estimated = volume.get('yesterday_estimated', False)
+            traded_minutes = volume.get('traded_minutes', 240)
             direction = '放量' if is_fang else '缩量'
-            lines.append(f"大盘成交额: **{today:.0f}亿** vs 昨日{yesterday:.0f}亿 — {direction}{abs(change_pct):.1f}%")
+
+            # 显示文案：估算时标注“≈昨日同期”，收盘后显示“昨日全天”
+            if is_estimated and traded_minutes < 240:
+                yesterday_label = f"≈昨日同期{yesterday:.0f}亿(估算)"
+            else:
+                yesterday_label = f"昨日{yesterday:.0f}亿"
+
+            lines.append(f"大盘成交额: **{today:.0f}亿** vs {yesterday_label} — {direction}{abs(change_pct):.1f}%")
             lines.append("")
 
     except Exception as e:

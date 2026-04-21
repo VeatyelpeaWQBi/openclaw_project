@@ -214,10 +214,13 @@ def fetch_and_save_index_daily_kline(trade_date):
     """
     批量获取各大指数当天日K，写入 index_daily_kline 表
 
-    数据源：ak.stock_zh_index_spot_sina（新浪批量指数接口，一次获取全部）
+    数据源：
+    - ak.stock_zh_index_spot_sina（新浪批量指数接口，一次获取全部）
+    - 腾讯API单独获取000985（新浪不提供中证全指）
     过滤：只保留 index_info 表中跟踪的指数
     """
     import akshare as ak
+    import requests
 
     logger.info("开始获取指数日K（新浪批量接口）...")
     start = time.time()
@@ -268,6 +271,43 @@ def fetch_and_save_index_daily_kline(trade_date):
     success = batch_upsert_index_daily_kline(rows)
     elapsed = time.time() - start
     logger.info(f"指数日K更新完成: {success}个指数, 耗时{elapsed:.1f}秒")
+
+    # ========== 4. 单独获取000985（中证全指）- 新浪不提供 ==========
+    # 腾讯API格式: https://qt.gtimg.cn/q=sh000985
+    # 返回字段: 名称(1), 最新价(3), 昨收(4), 今开(5), 成交量(6), 成交额(37万元)
+    try:
+        resp = requests.get("https://qt.gtimg.cn/q=sh000985", timeout=10)
+        resp.encoding = 'gbk'
+
+        if 'v_sh000985' in resp.text and 'pv_none_match' not in resp.text:
+            parts = resp.text.split('=')[1].strip('"').split('~')
+
+            # 解析字段
+            name = parts[1]  # 中证全指
+            latest_price = _safe_float(parts[3])  # 最新价
+            prev_close = _safe_float(parts[4])  # 昨收
+            today_open = _safe_float(parts[5])  # 今开
+            volume = _safe_float(parts[6])  # 成交量(手)
+            amount = _safe_float(parts[37]) / 10000  # 成交额(万元转亿元)
+            change = latest_price - prev_close if latest_price and prev_close else 0
+            change_pct = (change / prev_close * 100) if prev_close else 0
+
+            # 写入数据库
+            # 注意：腾讯实时行情无最高/最低，用最新价近似
+            row_985 = (
+                '000985', '中证全指', trade_date,
+                today_open, latest_price, latest_price, latest_price,  # open, high, low, close
+                volume, amount, change, change_pct
+            )
+            batch_upsert_index_daily_kline([row_985])
+            logger.info(f"000985(中证全指)单独获取成功: 收盘{latest_price:.2f}, 成交额{amount:.2f}亿")
+            success += 1
+        else:
+            logger.warning("000985腾讯API返回无效数据")
+
+    except Exception as e:
+        logger.warning(f"000985获取失败: {e}")
+
     return success
 
 def _update_klines(today):
