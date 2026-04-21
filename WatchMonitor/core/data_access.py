@@ -518,7 +518,7 @@ def get_market_volume_compare():
         # 通过storage层获取昨日实际成交额
         today_str = datetime.now().strftime('%Y-%m-%d')
         yesterday_raw = get_index_amount_before_date('000985', today_str)
-        yesterday_amount = yesterday_raw / 1e8 if yesterday_raw > 0 else today_amount  # 元转亿元
+        yesterday_amount = yesterday_raw if yesterday_raw > 0 else today_amount  # 数据库中已经是亿元
 
         today_yi = round(today_amount, 0)
         yesterday_yi = round(yesterday_amount, 0)
