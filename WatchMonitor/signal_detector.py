@@ -470,7 +470,8 @@ def detect_candidate_bottom_signals(candidate: Dict) -> Dict:
         'score': 0,
         'current_price': None,
         'drop_pct': None,
-        'mine_result': None
+        'mine_result': None,
+        'indicators': {}  # 新增：技术指标数据
     }
     
     # 获取日K数据
@@ -489,6 +490,7 @@ def detect_candidate_bottom_signals(candidate: Dict) -> Dict:
     current_price = df['close'].iloc[-1]
     result['current_price'] = current_price
     result['drop_pct'] = (current_price - watch_price) / watch_price * 100 if watch_price else 0
+    result['indicators'] = indicators  # 新增：保存技术指标
     
     score = 0
     
