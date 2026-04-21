@@ -498,10 +498,12 @@ def get_market_sentiment():
 
 def get_market_volume_compare():
     """
-    获取大盘成交量对比（今日vs昨日，计算放量/缩量）
+    获取大盘成交量对比（今日vs昨日同期估算，计算放量/缩量）
+
+    方案B：估算昨日同期成交额 = 昨日全天成交额 × (当前分钟数 / 240)
 
     返回:
-        dict: {'today_amount': 11867, 'yesterday_amount': 10789, 'change_pct': 10.0, 'is_fangliang': True}
+        dict: {'today_amount': 11867, 'yesterday_amount': 10789, 'yesterday_estimated': True, 'change_pct': 10.0, 'is_fangliang': True}
     """
     import requests
     from core.storage import get_index_amount_before_date
@@ -515,13 +517,54 @@ def get_market_volume_compare():
         parts = resp.text.split('=')[1].strip('"').split('~')
         today_amount = _safe_float(parts[37]) / 10000  # 万元转亿元
 
-        # 通过storage层获取昨日实际成交额
+        # 通过storage层获取昨日全天成交额
         today_str = datetime.now().strftime('%Y-%m-%d')
         yesterday_raw = get_index_amount_before_date('000985', today_str)
-        yesterday_amount = yesterday_raw if yesterday_raw > 0 else today_amount  # 数据库中已经是亿元
+        yesterday_full = yesterday_raw if yesterday_raw > 0 else today_amount  # 数据库中已经是亿元
+
+        # ========== 方案B：估算昨日同期成交额 ==========
+        now = datetime.now()
+        current_hour = now.hour
+        current_minute = now.minute
+
+        # 计算已交易分钟数
+        traded_minutes = 0
+
+        if current_hour >= 15:  # 收盘后
+            traded_minutes = 240
+        elif current_hour >= 9 and current_hour < 11:
+            # 上午交易时间 (9:30 - 11:30)
+            if current_hour == 9:
+                if current_minute >= 30:
+                    traded_minutes = current_minute - 30
+                else:
+                    traded_minutes = 0  # 未开盘
+            elif current_hour == 10:
+                traded_minutes = 30 + current_minute  # 9:30-10:00已交易30分钟 + 10点后的分钟
+            elif current_hour == 11 and current_minute < 30:
+                traded_minutes = 90 + current_minute  # 9:30-11:00已交易90分钟 + 11点后的分钟
+            else:
+                traded_minutes = 120  # 11:30上午收盘
+        elif current_hour >= 13 and current_hour < 15:
+            # 下午交易时间 (13:00 - 15:00)
+            if current_hour == 13:
+                traded_minutes = 120 + current_minute  # 上午120分钟 + 13点后的分钟
+            elif current_hour == 14:
+                traded_minutes = 180 + current_minute  # 上午120分钟 + 13:00-14:00的60分钟 + 14点后的分钟
+        elif current_hour == 11 and current_minute >= 30:
+            # 11:30-13:00午休，上午已收盘
+            traded_minutes = 120
+        else:
+            traded_minutes = 0  # 其他时间（盘前、夜盘等）
+
+        # 估算昨日同期成交额
+        if traded_minutes > 0 and yesterday_full > 0:
+            yesterday_estimated = yesterday_full * (traded_minutes / 240)
+        else:
+            yesterday_estimated = yesterday_full  # 无法估算时用全天数据
 
         today_yi = round(today_amount, 0)
-        yesterday_yi = round(yesterday_amount, 0)
+        yesterday_yi = round(yesterday_estimated, 0)
 
         if yesterday_yi > 0:
             change_pct = round((today_yi - yesterday_yi) / yesterday_yi * 100, 1)
@@ -531,11 +574,14 @@ def get_market_volume_compare():
         result = {
             'today_amount': today_yi,
             'yesterday_amount': yesterday_yi,
+            'yesterday_full': round(yesterday_full, 0),  # 昨日全天成交额
+            'traded_minutes': traded_minutes,  # 已交易分钟数
+            'yesterday_estimated': traded_minutes < 240 and traded_minutes > 0,  # 是否为估算值
             'change_pct': change_pct,
             'is_fangliang': change_pct > 0,
         }
 
-        logger.info(f"成交量对比: 今日{today_yi}亿 vs 昨日{yesterday_yi}亿 ({'放量' if result['is_fangliang'] else '缩量'}{abs(change_pct)}%)")
+        logger.info(f"成交量对比: 今日{today_yi}亿 vs 昨日同期{yesterday_yi}亿(估算{traded_minutes}/240分钟) ({'放量' if result['is_fangliang'] else '缩量'}{abs(change_pct)}%)")
         return result
 
     except Exception as e:
