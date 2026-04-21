@@ -203,7 +203,7 @@ def calculate_macd(df, fast=12, slow=26, signal=9):
         signal: 信号线周期，默认9
 
     返回:
-        dict: {'dif', 'dea', 'histogram'}
+        dict: {'dif', 'dea', 'histogram', 'dif_series', 'dea_series', 'histogram_series'}
     """
     if df.empty or 'close' not in df.columns:
         return {'dif': None, 'dea': None, 'histogram': None}
@@ -221,8 +221,119 @@ def calculate_macd(df, fast=12, slow=26, signal=9):
         'dea': round(dea.iloc[-1], 4) if not pd.isna(dea.iloc[-1]) else None,
         'histogram': round(histogram.iloc[-1], 4) if not pd.isna(histogram.iloc[-1]) else None,
         'dif_series': dif,
+        'dea_series': dea,
         'histogram_series': histogram
     }
+
+
+def calculate_macd_slope(df, threshold=0.01):
+    """
+    计算MACD三线斜率（柱状图、DIF、DEA）
+
+    参数:
+        df: DataFrame，需包含MACD数据
+        threshold: 判断趋平的阈值，默认0.01
+
+    返回:
+        dict: {
+            'histogram_slope': int (1=向上, 0=趋平, -1=向下),
+            'dif_slope': int,
+            'dea_slope': int,
+            'slope_summary': str (综合判断文案)
+        }
+    """
+    if df.empty or len(df) < 2:
+        return {
+            'histogram_slope': 0,
+            'dif_slope': 0,
+            'dea_slope': 0,
+            'slope_summary': '无数据'
+        }
+
+    # 先计算MACD数据
+    macd_data = calculate_macd(df)
+    dif_series = macd_data.get('dif_series')
+    dea_series = macd_data.get('dea_series')
+    histogram_series = macd_data.get('histogram_series')
+
+    if dif_series is None or len(dif_series) < 2:
+        return {
+            'histogram_slope': 0,
+            'dif_slope': 0,
+            'dea_slope': 0,
+            'slope_summary': '无数据'
+        }
+
+    # 计算三线斜率
+    # 1. MACD柱状图斜率
+    today_hist = histogram_series.iloc[-1] if histogram_series is not None else 0
+    yesterday_hist = histogram_series.iloc[-2] if histogram_series is not None and len(histogram_series) >= 2 else today_hist
+    hist_change = today_hist - yesterday_hist
+    hist_slope = 1 if hist_change > threshold else (-1 if hist_change < -threshold else 0)
+
+    # 2. DIF线斜率
+    today_dif = dif_series.iloc[-1]
+    yesterday_dif = dif_series.iloc[-2]
+    dif_change = today_dif - yesterday_dif
+    dif_slope = 1 if dif_change > threshold else (-1 if dif_change < -threshold else 0)
+
+    # 3. DEA线斜率
+    if dea_series is not None and len(dea_series) >= 2:
+        today_dea = dea_series.iloc[-1]
+        yesterday_dea = dea_series.iloc[-2]
+        dea_change = today_dea - yesterday_dea
+        dea_slope = 1 if dea_change > threshold else (-1 if dea_change < -threshold else 0)
+    else:
+        dea_slope = 0
+
+    # 综合判断
+    slope_summary = _get_macd_slope_summary(hist_slope, dif_slope, dea_slope)
+
+    return {
+        'histogram_slope': hist_slope,
+        'dif_slope': dif_slope,
+        'dea_slope': dea_slope,
+        'slope_summary': slope_summary
+    }
+
+
+def _get_macd_slope_summary(hist_slope, dif_slope, dea_slope):
+    """
+    根据三线斜率综合判断MACD趋势状态
+
+    参数:
+        hist_slope: 柱状图斜率 (1=向上, 0=趋平, -1=向下)
+        dif_slope: DIF线斜率
+        dea_slope: DEA线斜率
+
+    返回:
+        str: 综合判断文案
+    """
+    # 综合判断规则表
+    if hist_slope == 1 and dif_slope == 1 and dea_slope == 1:
+        return '⬆向上加速'
+    elif hist_slope == 1 and dif_slope == 1 and dea_slope == 0:
+        return '⬆向上延续'
+    elif hist_slope == 1 and dif_slope == 0 and dea_slope == 0:
+        return '⬆整理蓄势'
+    elif hist_slope == 0 and dif_slope == 1 and dea_slope == 1:
+        return '→走平中'
+    elif hist_slope == 0 and dif_slope == 0 and dea_slope == 0:
+        return '→无方向'
+    elif hist_slope == -1 and dif_slope == -1 and dea_slope == -1:
+        return '⬇向下加速'
+    elif hist_slope == -1 and dif_slope == -1 and dea_slope == 0:
+        return '⬇向下延续'
+    elif hist_slope == -1 and dif_slope == 0 and dea_slope == 0:
+        return '⬇下跌趋缓'
+    elif hist_slope == -1 and dif_slope == -1 and dea_slope == -1:
+        return '⬇向下加速'
+    elif hist_slope == 1 and dif_slope == 0 and dea_slope == -1:
+        return '→震荡'
+    elif hist_slope == -1 and dif_slope == 1 and dea_slope == 1:
+        return '→反转中'
+    else:
+        return '→震荡'
 
 
 def check_divergence(df, lookback=20, indicator='macd'):
@@ -842,6 +953,13 @@ def calculate_all_indicators(df):
     result['macd_dif'] = macd_result.get('dif')
     result['macd_dea'] = macd_result.get('dea')
     result['macd_histogram'] = macd_result.get('histogram')
+
+    # MACD斜率
+    macd_slope = calculate_macd_slope(df)
+    result['macd_histogram_slope'] = macd_slope.get('histogram_slope', 0)
+    result['macd_dif_slope'] = macd_slope.get('dif_slope', 0)
+    result['macd_dea_slope'] = macd_slope.get('dea_slope', 0)
+    result['macd_slope_summary'] = macd_slope.get('slope_summary', '→震荡')
 
     # RSI
     result['rsi_14'] = calculate_rsi(df, 14)

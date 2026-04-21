@@ -316,6 +316,24 @@ def generate_position_report():
                         rsi_status = '(中性)'
                 lines.append(f"    - {rsi_text}{rsi_status}")
 
+                # MACD状态（三线斜率）
+                macd_dif = indicators.get('macd_dif')
+                macd_dea = indicators.get('macd_dea')
+                macd_histogram = indicators.get('macd_histogram')
+                macd_hist_slope = indicators.get('macd_histogram_slope', 0)
+                macd_dif_slope = indicators.get('macd_dif_slope', 0)
+                macd_dea_slope = indicators.get('macd_dea_slope', 0)
+                macd_slope_summary = indicators.get('macd_slope_summary', '→震荡')
+
+                # 斜率方向文本
+                hist_slope_text = '⬆' if macd_hist_slope == 1 else ('⬇' if macd_hist_slope == -1 else '→')
+                dif_slope_text = '⬆' if macd_dif_slope == 1 else ('⬇' if macd_dif_slope == -1 else '→')
+                dea_slope_text = '⬆' if macd_dea_slope == 1 else ('⬇' if macd_dea_slope == -1 else '→')
+
+                if macd_dif and macd_dea and macd_histogram:
+                    lines.append(f"    - MACD: DIF={macd_dif:.2f} DEA={macd_dea:.2f} 柱={macd_histogram:.2f}")
+                    lines.append(f"      柱{hist_slope_text} DIF{dif_slope_text} DEA{dea_slope_text} {macd_slope_summary}")
+
                 # 均线关系
                 ma5 = indicators.get('ma5')
                 ma10 = indicators.get('ma10')
@@ -482,6 +500,77 @@ def generate_candidate_report():
                     message = sig.get('message', '')
                     lines.append(f"  - {message}")
             
+            # ========== 技术概览（候选池） ==========
+            indicators = cs.get('indicators', {})
+            if indicators:
+                lines.append("  - 📊 技术概览:")
+                
+                # 趋势判断
+                st_dir = indicators.get('st_direction')
+                st_lower = indicators.get('st_lower_band')
+                st_upper = indicators.get('st_upper_band')
+                ma5 = indicators.get('ma5')
+                ma10 = indicators.get('ma10')
+                rsi = indicators.get('rsi_14')
+                macd_hist_slope = indicators.get('macd_histogram_slope', 0)
+                macd_slope_summary = indicators.get('macd_slope_summary', '→震荡')
+                
+                # 综合趋势判断
+                trend_status = ''
+                trend_detail = ''
+                
+                # 判断规则
+                if st_dir == -1:  # SuperTrend空头
+                    if current_price and st_lower and current_price < st_lower:
+                        # 跌破支撑线
+                        trend_status = '🔴 下跌扩大'
+                        trend_detail = '已跌破SuTd支撑线'
+                    elif ma5 and ma10 and current_price and current_price < ma5 and current_price < ma10:
+                        # 跌破均线
+                        trend_status = '🔴 下跌扩大'
+                        trend_detail = '跌破MA5/MA10'
+                    elif macd_hist_slope == 0 and abs(macd_hist_slope) < 0.02:
+                        # MACD柱趋平
+                        trend_status = '🟡 企稳趋平'
+                        trend_detail = 'MACD柱趋平，等待确认'
+                    else:
+                        trend_status = '🔴 下跌中'
+                        trend_detail = 'SuTd空头'
+                elif st_dir == 1:  # SuperTrend多头
+                    if current_price and ma5 and current_price > ma5:
+                        # 突破MA5
+                        if rsi and rsi < 50 and macd_hist_slope == 1:
+                            trend_status = '🟢 准备反转向上'
+                            trend_detail = '突破MA5，MACD柱向上，RSI偏低'
+                        else:
+                            trend_status = '🟡 企稳趋平'
+                            trend_detail = 'SuTd多头，观察确认'
+                    else:
+                        trend_status = '🟡 企稳趋平'
+                        trend_detail = 'SuTd多头'
+                else:
+                    trend_status = '📊 需继续观察'
+                    trend_detail = ''
+                
+                lines.append(f"    - 趋势: {trend_status}（{trend_detail}）")
+                
+                # SuperTrend
+                st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
+                lines.append(f"    - SuTd: {st_dir_text}")
+                
+                # RSI
+                if rsi:
+                    rsi_status = '(超买)' if rsi > 70 else '(超卖)' if rsi < 30 else '(中性)'
+                    lines.append(f"    - RSI: {rsi:.1f}{rsi_status}")
+                
+                # MACD
+                macd_dif = indicators.get('macd_dif')
+                macd_dea = indicators.get('macd_dea')
+                macd_histogram = indicators.get('macd_histogram')
+                if macd_dif and macd_dea and macd_histogram:
+                    hist_slope_text = '⬆' if macd_hist_slope == 1 else ('⬇' if macd_hist_slope == -1 else '→')
+                    lines.append(f"    - MACD: DIF={macd_dif:.2f} DEA={macd_dea:.2f} 柱={macd_histogram:.2f} {hist_slope_text}")
+                
             lines.append("")
             
     except Exception as e:

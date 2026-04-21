@@ -558,6 +558,10 @@ def init_technical_indicators_table():
                 macd_dif REAL,
                 macd_dea REAL,
                 macd_histogram REAL,
+                macd_histogram_slope INTEGER DEFAULT 0,  -- MACD柱斜率: 1=向上, 0=趋平, -1=向下
+                macd_dif_slope INTEGER DEFAULT 0,  -- DIF线斜率
+                macd_dea_slope INTEGER DEFAULT 0,  -- DEA线斜率
+                macd_slope_summary TEXT,  -- MACD综合判断文案
                 
                 -- RSI指标
                 rsi_14 REAL,
@@ -607,11 +611,12 @@ def save_technical_indicators(code: str, indicators: dict) -> bool:
              ma5_slope, ma10_slope, ma20_slope,
              st_upper_band, st_lower_band, st_direction, st_atr,
              macd_dif, macd_dea, macd_histogram,
+             macd_histogram_slope, macd_dif_slope, macd_dea_slope, macd_slope_summary,
              rsi_14, volume_ratio_5, volume_ratio_20,
              is_long_upper_shadow, is_long_lower_shadow,
              is_bullish_candle, is_bearish_candle,
              created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             code, indicators.get('calc_date'),
             indicators.get('ma5'), indicators.get('ma10'), indicators.get('ma20'),
@@ -620,6 +625,8 @@ def save_technical_indicators(code: str, indicators: dict) -> bool:
             indicators.get('st_upper_band'), indicators.get('st_lower_band'),
             indicators.get('st_direction'), indicators.get('st_atr'),
             indicators.get('macd_dif'), indicators.get('macd_dea'), indicators.get('macd_histogram'),
+            indicators.get('macd_histogram_slope', 0), indicators.get('macd_dif_slope', 0),
+            indicators.get('macd_dea_slope', 0), indicators.get('macd_slope_summary', '→震荡'),
             indicators.get('rsi_14'),
             indicators.get('volume_ratio_5'), indicators.get('volume_ratio_20'),
             indicators.get('is_long_upper_shadow', 0), indicators.get('is_long_lower_shadow', 0),
