@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.data_access import get_index_realtime, get_market_sentiment, get_market_volume_compare
 from core.paths import REPORTS_DIR
+from core.adx_analyzer import get_stock_adx
 from signal_detector import detect_all_signals
 from fetch_fear_index import get_fear_index
 
@@ -175,6 +176,25 @@ def generate_market_report(result):
     except Exception as e:
         logger.warning(f"获取市场概况失败: {e}")
         lines.append("")
+
+    # ========== ADX市场情绪 ==========
+    adx_distribution = result.get('adx_distribution', {})
+    if adx_distribution and adx_distribution.get('distribution'):
+        lines.append("## 📈 ADX市场情绪")
+        lines.append("")
+        lines.append("**趋势强度+方向分布:**")
+        distribution = adx_distribution['distribution']
+        for item in distribution:
+            type_name = item['type']
+            count = item['count']
+            pct = item['pct']
+            color = item['color']
+            lines.append(f"- {type_name}: {count}只 ({pct}%) {color}")
+        lines.append("")
+        summary = adx_distribution.get('summary', '')
+        if summary:
+            lines.append(f"**市场评价:** {summary}")
+            lines.append("")
 
     # ========== 热门板块 ==========
     if not top_sectors:
@@ -403,13 +423,94 @@ def generate_position_report():
                 if slope_status:
                     lines.append(f"    - 均线趋势: {' '.join(slope_status)}")
 
-                # 综合判断
-                if st_dir == 1 and 'MA5上方' in ma_status and 'MA10上方' in ma_status:
-                    lines.append(f"    - 📈 短期趋势向上")
-                elif st_dir == -1 and 'MA5下方' in ma_status:
-                    lines.append(f"    - 📉 短期趋势向下")
+                # ADX趋势分析
+                adx_info = get_stock_adx(code)
+                adx_value = None
+                adx_direction = None
+                if adx_info:
+                    display = adx_info.get('display', 'N/A')
+                    adx_summary = adx_info.get('summary', '')
+                    lines.append(f"    - {display} | {adx_summary}")
+                    adx_value = adx_info.get('adx')
+                    adx_direction = adx_info.get('trend_type')
+
+                # ========== 多维度综合判断 ==========
+                score = 0
+                reasons = []
+
+                # 1. SuperTrend方向 (±2分)
+                if st_dir == 1:
+                    score += 2
+                    reasons.append('SuTd多头')
+                elif st_dir == -1:
+                    score -= 2
+                    reasons.append('SuTd空头')
+
+                # 2. 均线位置 (±1分/条)
+                if 'MA5上方' in ma_status:
+                    score += 1
+                    reasons.append('价>MA5')
                 else:
-                    lines.append(f"    - 📊 趋势震荡")
+                    score -= 1
+                if 'MA10上方' in ma_status:
+                    score += 1
+                    reasons.append('价>MA10')
+                else:
+                    score -= 0.5
+
+                # 3. 均线斜率 (±1分/条)
+                if ma5_slope == 1:
+                    score += 1
+                    reasons.append('MA5⬆')
+                elif ma5_slope == -1:
+                    score -= 1
+                if ma10_slope == 1:
+                    score += 0.5
+                    reasons.append('MA10⬆')
+                elif ma10_slope == -1:
+                    score -= 0.5
+
+                # 4. MACD状态 (±1分)
+                if macd_hist_slope == 1:
+                    score += 1
+                    reasons.append('MACD柱⬆')
+                elif macd_hist_slope == -1:
+                    score -= 1
+                    reasons.append('MACD柱⬇')
+
+                # 5. ADX趋势强度+方向 (±2分)
+                if adx_value and adx_value >= 25:
+                    if adx_direction in ('强多头', '中等多头', '弱多头'):
+                        score += 2
+                        reasons.append('ADX多头')
+                    elif adx_direction in ('强空头', '中等空头', '弱空头'):
+                        score -= 2
+                        reasons.append('ADX空头')
+                    elif adx_direction == '趋势不明':
+                        score += 0
+                        reasons.append('ADX不明')
+                elif adx_value and adx_value < 15:
+                    score += 0
+                    reasons.append('ADX无趋势')
+
+                # 综合评价
+                if score >= 6:
+                    trend_judge = '📈强势向上'
+                elif score >= 3:
+                    trend_judge = '🟢偏强向上'
+                elif score >= 1:
+                    trend_judge = '📊偏多震荡'
+                elif score <= -6:
+                    trend_judge = '📉强势向下'
+                elif score <= -3:
+                    trend_judge = '🔴偏弱向下'
+                elif score <= -1:
+                    trend_judge = '📊偏空震荡'
+                else:
+                    trend_judge = '⚪中性震荡'
+
+                # 显示综合判断结果
+                lines.append(f"    - **综合判断**: {trend_judge} (总分{score:.1f})")
 
             lines.append("")
 
@@ -610,6 +711,93 @@ def generate_candidate_report():
                     hist_slope_text = '⬆' if macd_hist_slope == 1 else ('⬇' if macd_hist_slope == -1 else '→')
                     lines.append(f"    - MACD: DIF={macd_dif:.2f} DEA={macd_dea:.2f} 柱={macd_histogram:.2f} {hist_slope_text}")
                 
+                # ADX趋势分析
+                adx_info = get_stock_adx(code)
+                adx_value = None
+                adx_direction = None
+                if adx_info:
+                    display = adx_info.get('display', 'N/A')
+                    adx_summary = adx_info.get('summary', '')
+                    lines.append(f"    - {display} | {adx_summary}")
+                    adx_value = adx_info.get('adx')
+                    adx_direction = adx_info.get('trend_type')
+
+                # ========== 多维度抄底综合判断 ==========
+                score = 0
+                reasons = []
+
+                # 1. 跌幅评分（跌幅越大抄底机会越好）
+                if drop_pct <= -10:
+                    score += 3
+                    reasons.append('深跌>10%')
+                elif drop_pct <= -5:
+                    score += 2
+                    reasons.append('中跌5-10%')
+                elif drop_pct <= -2:
+                    score += 1
+                    reasons.append('浅跌2-5%')
+
+                # 2. SuperTrend方向
+                if st_dir == -1:
+                    score += 1  # 空头时抄底机会更好
+                    reasons.append('SuTd空头')
+                elif st_dir == 1:
+                    score -= 1
+                    reasons.append('SuTd多头')
+
+                # 3. RSI状态
+                if rsi and rsi < 30:
+                    score += 2
+                    reasons.append('RSI超卖')
+                elif rsi and rsi < 50:
+                    score += 1
+                    reasons.append('RSI偏低')
+                elif rsi and rsi > 70:
+                    score -= 2
+                    reasons.append('RSI超买')
+
+                # 4. MACD柱状图斜率
+                if macd_hist_slope == 1:
+                    score += 1
+                    reasons.append('MACD柱⬆反转')
+                elif macd_hist_slope == -1:
+                    score -= 1
+
+                # 5. ADX趋势状态
+                if adx_value and adx_value >= 25:
+                    if adx_direction in ('强空头', '中等空头'):
+                        score += 1  # 空头趋势明确，抄底机会
+                        reasons.append('ADX空头')
+                    elif adx_direction in ('强多头', '中等多头'):
+                        score -= 1
+                        reasons.append('ADX多头')
+                elif adx_value and adx_value < 15:
+                    score += 0.5
+                    reasons.append('ADX无趋势')
+
+                # 6. 均线位置（跌破均线越多越好）
+                if current_price and ma5 and current_price < ma5:
+                    score += 1
+                    reasons.append('价<MA5')
+                if current_price and ma10 and current_price < ma10:
+                    score += 0.5
+                    reasons.append('价<MA10')
+
+                # 抄底机会评价
+                if score >= 6:
+                    judge = '🟢🟢绝佳抄底'
+                elif score >= 4:
+                    judge = '🟢较好抄底'
+                elif score >= 2:
+                    judge = '🟡可关注'
+                elif score >= 0:
+                    judge = '⚪观望'
+                elif score <= -2:
+                    judge = '🔴不宜抄底'
+                else:
+                    judge = '📊需观察'
+
+                lines.append(f"    - **抄底机会**: {judge} (得分{score:.1f})")
             lines.append("")
             
     except Exception as e:
