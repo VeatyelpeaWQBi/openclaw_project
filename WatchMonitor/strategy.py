@@ -16,6 +16,7 @@ from core.data_access import (
 from core.indicators import is_supertrend_bullish, calculate_volume_ratio
 from core.storage import merge_and_save_kline, get_daily_data_from_sqlite, INITIAL_FETCH_DAYS
 from core.paths import DB_PATH
+from core.adx_analyzer import get_market_adx_distribution, get_positions_with_adx, get_candidates_with_adx
 
 from config.sectors import is_attack_sector
 from filters import filter_etf_candidates
@@ -24,12 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 def get_last_trading_date():
-    """从SQLite交易日历获取上一个交易日"""
+    """
+    获取 <=今天的最后一个交易日
+    - 如果今天是交易日：返回今天
+    - 如果今天是非交易日：返回之前最近的交易日
+    """
     today = datetime.now().strftime('%Y-%m-%d')
     try:
         conn = sqlite3.connect(DB_PATH)
         row = conn.execute(
-            "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date < ? ORDER BY trade_date DESC LIMIT 1",
+            "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1",
             (today,)
         ).fetchone()
         conn.close()
@@ -37,13 +42,15 @@ def get_last_trading_date():
             return datetime.strptime(row[0], '%Y-%m-%d')
     except Exception:
         pass
-    # fallback: 简单跳过周末
-    last_day = datetime.now() - timedelta(days=1)
-    if last_day.weekday() == 6:
-        last_day -= timedelta(days=2)
-    elif last_day.weekday() == 5:
-        last_day -= timedelta(days=1)
-    return last_day
+    # fallback: 简单判断今天是否可能为交易日
+    now = datetime.now()
+    if now.weekday() < 5:  # 周一到周五
+        return now
+    # 周末返回周五
+    if now.weekday() == 5:  # 周六
+        return now - timedelta(days=1)
+    else:  # 周日
+        return now - timedelta(days=2)
 
 
 def load_or_fetch_kline(stock_code, market='sh', stock_name='', sector_name=''):
@@ -147,7 +154,7 @@ class WatchMonitorStrategy:
                 'metadata': dict,      # 额外元数据
             }
         """
-        date_str = datetime.now().strftime('%Y-%m-%d')
+        date_str = get_last_trading_date().strftime('%Y-%m-%d')
 
         # 1. 获取热门板块排名
         all_sectors = self._fetch_hot_sectors()
@@ -211,6 +218,9 @@ class WatchMonitorStrategy:
             'top10_attack': top10_attack,
             'top5_attack': top5_attack,
             'sector_details': sector_details,
+            'adx_distribution': get_market_adx_distribution(date_str),
+            'positions_adx': get_positions_with_adx(date_str),
+            'candidates_adx': get_candidates_with_adx(date_str),
             'has_signal': len(top10_attack) > 0,
             'skip_reason': '' if len(top10_attack) > 0 else '前10无进攻型题材',
             'metadata': {
