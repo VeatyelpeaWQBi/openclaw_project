@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core.data_access import get_index_realtime, get_market_sentiment, get_market_volume_compare
 from core.paths import REPORTS_DIR
 from signal_detector import detect_all_signals
+from fetch_fear_index import get_fear_index
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,35 @@ def generate_market_report(result):
                 activity_rate = sentiment.get('activity_rate', 0)
                 if activity_rate:
                     lines.append(f"- 活跃度: **{activity_rate:.2f}%**")
+            lines.append("")
+
+        # 恐贪指数
+        try:
+            fear_data = get_fear_index(timeout=30)
+            if fear_data:
+                lines.append("## 😨 恐贪指数")
+                lines.append("")
+                score = fear_data.get('score')
+                score_decimal = fear_data.get('score_decimal')
+                status = fear_data.get('status', '')
+
+                # 根据状态选择颜色和图标
+                status_icons = {
+                    '极度恐惧': ('🔴🔴', 'green'),
+                    '恐惧': ('🔴', 'green'),
+                    '中立': ('⚪', ''),
+                    '贪婪': ('🟢', 'red'),
+                    '极度贪婪': ('🟢🟢', 'red'),
+                }
+                icon, color = status_icons.get(status, ('⚪', ''))
+
+                if color:
+                    lines.append(f"- {icon} 恐贪指数: **<font color=\"{color}\">{score}</font>** ({score_decimal}) → **<font color=\"{color}\">{status}</font>**")
+                else:
+                    lines.append(f"- {icon} 恐贪指数: **{score}** ({score_decimal}) → **{status}**")
+                lines.append("")
+        except Exception as e:
+            logger.warning(f"获取恐贪指数失败: {e}")
 
         # 成交量
         if volume:

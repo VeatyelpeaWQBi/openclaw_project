@@ -701,13 +701,18 @@ def check_volume_stagnation(df, threshold_ratio=1.5, threshold_change=1.0):
     return None
 
 
-def check_high_long_upper_shadow(df, lookback=20):
+def check_high_long_upper_shadow(df, lookback=20, min_shadow_pct=3.0):
     """
     检测高位长上影线
+
+    区分阴线和阳线：
+    - 阴线长上影线：开盘后冲高再下跌，更强的见顶信号
+    - 阳线长上影线：盘中冲高回落，仍收涨，次强见顶信号
 
     参数:
         df: DataFrame
         lookback: 回看天数
+        min_shadow_pct: 上影线最小长度占收盘价的百分比，默认3.0%
 
     返回:
         dict 或 None
@@ -715,20 +720,58 @@ def check_high_long_upper_shadow(df, lookback=20):
     if df.empty or len(df) < lookback:
         return None
 
-    patterns = identify_candle_patterns(df)
-    if not patterns.get('is_long_upper_shadow'):        return None
+    open_price = df['open'].iloc[-1]
+    high_price = df['high'].iloc[-1]
+    close_price = df['close'].iloc[-1]
+
+    # 判断阴阳线
+    is_bullish = close_price > open_price  # 阳线
+    is_bearish = close_price < open_price  # 阴线
+
+    # 计算实体和上影线
+    body = abs(close_price - open_price)
+
+    # 上影线：最高价到实体顶部的距离
+    # 阳线时：实体顶部是收盘价，上影线 = high - close
+    # 阴线时：实体顶部是开盘价，上影线 = high - open
+    if is_bullish:
+        upper_shadow = high_price - close_price
+    else:
+        upper_shadow = high_price - open_price
+
+    # 上影线长度判断（绝对长度）
+    shadow_pct = (upper_shadow / max(close_price, open_price)) * 100 if close_price > 0 else 0
+    if shadow_pct < min_shadow_pct:
+        return None
+
+    # 长上影线判断（相对实体）
+    # 阴线：上影线 >= 实体长度（冲高幅度 >= 下跌幅度）
+    # 阳线：上影线 >= 实体×2（回落幅度 >= 实体涨幅×2）
+    if is_bearish:
+        is_long_upper_shadow = upper_shadow >= body
+    else:
+        is_long_upper_shadow = upper_shadow >= body * 2
+
+    if not is_long_upper_shadow:
+        return None
 
     # 检查是否在高位（接近20日最高点）
     recent_high = df['high'].iloc[-lookback:].max()
-    close = df['close'].iloc[-1]
 
     # 高位判断：收盘价接近20日最高价的90%以上
-    if close >= recent_high * 0.90:
+    if close_price >= recent_high * 0.90:
+        # 阴线长上影线信号更强
+        severity = 'high' if is_bearish else 'medium'
+
         return {
             'type': 'high_long_upper_shadow',
-            'close': close,
+            'is_bearish': is_bearish,  # 是否阴线
+            'close': close_price,
+            'open': open_price,
             'recent_high': recent_high,
-            'severity': 'medium'
+            'upper_shadow': upper_shadow,
+            'shadow_pct': round(shadow_pct, 2),
+            'severity': severity
         }
 
     return None
