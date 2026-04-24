@@ -1,0 +1,75 @@
+# 技术指标配置
+# 用于控制启用哪些指标、参数、权重、展示顺序
+
+version: 1.0
+
+indicators:
+  # SuperTrend指标 - 趋势方向核心
+  - name: supertrend
+    enabled: true
+    display_name: SuTd
+    weight: 2.0
+    params:
+      atr_period: 10
+      multiplier: 3.0
+    report_order: 1
+
+  # RSI指标 - 超买超卖判断
+  - name: rsi
+    enabled: true
+    display_name: RSI
+    weight: 1.0
+    params:
+      period: 14
+    report_order: 2
+
+  # MACD指标 - 趋势强度
+  - name: macd
+    enabled: true
+    display_name: MACD
+    weight: 1.0
+    params:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    report_order: 3
+
+  # MA均线指标 - 多周期支撑压力
+  - name: ma
+    enabled: true
+    display_name: 均线
+    weight: 1.0
+    params:
+      periods: [5, 10, 20, 60, 120, 250]
+      slope_periods: [5, 10, 20]
+    report_order: 4
+
+  # ADX指标 - 趋势强度判断（数据来自外部）
+  - name: adx
+    enabled: true
+    display_name: ADX
+    weight: 2.0
+    params:
+      strong_threshold: 50
+      medium_threshold: 25
+      weak_threshold: 15
+    report_order: 5
+
+  # 量比指标 - 放量缩量判断
+  - name: volume
+    enabled: true
+    display_name: 量比
+    weight: 0.5
+    params:
+      periods: [5, 20]
+    report_order: 6
+
+  # K线形态 - 影线、阴阳线
+  - name: candle
+    enabled: true
+    display_name: K线形态
+    weight: 0.5
+    params:
+      upper_shadow_ratio: 2.0
+      lower_shadow_ratio: 2.0
+    report_order: 7

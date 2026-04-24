@@ -19,7 +19,7 @@ from core.storage import (
     get_all_positions,
     get_all_candidates
 )
-from core.indicators import (
+from core.indicator_funcs import (
     calculate_all_indicators,
     calculate_ma,
     calculate_ma_slope,
@@ -38,6 +38,7 @@ from core.indicators import (
     check_breakdown_big_bull_candle,
     check_breakdown_medium_bull_candle
 )
+from core.indicators.manager import IndicatorManager
 
 logger = logging.getLogger(__name__)
 
@@ -773,3 +774,68 @@ def detect_all_signals() -> Dict:
         'has_candidate_signal': has_candidate_signal,
         'detect_time': detect_time
     }
+
+
+# ==================== 模块化信号检测（新） ====================
+
+def detect_signals_with_manager(code: str, df: pd.DataFrame, context: Dict) -> Dict:
+    """
+    使用IndicatorManager检测信号（模块化方式）
+
+    参数:
+        code: 股票代码
+        df: 日K数据DataFrame
+        context: 上下文信息（包含is_position, is_candidate, current_price等）
+
+    返回:
+        Dict: {
+            'indicators_data': dict,  # 所有指标数据
+            'signals': list,          # 所有信号
+            'score': float,           # 综合评分
+            'reasons': list           # 评分原因
+        }
+    """
+    manager = IndicatorManager.get_instance()
+
+    # 计算所有指标
+    indicators_data = manager.calculate_all(df, code=code)
+
+    # 检测信号
+    context['df'] = df
+    context['code'] = code
+    signals = manager.detect_all_signals(indicators_data, context)
+
+    # 计算评分
+    score, reasons = manager.calculate_total_score(indicators_data, context)
+
+    return {
+        'indicators_data': indicators_data,
+        'signals': signals,
+        'score': score,
+        'reasons': reasons
+    }
+
+
+def generate_indicator_report_with_manager(code: str, df: pd.DataFrame, context: Dict) -> List[str]:
+    """
+    使用IndicatorManager生成指标报告内容
+
+    参数:
+        code: 股票代码
+        df: 日K数据DataFrame
+        context: 上下文信息
+
+    返回:
+        List[str]: 报告展示行列表
+    """
+    manager = IndicatorManager.get_instance()
+
+    # 计算所有指标（如果context中没有）
+    if 'indicators_data' not in context:
+        indicators_data = manager.calculate_all(df, code=code)
+        context['indicators_data'] = indicators_data
+    else:
+        indicators_data = context['indicators_data']
+
+    # 生成报告
+    return manager.generate_report_lines(indicators_data, context)
