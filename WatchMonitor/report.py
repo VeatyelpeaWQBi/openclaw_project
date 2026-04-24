@@ -135,6 +135,7 @@ def generate_market_report(result):
                 score = fear_data.get('score')
                 score_decimal = fear_data.get('score_decimal')
                 status = fear_data.get('status', '')
+                update_time = fear_data.get('update_time', '')
 
                 # 根据状态选择颜色和图标
                 status_icons = {
@@ -146,10 +147,13 @@ def generate_market_report(result):
                 }
                 icon, color = status_icons.get(status, ('⚪', ''))
 
+                # 日期显示
+                date_part = f"（{update_time}）" if update_time else ""
+
                 if color:
-                    lines.append(f"- {icon} 恐贪指数: **<font color=\"{color}\">{score}</font>** ({score_decimal}) → **<font color=\"{color}\">{status}</font>**")
+                    lines.append(f"- {icon} 恐贪指数: **<font color=\"{color}\">{score}</font>** ({score_decimal}){date_part} → **<font color=\"{color}\">{status}</font>**")
                 else:
-                    lines.append(f"- {icon} 恐贪指数: **{score}** ({score_decimal}) → **{status}**")
+                    lines.append(f"- {icon} 恐贪指数: **{score}** ({score_decimal}){date_part} → **{status}**")
                 lines.append("")
         except Exception as e:
             logger.warning(f"获取恐贪指数失败: {e}")
