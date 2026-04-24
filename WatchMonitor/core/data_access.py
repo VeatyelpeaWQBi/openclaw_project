@@ -532,28 +532,30 @@ def get_market_volume_compare():
 
         if current_hour >= 15:  # 收盘后
             traded_minutes = 240
-        elif current_hour >= 9 and current_hour < 11:
-            # 上午交易时间 (9:30 - 11:30)
-            if current_hour == 9:
-                if current_minute >= 30:
-                    traded_minutes = current_minute - 30
-                else:
-                    traded_minutes = 0  # 未开盘
-            elif current_hour == 10:
-                traded_minutes = 30 + current_minute  # 9:30-10:00已交易30分钟 + 10点后的分钟
-            elif current_hour == 11 and current_minute < 30:
-                traded_minutes = 90 + current_minute  # 9:30-11:00已交易90分钟 + 11点后的分钟
+        elif current_hour >= 12 and current_hour < 13:
+            # 12:00-13:00 午休时间，上午已收盘
+            traded_minutes = 120
+        elif current_hour == 11 and current_minute >= 30:
+            # 11:30-12:00 午休，上午已收盘
+            traded_minutes = 120
+        elif current_hour == 11:
+            # 11:00-11:30 上午交易时间
+            traded_minutes = 90 + current_minute  # 9:30-11:00已交易90分钟 + 11点后的分钟
+        elif current_hour == 10:
+            # 10:00-11:00 上午交易时间
+            traded_minutes = 30 + current_minute  # 9:30-10:00已交易30分钟 + 10点后的分钟
+        elif current_hour == 9:
+            # 9:00-10:00 上午交易时间
+            if current_minute >= 30:
+                traded_minutes = current_minute - 30  # 9:30后的分钟数
             else:
-                traded_minutes = 120  # 11:30上午收盘
+                traded_minutes = 0  # 9:30之前未开盘
         elif current_hour >= 13 and current_hour < 15:
             # 下午交易时间 (13:00 - 15:00)
             if current_hour == 13:
                 traded_minutes = 120 + current_minute  # 上午120分钟 + 13点后的分钟
             elif current_hour == 14:
                 traded_minutes = 180 + current_minute  # 上午120分钟 + 13:00-14:00的60分钟 + 14点后的分钟
-        elif current_hour == 11 and current_minute >= 30:
-            # 11:30-13:00午休，上午已收盘
-            traded_minutes = 120
         else:
             traded_minutes = 0  # 其他时间（盘前、夜盘等）
 
@@ -579,9 +581,14 @@ def get_market_volume_compare():
             'yesterday_estimated': traded_minutes < 240 and traded_minutes > 0,  # 是否为估算值
             'change_pct': change_pct,
             'is_fangliang': change_pct > 0,
+            'current_time': now.strftime('%H:%M'),  # 当前时间，便于调试
         }
 
-        logger.info(f"成交量对比: 今日{today_yi}亿 vs 昨日同期{yesterday_yi}亿(估算{traded_minutes}/240分钟) ({'放量' if result['is_fangliang'] else '缩量'}{abs(change_pct)}%)")
+        # 详细日志
+        if result['yesterday_estimated']:
+            logger.info(f"成交量对比: 今日{today_yi}亿 vs 昨日同期估算{yesterday_yi}亿({traded_minutes}/240分钟, 当前{result['current_time']}) — {'放量' if result['is_fangliang'] else '缩量'}{abs(change_pct)}%")
+        else:
+            logger.info(f"成交量对比: 今日{today_yi}亿 vs 昨日全天{yesterday_yi}亿(当前{result['current_time']}, traded_minutes={traded_minutes}) — {'放量' if result['is_fangliang'] else '缩量'}{abs(change_pct)}%")
         return result
 
     except Exception as e:
