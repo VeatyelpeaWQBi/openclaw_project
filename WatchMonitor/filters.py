@@ -10,7 +10,7 @@ import pandas as pd
 
 from core.data_access import get_etf_daily_kline
 from core.storage import get_daily_data_from_sqlite
-from core.indicators import is_supertrend_bullish, get_weekly_kline, calculate_volume_ratio
+from core.indicator_funcs import is_supertrend_bullish, get_weekly_kline, calculate_volume_ratio
 
 logger = logging.getLogger(__name__)
 

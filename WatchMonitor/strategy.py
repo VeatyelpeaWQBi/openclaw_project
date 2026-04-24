@@ -13,7 +13,7 @@ from core.data_access import (
     get_sector_ranking, get_sector_stocks,
     get_etf_daily_kline,
 )
-from core.indicators import is_supertrend_bullish, calculate_volume_ratio
+from core.indicator_funcs import is_supertrend_bullish, calculate_volume_ratio
 from core.storage import merge_and_save_kline, get_daily_data_from_sqlite, INITIAL_FETCH_DAYS
 from core.paths import DB_PATH
 from core.adx_analyzer import get_market_adx_distribution, get_positions_with_adx, get_candidates_with_adx

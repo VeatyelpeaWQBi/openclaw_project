@@ -71,28 +71,43 @@ def classify_trend(adx: float, plus_di: float, minus_di: float) -> tuple[str, st
 def format_adx_display(adx: float, plus_di: float, minus_di: float) -> str:
     """
     格式化ADX展示（用于持仓/候选池）
-    
+
+    颜色表示趋势强度，多头和空头颜色完全区分：
+    - 多头：强🟢 / 中🟡 / 弱⚪
+    - 空头：强🔴 / 中🟠 / 弱🟤
+    箭头表示方向：↑多头 / ↓空头
+
     返回:
-        str: 如 "ADX: 35↑ 多头" 或 "ADX: 18⚪ 无趋势"
+        str: 如 "🟢 ADX: 35↑" 或 "🔴 ADX: 42↓"
     """
-    trend_type, color, summary = classify_trend(adx, plus_di, minus_di)
-    
-    # 方向箭头
+    trend_type, _, _ = classify_trend(adx, plus_di, minus_di)
+
+    # 颜色根据方向+强度决定（多头空头完全区分）
     if trend_type in ('强多头', '中等多头', '弱多头'):
+        # 多头：强🟢 / 中🟡 / 弱⚪
+        if adx >= 50:
+            color = '🟢'
+        elif adx >= 25:
+            color = '🟡'
+        else:
+            color = '⚪'
         arrow = '↑'
-        direction = '多头'
     elif trend_type in ('强空头', '中等空头', '弱空头'):
+        # 空头：强🔴 / 中🟠 / 弱🟤
+        if adx >= 50:
+            color = '🔴'
+        elif adx >= 25:
+            color = '🟠'
+        else:
+            color = '🟤'
         arrow = '↓'
-        direction = '空头'
-    elif trend_type == '无趋势':
-        arrow = ''
-        direction = '无趋势'
     else:
+        # 无趋势或趋势不明
+        color = '⚪'
         arrow = ''
-        direction = '不明'
-    
-    # 展示格式：颜色 + ADX值+箭头+方向
-    return f"{color} ADX: {int(adx)}{arrow} {direction}"
+
+    # 展示格式：颜色 + ADX值 + 箭头
+    return f"{color} ADX: {int(adx)}{arrow}"
 
 
 # ==================== 市场ADX情绪统计 ====================

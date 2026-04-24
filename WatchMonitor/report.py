@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.data_access import get_index_realtime, get_market_sentiment, get_market_volume_compare
 from core.paths import REPORTS_DIR
-from core.adx_analyzer import get_stock_adx
+from core.storage import get_daily_data_from_sqlite
+from core.indicators.manager import IndicatorManager
 from signal_detector import detect_all_signals
 from fetch_fear_index import get_fear_index
 
@@ -336,185 +337,48 @@ def generate_position_report():
                 lines.append("  - ✅ 暂无风险信号")
             lines.append("")
 
-            # ========== 技术概要分析（所有情况下都显示） ==========
-            if indicators:
+            # ========== 技术概要分析（通过IndicatorManager一站式调用） ==========
+            # 获取日K数据用于指标分析
+            df = get_daily_data_from_sqlite(code, days=340)
+            if df is not None and not df.empty:
                 lines.append("  - 📊 技术概要:")
 
-                # SuperTrend状态（简化为SuTd）+ 反转预警
-                st_dir = indicators.get('st_direction')
-                st_upper = indicators.get('st_upper_band')  # 阻力线
-                st_lower = indicators.get('st_lower_band')  # 支撑线
+                # 创建IndicatorManager实例
+                manager = IndicatorManager()
+                context = {
+                    'current_price': current_price,
+                    'is_position': True,
+                    'position_type': position_type,
+                    'entry_price': entry_price,
+                }
 
-                st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
+                # 一站式分析（计算、信号、报告、评分全部在内部完成）
+                result = manager.analyze_stock(code, df, context)
 
-                # SuperTrend反转预警
-                st_warning = ''
-                if st_dir == 1 and st_lower and current_price:  # 多头状态
-                    # 多空切换点是支撑线，跌破转为空头
-                    gap_pct = (current_price - st_lower) / st_lower * 100
-                    if gap_pct > 0:
-                        st_warning = f"（多→空切换点{st_lower:.2f}，距-{gap_pct:.1f}%）"
-                    else:
-                        st_warning = f"（⚠️已跌破多→空切换{st_lower:.2f}）"
-                elif st_dir == -1 and st_upper and current_price:  # 空头状态
-                    # 多空切换点是阻力线，突破转为多头
-                    gap_pct = (current_price - st_upper) / st_upper * 100
-                    if gap_pct < 0:
-                        st_warning = f"（空→多切换点{st_upper:.2f}，距+{-gap_pct:.1f}%）"
-                    else:
-                        st_warning = f"（⚠️已突破空→多切换点{st_upper:.2f}）"
+                # 直接获取报告内容（黑盒生成，无需二次加工）
+                report_lines = result.get('report_lines', [])
+                lines.extend(report_lines)
 
-                lines.append(f"    - SuTd: {st_dir_text} {st_warning}")
+                # 获取综合评分
+                total_score = result.get('total_score', 0)
 
-                # RSI状态
-                rsi = indicators.get('rsi_14')
-                rsi_text = f"RSI: {rsi:.1f}" if rsi else "RSI: N/A"
-                rsi_status = ''
-                if rsi:
-                    if rsi > 70:
-                        rsi_status = '(超买)'
-                    elif rsi < 30:
-                        rsi_status = '(超卖)'
-                    else:
-                        rsi_status = '(中性)'
-                lines.append(f"    - {rsi_text}{rsi_status}")
-
-                # MACD状态（三线斜率）
-                macd_dif = indicators.get('macd_dif')
-                macd_dea = indicators.get('macd_dea')
-                macd_histogram = indicators.get('macd_histogram')
-                macd_hist_slope = indicators.get('macd_histogram_slope', 0)
-                macd_dif_slope = indicators.get('macd_dif_slope', 0)
-                macd_dea_slope = indicators.get('macd_dea_slope', 0)
-                macd_slope_summary = indicators.get('macd_slope_summary', '→震荡')
-
-                # 斜率方向文本
-                hist_slope_text = '⬆' if macd_hist_slope == 1 else ('⬇' if macd_hist_slope == -1 else '→')
-                dif_slope_text = '⬆' if macd_dif_slope == 1 else ('⬇' if macd_dif_slope == -1 else '→')
-                dea_slope_text = '⬆' if macd_dea_slope == 1 else ('⬇' if macd_dea_slope == -1 else '→')
-
-                if macd_dif and macd_dea and macd_histogram:
-                    lines.append(f"    - MACD: DIF={macd_dif:.2f} DEA={macd_dea:.2f} 柱={macd_histogram:.2f}")
-                    lines.append(f"      柱{hist_slope_text} DIF{dif_slope_text} DEA{dea_slope_text} {macd_slope_summary}")
-
-                # 均线关系
-                ma5 = indicators.get('ma5')
-                ma10 = indicators.get('ma10')
-                ma20 = indicators.get('ma20')
-                ma60 = indicators.get('ma60')
-
-                ma_status = []
-                if ma5 and current_price:
-                    ma_status.append('MA5上方' if current_price > ma5 else 'MA5下方')
-                if ma10 and current_price:
-                    ma_status.append('MA10上方' if current_price > ma10 else 'MA10下方')
-                if ma20 and current_price:
-                    ma_status.append('MA20上方' if current_price > ma20 else 'MA20下方')
-                if ma60 and current_price:
-                    ma_status.append('MA60上方' if current_price > ma60 else 'MA60下方')
-
-                lines.append(f"    - 均线位置: {' '.join(ma_status) if ma_status else 'N/A'}")
-
-                # 均线斜率
-                ma5_slope = indicators.get('ma5_slope')
-                ma10_slope = indicators.get('ma10_slope')
-                slope_status = []
-                if ma5_slope:
-                    slope_status.append('MA5⬆' if ma5_slope == 1 else 'MA5⬇' if ma5_slope == -1 else 'MA5→')
-                if ma10_slope:
-                    slope_status.append('MA10⬆' if ma10_slope == 1 else 'MA10⬇' if ma10_slope == -1 else 'MA10→')
-
-                if slope_status:
-                    lines.append(f"    - 均线趋势: {' '.join(slope_status)}")
-
-                # ADX趋势分析
-                adx_info = get_stock_adx(code)
-                adx_value = None
-                adx_direction = None
-                if adx_info:
-                    display = adx_info.get('display', 'N/A')
-                    adx_summary = adx_info.get('summary', '')
-                    lines.append(f"    - {display} | {adx_summary}")
-                    adx_value = adx_info.get('adx')
-                    adx_direction = adx_info.get('trend_type')
-
-                # ========== 多维度综合判断 ==========
-                score = 0
-                reasons = []
-
-                # 1. SuperTrend方向 (±2分)
-                if st_dir == 1:
-                    score += 2
-                    reasons.append('SuTd多头')
-                elif st_dir == -1:
-                    score -= 2
-                    reasons.append('SuTd空头')
-
-                # 2. 均线位置 (±1分/条)
-                if 'MA5上方' in ma_status:
-                    score += 1
-                    reasons.append('价>MA5')
-                else:
-                    score -= 1
-                if 'MA10上方' in ma_status:
-                    score += 1
-                    reasons.append('价>MA10')
-                else:
-                    score -= 0.5
-
-                # 3. 均线斜率 (±1分/条)
-                if ma5_slope == 1:
-                    score += 1
-                    reasons.append('MA5⬆')
-                elif ma5_slope == -1:
-                    score -= 1
-                if ma10_slope == 1:
-                    score += 0.5
-                    reasons.append('MA10⬆')
-                elif ma10_slope == -1:
-                    score -= 0.5
-
-                # 4. MACD状态 (±1分)
-                if macd_hist_slope == 1:
-                    score += 1
-                    reasons.append('MACD柱⬆')
-                elif macd_hist_slope == -1:
-                    score -= 1
-                    reasons.append('MACD柱⬇')
-
-                # 5. ADX趋势强度+方向 (±2分)
-                if adx_value and adx_value >= 25:
-                    if adx_direction in ('强多头', '中等多头', '弱多头'):
-                        score += 2
-                        reasons.append('ADX多头')
-                    elif adx_direction in ('强空头', '中等空头', '弱空头'):
-                        score -= 2
-                        reasons.append('ADX空头')
-                    elif adx_direction == '趋势不明':
-                        score += 0
-                        reasons.append('ADX不明')
-                elif adx_value and adx_value < 15:
-                    score += 0
-                    reasons.append('ADX无趋势')
-
-                # 综合评价
-                if score >= 6:
+                # 综合评价（评分结果已在指标对象内部计算）
+                if total_score >= 6:
                     trend_judge = '📈强势向上'
-                elif score >= 3:
+                elif total_score >= 3:
                     trend_judge = '🟢偏强向上'
-                elif score >= 1:
+                elif total_score >= 1:
                     trend_judge = '📊偏多震荡'
-                elif score <= -6:
+                elif total_score <= -6:
                     trend_judge = '📉强势向下'
-                elif score <= -3:
+                elif total_score <= -3:
                     trend_judge = '🔴偏弱向下'
-                elif score <= -1:
+                elif total_score <= -1:
                     trend_judge = '📊偏空震荡'
                 else:
                     trend_judge = '⚪中性震荡'
 
-                # 显示综合判断结果
-                lines.append(f"    - **综合判断**: {trend_judge} (总分{score:.1f})")
+                lines.append(f"    - **综合判断**: {trend_judge} (总分{total_score:.1f})")
 
             lines.append("")
 
@@ -644,164 +508,59 @@ def generate_candidate_report():
                     message = sig.get('message', '')
                     lines.append(f"  - {message}")
             
-            # ========== 技术概览（候选池） ==========
-            indicators = cs.get('indicators', {})
-            if indicators:
+            # ========== 技术概览（候选池，通过IndicatorManager一站式调用） ==========
+            # 获取日K数据用于指标分析
+            df_candidate = get_daily_data_from_sqlite(code, days=340)
+            if df_candidate is not None and not df_candidate.empty:
                 lines.append("  - 📊 技术概览:")
-                
-                # 趋势判断
-                st_dir = indicators.get('st_direction')
-                st_lower = indicators.get('st_lower_band')
-                st_upper = indicators.get('st_upper_band')
-                ma5 = indicators.get('ma5')
-                ma10 = indicators.get('ma10')
-                rsi = indicators.get('rsi_14')
-                macd_hist_slope = indicators.get('macd_histogram_slope', 0)
-                macd_slope_summary = indicators.get('macd_slope_summary', '→震荡')
-                
-                # 综合趋势判断
-                trend_status = ''
-                trend_detail = ''
-                
-                # 判断规则
-                if st_dir == -1:  # SuperTrend空头
-                    if current_price and st_lower and current_price < st_lower:
-                        # 跌破支撑线
-                        trend_status = '🔴 下跌扩大'
-                        trend_detail = '已跌破SuTd支撑线'
-                    elif ma5 and ma10 and current_price and current_price < ma5 and current_price < ma10:
-                        # 跌破均线
-                        trend_status = '🔴 下跌扩大'
-                        trend_detail = '跌破MA5/MA10'
-                    elif macd_hist_slope == 0 and abs(macd_hist_slope) < 0.02:
-                        # MACD柱趋平
-                        trend_status = '🟡 企稳趋平'
-                        trend_detail = 'MACD柱趋平，等待确认'
-                    else:
-                        trend_status = '🔴 下跌中'
-                        trend_detail = 'SuTd空头'
-                elif st_dir == 1:  # SuperTrend多头
-                    if current_price and ma5 and current_price > ma5:
-                        # 突破MA5
-                        if rsi and rsi < 50 and macd_hist_slope == 1:
-                            trend_status = '🟢 准备反转向上'
-                            trend_detail = '突破MA5，MACD柱向上，RSI偏低'
-                        else:
-                            trend_status = '🟡 企稳趋平'
-                            trend_detail = 'SuTd多头，观察确认'
-                    else:
-                        trend_status = '🟡 企稳趋平'
-                        trend_detail = 'SuTd多头'
-                else:
-                    trend_status = '📊 需继续观察'
-                    trend_detail = ''
-                
-                lines.append(f"    - 趋势: {trend_status}（{trend_detail}）")
-                
-                # SuperTrend
-                st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
-                lines.append(f"    - SuTd: {st_dir_text}")
-                
-                # RSI
-                if rsi:
-                    rsi_status = '(超买)' if rsi > 70 else '(超卖)' if rsi < 30 else '(中性)'
-                    lines.append(f"    - RSI: {rsi:.1f}{rsi_status}")
-                
-                # MACD
-                macd_dif = indicators.get('macd_dif')
-                macd_dea = indicators.get('macd_dea')
-                macd_histogram = indicators.get('macd_histogram')
-                if macd_dif and macd_dea and macd_histogram:
-                    hist_slope_text = '⬆' if macd_hist_slope == 1 else ('⬇' if macd_hist_slope == -1 else '→')
-                    lines.append(f"    - MACD: DIF={macd_dif:.2f} DEA={macd_dea:.2f} 柱={macd_histogram:.2f} {hist_slope_text}")
-                
-                # ADX趋势分析
-                adx_info = get_stock_adx(code)
-                adx_value = None
-                adx_direction = None
-                if adx_info:
-                    display = adx_info.get('display', 'N/A')
-                    adx_summary = adx_info.get('summary', '')
-                    lines.append(f"    - {display} | {adx_summary}")
-                    adx_value = adx_info.get('adx')
-                    adx_direction = adx_info.get('trend_type')
+
+                # 创建IndicatorManager实例
+                manager = IndicatorManager()
+                context = {
+                    'current_price': current_price,
+                    'is_candidate': True,
+                    'watch_price': watch_price,
+                }
+
+                # 一站式分析
+                result = manager.analyze_stock(code, df_candidate, context)
+
+                # 直接获取报告内容
+                report_lines = result.get('report_lines', [])
+                lines.extend(report_lines)
 
                 # ========== 多维度抄底综合判断 ==========
-                score = 0
-                reasons = []
+                # 跌幅评分（候选池特有，跌幅越大抄底机会越好）
+                total_score = result.get('total_score', 0)
+                score_reasons = result.get('score_reasons', [])
 
-                # 1. 跌幅评分（跌幅越大抄底机会越好）
+                # 添加跌幅评分
                 if drop_pct <= -10:
-                    score += 3
-                    reasons.append('深跌>10%')
+                    total_score += 3
+                    score_reasons.append('深跌>10%')
                 elif drop_pct <= -5:
-                    score += 2
-                    reasons.append('中跌5-10%')
+                    total_score += 2
+                    score_reasons.append('中跌5-10%')
                 elif drop_pct <= -2:
-                    score += 1
-                    reasons.append('浅跌2-5%')
-
-                # 2. SuperTrend方向
-                if st_dir == -1:
-                    score += 1  # 空头时抄底机会更好
-                    reasons.append('SuTd空头')
-                elif st_dir == 1:
-                    score -= 1
-                    reasons.append('SuTd多头')
-
-                # 3. RSI状态
-                if rsi and rsi < 30:
-                    score += 2
-                    reasons.append('RSI超卖')
-                elif rsi and rsi < 50:
-                    score += 1
-                    reasons.append('RSI偏低')
-                elif rsi and rsi > 70:
-                    score -= 2
-                    reasons.append('RSI超买')
-
-                # 4. MACD柱状图斜率
-                if macd_hist_slope == 1:
-                    score += 1
-                    reasons.append('MACD柱⬆反转')
-                elif macd_hist_slope == -1:
-                    score -= 1
-
-                # 5. ADX趋势状态
-                if adx_value and adx_value >= 25:
-                    if adx_direction in ('强空头', '中等空头'):
-                        score += 1  # 空头趋势明确，抄底机会
-                        reasons.append('ADX空头')
-                    elif adx_direction in ('强多头', '中等多头'):
-                        score -= 1
-                        reasons.append('ADX多头')
-                elif adx_value and adx_value < 15:
-                    score += 0.5
-                    reasons.append('ADX无趋势')
-
-                # 6. 均线位置（跌破均线越多越好）
-                if current_price and ma5 and current_price < ma5:
-                    score += 1
-                    reasons.append('价<MA5')
-                if current_price and ma10 and current_price < ma10:
-                    score += 0.5
-                    reasons.append('价<MA10')
+                    total_score += 1
+                    score_reasons.append('浅跌2-5%')
 
                 # 抄底机会评价
-                if score >= 6:
+                if total_score >= 6:
                     judge = '🟢🟢绝佳抄底'
-                elif score >= 4:
+                elif total_score >= 4:
                     judge = '🟢较好抄底'
-                elif score >= 2:
+                elif total_score >= 2:
                     judge = '🟡可关注'
-                elif score >= 0:
+                elif total_score >= 0:
                     judge = '⚪观望'
-                elif score <= -2:
+                elif total_score <= -2:
                     judge = '🔴不宜抄底'
                 else:
                     judge = '📊需观察'
 
-                lines.append(f"    - **抄底机会**: {judge} (得分{score:.1f})")
+                lines.append(f"    - **抄底机会**: {judge} (得分{total_score:.1f})")
+
             lines.append("")
             
     except Exception as e:

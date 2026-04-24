@@ -47,7 +47,7 @@ from core.storage import (
     add_candidate, remove_candidate, update_candidate, get_all_candidates, get_candidate_by_code,
     get_daily_data_from_sqlite, init_all_tables, save_technical_indicators, get_technical_indicators
 )
-from core.indicators import calculate_all_indicators, calculate_ma, calculate_macd, calculate_rsi
+from core.indicator_funcs import calculate_all_indicators, calculate_ma, calculate_macd, calculate_rsi
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
