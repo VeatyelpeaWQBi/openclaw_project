@@ -1,16 +1,15 @@
 # 🦐 OpenClaw 项目合集
 
-基于 OpenClaw 的 AI 辅助项目合集，涵盖量化交易、回测引擎、AI写作等方向。
+基于 OpenClaw 的 AI 辅助项目合集，涵盖量化交易、盯盘助手、回测引擎、AI写作等方向。
 
 ## 📁 项目总览
 
 | 项目 | 说明 | 状态 | 目录 |
 |------|------|------|------|
 | [quant_trading](quant_trading/) | 📈 A股量化交易系统（尾盘T+1 + 趋势交易） | ✅ 运行中 | [README](quant_trading/README.md) |
+| [WatchMonitor](WatchMonitor/) | 📊 盯盘助手（持仓风险 + 候选抄底 + 大盘分析） | ✅ 运行中 | [README](WatchMonitor/README.md) |
 | [backtest_engine](backtest_engine/) | 📊 T+1回测引擎 | 🔄 开发中 | [README](backtest_engine/README.md) |
 | [feng-shang-ren](feng-shang-ren/) | 📚 风上忍小说AI写作引擎 | ⏸️ 暂停 | [README](feng-shang-ren/README.md) |
-| [cron_script](cron_script/) | ⏰ 定时任务脚本 | ✅ 运行中 | — |
-| [macro_indicators](macro_indicators/) | 📋 宏观经济指标研究 | 📝 调研阶段 | — |
 
 ## 📈 quant_trading — A股量化交易系统
 
@@ -38,6 +37,43 @@ Core（核心层）          → 数据获取/存储/指标
 
 ---
 
+## 📊 WatchMonitor — 盯盘助手
+
+盘中实时监控系统，负责持仓池风险检测、候选池抄底信号、大盘分析报告生成。
+
+### 核心能力
+
+- **大盘分析**：主要指数/市场分化/恐贪指数/热门板块/ADX市场情绪
+- **持仓风险**：MA破位/SuperTrend翻空/顶背离/扫雷检测
+- **候选抄底**：跌幅评分/抄底机会判断/技术概览
+- **报告推送**：4个独立报告文件（大盘/持仓风险/扫雷/候选）
+
+### 🔥 技术指标模块化架构（2026-04新重构）
+
+每个技术指标完全独立封装：
+- 指标类对应单一股票，初始化时完成所有计算
+- 统一输出接口：信号/报告/评分（黑盒）
+- YAML配置控制启用/权重/参数/顺序
+- Manager动态实例化、循环调用、分析后释放
+
+```
+┌─────────────────────────────────────────────────────┐
+│  指标模块（独立封装）                                 │
+│  SuperTrend / MACD / RSI / MA / ADX / Volume / K线  │
+│  ↓ 内部计算 → 信号 → 报告 → 评分                     │
+├─────────────────────────────────────────────────────┤
+│  IndicatorManager（循环调用）                        │
+│  根据YAML配置实例化 → 获取结果 → 权重汇总             │
+├─────────────────────────────────────────────────────┤
+│  report.py（简化）                                   │
+│  manager.analyze_stock() → 直接获取报告内容           │
+└─────────────────────────────────────────────────────┘
+```
+
+详见 [WatchMonitor/README.md](WatchMonitor/README.md)
+
+---
+
 ## 📊 backtest_engine — T+1回测引擎
 
 基于日K/分钟线数据的A股T+1尾盘交易回测系统。
@@ -59,35 +95,6 @@ Core（核心层）          → 数据获取/存储/指标
 详见 [feng-shang-ren/README.md](feng-shang-ren/README.md)
 
 ---
-
-## ⏰ cron_script — 定时任务脚本
-
-纯脚本运行的定时任务，不经过大模型，直接执行+QQ通知。
-
-| 脚本 | 调度 | 功能 |
-|------|------|------|
-| `run_tail_trading.sh` | 工作日 14:50 | 尾盘T+1信号分析 → QQ通知 |
-| `check_douyin_live.sh` | 每天 9:00-21:00 整点 | 抖音直播检测 → 开播时QQ通知 |
-
-系统crontab配置：
-
-```
-5 9-21 * * *   openclaw_project/cron_script/check_douyin_live.sh
-50 14 * * 1-5  openclaw_project/cron_script/run_tail_trading.sh
-```
-
----
-
-## 📁 其他目录
-
-| 目录 | 说明 |
-|------|------|
-| `DATA/` | 共享数据目录（含SQLite数据库 `stock_data.db`） |
-| `shares/` | 报告输出目录（含信号文件 + 日报） |
-| `scripts/` | 通用脚本（`scan_before_push.sh` 提交前敏感信息扫描） |
-| `reference_project/` | 参考项目源码（free-code, openclaw） |
-| `mempalace-venv/` | 记忆宫殿 Python 虚拟环境 |
-| `prod/` | 生产环境部署目录（不提交Git） |
 
 ## ⚠️ 免责声明
 
