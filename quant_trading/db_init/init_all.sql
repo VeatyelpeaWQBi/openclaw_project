@@ -317,3 +317,43 @@ CREATE TABLE IF NOT EXISTS fear_greed_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fear_greed_date ON fear_greed_history(date);
+
+-- ============================================
+-- 15. ETF基础信息
+-- ============================================
+CREATE TABLE IF NOT EXISTS etf_info (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,           -- ETF代码（如 159915）
+    name TEXT,                           -- ETF名称
+    etf_type TEXT,                       -- ETF类型：指数/债券/商品/QDII/货币
+    track_index TEXT,                    -- 跟踪指数代码（如 000300）
+    track_index_name TEXT,               -- 跟踪指数名称
+    fee_rate REAL,                       -- 管理费率（%）
+    scale REAL,                          -- 基金规模（亿元）
+    daily_kline_done INTEGER DEFAULT 0,  -- 日K是否已下载
+    created_at TEXT,                     -- 入库时间
+    last_update_at TEXT                  -- 最后更新
+);
+
+-- ============================================
+-- 16. ETF日K线数据
+-- ============================================
+CREATE TABLE IF NOT EXISTS etf_daily_kline (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,                  -- ETF代码
+    name TEXT,                           -- ETF名称
+    date TEXT NOT NULL,                  -- 交易日期（YYYY-MM-DD）
+    open REAL,                           -- 开盘价
+    high REAL,                           -- 最高价
+    low REAL,                            -- 最低价
+    close REAL,                          -- 收盘价
+    volume INTEGER,                      -- 成交量（份）
+    amount REAL,                         -- 成交额（元）
+    change_pct REAL,                     -- 涨跌幅（%）
+    nav REAL,                            -- 单位净值
+    nav_change REAL,                     -- 净值变化（%）
+    UNIQUE(code, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_etf_daily_kline_code ON etf_daily_kline(code);
+CREATE INDEX IF NOT EXISTS idx_etf_daily_kline_date ON etf_daily_kline(date);

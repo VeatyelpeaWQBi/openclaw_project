@@ -680,24 +680,7 @@ def detect_candidate_bottom_signals(candidate: Dict) -> Dict:
     
     # ========== 4. 综合评分 ==========
     result['score'] = min(score, 100)  # 上限100
-    
-    # 评分等级
-    if score >= 90:
-        result['score_level'] = '极强信号，建议果断入场'
-        result['stars'] = '⭐⭐⭐⭐'
-    elif score >= 70:
-        result['score_level'] = '强信号，可考虑入场'
-        result['stars'] = '⭐⭐⭐'
-    elif score >= 50:
-        result['score_level'] = '中等信号，可关注'
-        result['stars'] = '⭐⭐'
-    elif score >= 30:
-        result['score_level'] = '弱信号，继续观察'
-        result['stars'] = '⭐'
-    else:
-        result['score_level'] = '无明确信号'
-        result['stars'] = ''
-    
+
     # ========== 5. 扫雷检测（仅对有抄底信号的股票）==========
     if result['score'] >= 50:
         mine_result = call_mine_clearance(code)

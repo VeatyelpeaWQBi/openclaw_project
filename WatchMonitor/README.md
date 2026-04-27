@@ -13,7 +13,7 @@ python strategy.py
 - `report_{date}_part1.md` — 大盘分析（主要指数/市场分化/恐贪指数/热门板块）
 - `report_{date}_part2_upper.md` — 持仓池风险信号（技术概要+综合判断）
 - `report_{date}_part2_mine.md` — 持仓池扫雷风险（可选，仅在有扫雷项时生成）
-- `report_{date}_part3.md` — 候选池抄底信号（抄底评分+机会判断）
+- `report_{date}_part3.md` — 候选池抄底信号（技术概览+抄底机会判断）
 
 ## 📁 项目结构
 
@@ -140,7 +140,6 @@ indicators:
 ### 部分3：候选池抄底
 
 - 候选基本信息（关注价/跌幅）
-- 抄底评分（5星制）
 - **技术概览**（通过IndicatorManager黑盒生成）
 - 抄底机会判断（绝佳/较好/可关注/观望/不宜）
 

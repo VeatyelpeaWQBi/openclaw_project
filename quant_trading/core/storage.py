@@ -742,6 +742,34 @@ def batch_upsert_index_daily_kline(rows):
         return 0
 
 
+def batch_upsert_etf_daily_kline(rows):
+    """
+    批量写入/更新ETF日K
+
+    参数:
+        rows: list[tuple] 每行 (code, name, date, open, high, low, close,
+               volume, amount, change_pct)
+
+    返回:
+        int: 写入条数
+    """
+    if not rows:
+        return 0
+    try:
+        conn = get_db_connection()
+        conn.executemany("""
+            INSERT OR REPLACE INTO etf_daily_kline
+            (code, name, date, open, high, low, close, volume, amount, change_pct)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
+        conn.commit()
+        conn.close()
+        return len(rows)
+    except Exception as e:
+        logger.error(f"批量写入ETF日K失败: {e}")
+        return 0
+
+
 def get_daily_kline_max_date(code):
     """
     获取个股日K最新日期

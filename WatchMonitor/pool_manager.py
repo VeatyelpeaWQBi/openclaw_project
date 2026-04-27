@@ -645,13 +645,13 @@ def cmd_test_indicators(args):
     print(f"  MA250 = {indicators.get('ma250', 'N/A'):.2f}" if indicators.get('ma250') else "  MA250 = 数据不足")
     
     print("\n【均线斜率】")
-    slope_map = {-1: '向下⬇', 0: '走平→', 1: '向上⬆', None: 'N/A'}
+    slope_map = {-1: '向下⤵', 0: '走平→', 1: '向上⤴', None: 'N/A'}
     print(f"  MA5斜率  = {slope_map.get(indicators.get('ma5_slope'), 'N/A')}")
     print(f"  MA10斜率 = {slope_map.get(indicators.get('ma10_slope'), 'N/A')}")
     print(f"  MA20斜率 = {slope_map.get(indicators.get('ma20_slope'), 'N/A')}")
     
     print("\n【SuperTrend指标】")
-    st_dir_map = {1: '多头⬆', -1: '空头⬇', None: 'N/A'}
+    st_dir_map = {1: '多头📈', -1: '空头📉', None: 'N/A'}
     print(f"  上轨   = {indicators.get('st_upper_band', 'N/A'):.2f}" if indicators.get('st_upper_band') else "  上轨   = 数据不足")
     print(f"  下轨   = {indicators.get('st_lower_band', 'N/A'):.2f}" if indicators.get('st_lower_band') else "  下轨   = 数据不足")
     print(f"  方向   = {st_dir_map.get(indicators.get('st_direction'), 'N/A')}")
@@ -681,7 +681,7 @@ def cmd_test_indicators(args):
     for period in [5, 10, 20, 60, 120, 250]:
         ma_val = indicators.get(f'ma{period}')
         if ma_val:
-            status = '上方⬆' if close > ma_val else '下方⬇'
+            status = '上方⤴' if close > ma_val else '下方⤵'
             print(f"  收盘价 vs MA{period}: {close:.2f} {'>' if close > ma_val else '<'} {ma_val:.2f} ({status})")
     
     # 保存技术指标（可选）

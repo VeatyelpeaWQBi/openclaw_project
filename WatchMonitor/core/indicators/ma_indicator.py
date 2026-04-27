@@ -95,7 +95,7 @@ class MAIndicator(BaseIndicator):
         for period in [5, 10, 20, 60]:
             ma_val = self._data.get(f'ma{period}')
             if ma_val and current_price:
-                ma_status.append(f'MA{period}⬆' if current_price > ma_val else f'MA{period}⬇')
+                ma_status.append(f'MA{period}⤴' if current_price > ma_val else f'MA{period}⤵')
 
         if ma_status:
             self._report_lines.append(f"    - 均线位置: {' '.join(ma_status)}")
@@ -105,9 +105,9 @@ class MAIndicator(BaseIndicator):
         for period in [5, 10]:
             slope = self._data.get(f'ma{period}_slope', 0)
             if slope == 1:
-                slope_status.append(f'MA{period}⬆')
+                slope_status.append(f'MA{period}⤴')
             elif slope == -1:
-                slope_status.append(f'MA{period}⬇')
+                slope_status.append(f'MA{period}⤵')
             elif slope == 0:
                 slope_status.append(f'MA{period}→')
 
@@ -144,14 +144,14 @@ class MAIndicator(BaseIndicator):
 
         if ma5_slope == 1:
             self._score += 1.0
-            self._score_reasons.append('MA5⬆')
+            self._score_reasons.append('MA5⤴')
         elif ma5_slope == -1:
             self._score -= 1.0
-            self._score_reasons.append('MA5⬇')
+            self._score_reasons.append('MA5⤵')
 
         if ma10_slope == 1:
             self._score += 0.5
-            self._score_reasons.append('MA10⬆')
+            self._score_reasons.append('MA10⤴')
         elif ma10_slope == -1:
             self._score -= 0.5
-            self._score_reasons.append('MA10⬇')
+            self._score_reasons.append('MA10⤵')

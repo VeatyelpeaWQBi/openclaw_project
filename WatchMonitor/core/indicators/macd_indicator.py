@@ -86,9 +86,9 @@ class MACDIndicator(BaseIndicator):
             return
 
         # 斜率方向图标
-        hist_slope_text = '⬆' if hist_slope == 1 else ('⬇' if hist_slope == -1 else '→')
-        dif_slope_text = '⬆' if dif_slope == 1 else ('⬇' if dif_slope == -1 else '→')
-        dea_slope_text = '⬆' if dea_slope == 1 else ('⬇' if dea_slope == -1 else '→')
+        hist_slope_text = '🚀' if hist_slope == 1 else ('🪂' if hist_slope == -1 else '→')
+        dif_slope_text = '🚀' if dif_slope == 1 else ('🪂' if dif_slope == -1 else '→')
+        dea_slope_text = '🚀' if dea_slope == 1 else ('🪂' if dea_slope == -1 else '→')
 
         self._report_lines.append(f"    - {self.display_name}: 柱{hist_slope_text} DIF{dif_slope_text} DEA{dea_slope_text} {slope_summary}")
 
@@ -98,7 +98,7 @@ class MACDIndicator(BaseIndicator):
 
         if hist_slope == 1:
             self._score = 1.0
-            self._score_reasons.append('MACD柱⬆')
+            self._score_reasons.append('MACD柱🚀')
         elif hist_slope == -1:
             self._score = -1.0
-            self._score_reasons.append('MACD柱⬇')
+            self._score_reasons.append('MACD柱🪂')

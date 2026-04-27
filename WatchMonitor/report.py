@@ -478,9 +478,6 @@ def generate_candidate_report():
             watch_price = cs['watch_price']
             current_price = cs['current_price']
             drop_pct = cs['drop_pct']
-            score = cs['score']
-            stars = cs['stars']
-            score_level = cs['score_level']
             signals = cs['signals']
             mine_result = cs['mine_result']
             
@@ -493,12 +490,6 @@ def generate_candidate_report():
                 lines.append(f"  关注价{watch_price:.2f} | 现价<font color=\"{drop_color}\">{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)</font>")
             else:
                 lines.append(f"  关注价{watch_price:.2f} | 现价{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)")
-            
-            # 评分行
-            if stars:
-                lines.append(f"  {stars} 抄底评分: **{score}分**（{score_level})")
-            else:
-                lines.append(f"  抄底评分: {score}分（{score_level})")
             
             # 信号列表（只显示关键信号）
             if signals:
@@ -529,37 +520,34 @@ def generate_candidate_report():
                 report_lines = result.get('report_lines', [])
                 lines.extend(report_lines)
 
-                # ========== 多维度抄底综合判断 ==========
-                # 跌幅评分（候选池特有，跌幅越大抄底机会越好）
+                # ========== 抄底机会综合判断 ==========
                 total_score = result.get('total_score', 0)
-                score_reasons = result.get('score_reasons', [])
 
-                # 添加跌幅评分
+                # 跌幅评分（候选池特有，跌幅越大抄底机会越好）
+                drop_score = 0
                 if drop_pct <= -10:
-                    total_score += 3
-                    score_reasons.append('深跌>10%')
+                    drop_score = 4
                 elif drop_pct <= -5:
-                    total_score += 2
-                    score_reasons.append('中跌5-10%')
+                    drop_score = 2
                 elif drop_pct <= -2:
-                    total_score += 1
-                    score_reasons.append('浅跌2-5%')
+                    drop_score = 1
 
-                # 抄底机会评价
-                if total_score >= 6:
-                    judge = '🟢🟢绝佳抄底'
-                elif total_score >= 4:
-                    judge = '🟢较好抄底'
-                elif total_score >= 2:
+                # 抄底机会评价（技术指标评分 + 跌幅评分）
+                combined_score = total_score + drop_score
+
+                if combined_score >= 5:
+                    judge = '🟢绝佳'
+                elif combined_score >= 3:
+                    judge = '🟢较好'
+                elif combined_score >= 1:
                     judge = '🟡可关注'
-                elif total_score >= 0:
+                elif combined_score >= -1:
                     judge = '⚪观望'
-                elif total_score <= -2:
-                    judge = '🔴不宜抄底'
                 else:
-                    judge = '📊需观察'
+                    judge = '🔴不宜'
 
-                lines.append(f"    - **抄底机会**: {judge} (得分{total_score:.1f})")
+                # 显示抄底机会
+                lines.append(f"    - **抄底机会**: {judge}")
 
             lines.append("")
             
