@@ -90,22 +90,22 @@ class SuperTrendIndicator(BaseIndicator):
             return
 
         # 方向文本
-        st_dir_text = '多头⬆' if st_dir == 1 else '空头⬇' if st_dir == -1 else 'N/A'
+        st_dir_text = '📈' if st_dir == 1 else '📉' if st_dir == -1 else 'N/A'
 
         # 反转预警
         warning = ''
         if st_dir == 1 and st_lower and current_price:
             gap_pct = (current_price - st_lower) / st_lower * 100
             if gap_pct > 0:
-                warning = f"（多→空切换点{st_lower:.2f}，距-{gap_pct:.1f}%）"
+                warning = f"（🔄{st_lower:.2f}，距-{gap_pct:.1f}%）"
             else:
-                warning = f"（⚠️已跌破多→空切换{st_lower:.2f}）"
+                warning = f"（⚠️已跌破🔄{st_lower:.2f}）"
         elif st_dir == -1 and st_upper and current_price:
             gap_pct = (current_price - st_upper) / st_upper * 100
             if gap_pct < 0:
-                warning = f"（空→多切换点{st_upper:.2f}，距+{-gap_pct:.1f}%）"
+                warning = f"（🔄{st_upper:.2f}，距+{-gap_pct:.1f}%）"
             else:
-                warning = f"（⚠️已突破空→多切换点{st_upper:.2f}）"
+                warning = f"（⚠️已突破🔄{st_upper:.2f}）"
 
         self._report_lines.append(f"    - {self.display_name}: {st_dir_text} {warning}")
 

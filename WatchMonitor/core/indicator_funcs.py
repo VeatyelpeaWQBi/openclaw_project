@@ -311,23 +311,23 @@ def _get_macd_slope_summary(hist_slope, dif_slope, dea_slope):
     """
     # 综合判断规则表
     if hist_slope == 1 and dif_slope == 1 and dea_slope == 1:
-        return '⬆向上加速'
+        return '🚀向上加速'
     elif hist_slope == 1 and dif_slope == 1 and dea_slope == 0:
-        return '⬆向上延续'
+        return '🚀向上延续'
     elif hist_slope == 1 and dif_slope == 0 and dea_slope == 0:
-        return '⬆整理蓄势'
+        return '🚀整理蓄势'
     elif hist_slope == 0 and dif_slope == 1 and dea_slope == 1:
         return '→走平中'
     elif hist_slope == 0 and dif_slope == 0 and dea_slope == 0:
         return '→无方向'
     elif hist_slope == -1 and dif_slope == -1 and dea_slope == -1:
-        return '⬇向下加速'
+        return '🪂向下加速'
     elif hist_slope == -1 and dif_slope == -1 and dea_slope == 0:
-        return '⬇向下延续'
+        return '🪂向下延续'
     elif hist_slope == -1 and dif_slope == 0 and dea_slope == 0:
-        return '⬇下跌趋缓'
+        return '🪂下跌趋缓'
     elif hist_slope == -1 and dif_slope == -1 and dea_slope == -1:
-        return '⬇向下加速'
+        return '🪂向下加速'
     elif hist_slope == 1 and dif_slope == 0 and dea_slope == -1:
         return '→震荡'
     elif hist_slope == -1 and dif_slope == 1 and dea_slope == 1:

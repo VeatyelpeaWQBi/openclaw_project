@@ -3,10 +3,13 @@
 Job: 更新全市场最新日K数据
 直接调用新浪财经原生API获取全A股当日行情，写入 daily_kline 表
 
-数据源：http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData
+数据源：
+  - 个股：http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData
+  - 指数：ak.stock_zh_index_spot_sina + 腾讯API(000985)
+  - ETF：ak.fund_etf_category_sina（新浪ETF实时行情）
 定时：每个交易日 14:48 和 19:00
 
-写入字段（比ak.stock_zh_a_spot多）：
+写入字段：
   - OHLCV（开高低收量额）
   - change_pct: 涨跌幅(%)
   - turnover: 换手率(%)
@@ -36,6 +39,7 @@ from core.storage import (
     get_watchlist_index_codes,
     get_tracked_indices, batch_upsert_daily_kline,
     batch_upsert_index_daily_kline,
+    batch_upsert_etf_daily_kline,
     get_recent_trade_dates, get_avg_volume_by_code,
 )
 from job.calc_scores import preload_data, run_scores_without_index, run_rs
@@ -310,12 +314,63 @@ def fetch_and_save_index_daily_kline(trade_date):
 
     return success
 
+
+def fetch_and_save_etf_daily_kline(trade_date):
+    """
+    批量获取全市场ETF当天日K，写入 etf_daily_kline 表
+
+    数据源：ak.fund_etf_category_sina（新浪ETF实时行情）
+    """
+    import akshare as ak
+
+    logger.info("开始获取ETF日K（新浪批量接口）...")
+    start = time.time()
+
+    try:
+        df = ak.fund_etf_category_sina(symbol='ETF基金')
+    except Exception as e:
+        logger.error(f"获取ETF行情失败: {e}")
+        return 0
+
+    if df is None or df.empty:
+        logger.warning("ETF行情为空")
+        return 0
+
+    rows = []
+    for _, row in df.iterrows():
+        code_raw = str(row.get('代码', '')).strip()
+        # 去掉 sh/sz 前缀
+        code = code_raw
+        for prefix in ('sh', 'sz', 'bj'):
+            if code.startswith(prefix):
+                code = code[len(prefix):]
+                break
+
+        name = str(row.get('名称', '')).strip()
+
+        rows.append((
+            code, name, trade_date,
+            _safe_float(row.get('今开')),
+            _safe_float(row.get('最高')),
+            _safe_float(row.get('最低')),
+            _safe_float(row.get('最新价')),
+            _safe_int(row.get('成交量')),
+            _safe_float(row.get('成交额')),
+            _safe_float(row.get('涨跌幅')),
+        ))
+
+    success = batch_upsert_etf_daily_kline(rows)
+    elapsed = time.time() - start
+    logger.info(f"ETF日K更新完成: {success}个ETF, 耗时{elapsed:.1f}秒")
+    return success
+
+
 def _update_klines(today):
     """
-    步骤1：更新个股+指数日K数据
+    步骤1：更新个股+指数+ETF日K数据
 
     返回:
-        dict: {'kline_count': int, 'index_count': int}
+        dict: {'kline_count': int, 'index_count': int, 'etf_count': int}
     """
     # 更新个股日K
     data = fetch_all_market()
@@ -324,7 +379,10 @@ def _update_klines(today):
     # 更新指数日K
     index_count = fetch_and_save_index_daily_kline(today)
 
-    return {'kline_count': kline_count or 0, 'index_count': index_count or 0}
+    # 更新ETF日K
+    etf_count = fetch_and_save_etf_daily_kline(today)
+
+    return {'kline_count': kline_count or 0, 'index_count': index_count or 0, 'etf_count': etf_count or 0}
 
 
 def _update_scores(today):
