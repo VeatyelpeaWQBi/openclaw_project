@@ -33,7 +33,7 @@ from core.storage import (
     get_all_stocks_daily_data, get_index_daily_closes,
 )
 from strategies.trend_trading.score._base import (
-    get_all_stock_codes, get_index_members,
+    get_all_stock_codes, get_all_etf_codes, get_all_codes, get_index_members,
 )
 from strategies.trend_trading.score.rs_core import calc_rs_scores_from_data, calc_rs_scores_full
 from strategies.trend_trading.score.vcp_core import calc_vcp_from_data, calc_vcp_batch
@@ -186,10 +186,10 @@ def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
     start = time.time()
 
     if days:
-        # 增量模式：统一预加载
-        codes = get_all_stock_codes()
+        # 增量模式：统一预加载（包含股票+ETF）
+        codes = get_all_codes(include_etf=True)
         if not codes:
-            logger.error("未找到股票代码")
+            logger.error("未找到股票/ETF代码")
             return 0
 
         max_lookback = 250 + days

@@ -29,6 +29,41 @@ def get_all_stock_codes():
         conn.close()
 
 
+def get_all_etf_codes():
+    """
+    获取全市场有日K数据的ETF代码列表
+
+    返回:
+        list[str]: ETF代码列表
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("""
+            SELECT DISTINCT code FROM etf_daily_kline
+            WHERE volume > 0
+            ORDER BY code
+        """).fetchall()
+        return [r['code'] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_all_codes(include_etf=True):
+    """
+    获取全部股票/ETF代码列表
+
+    参数:
+        include_etf: 是否包含ETF代码
+
+    返回:
+        list[str]: 代码列表
+    """
+    codes = get_all_stock_codes()
+    if include_etf:
+        codes.extend(get_all_etf_codes())
+    return codes
+
+
 def get_trade_dates(start_date=None, end_date=None):
     """
     获取指定日期范围内的交易日列表

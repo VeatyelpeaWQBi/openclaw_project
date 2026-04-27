@@ -43,7 +43,7 @@ from core.storage import (
     get_recent_trade_dates, get_avg_volume_by_code,
 )
 from job.calc_scores import preload_data, run_scores_without_index, run_rs
-from strategies.trend_trading.score._base import get_all_stock_codes
+from strategies.trend_trading.score._base import get_all_codes
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -403,7 +403,7 @@ def _update_scores(today):
         if not index_codes:
             index_codes = ['000510']  # 中证A500，作为默认基准
 
-        codes = get_all_stock_codes()
+        codes = get_all_codes(include_etf=True)
         if codes:
             days = 1  # 只计算当天
             max_lookback = 250 + days

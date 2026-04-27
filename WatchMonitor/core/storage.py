@@ -92,12 +92,16 @@ def ensure_dirs():
 
 def get_daily_data_from_sqlite(stock_code: str, days: Optional[int] = None) -> pd.DataFrame:
     """
-    从SQLite获取单只股票日K数据
+    从SQLite获取单只股票/ETF日K数据
 
     参数:
-        stock_code: 股票代码
+        stock_code: 股票/ETF代码（自动识别ETF）
         days: 最近N天的数据（None=全部）
     """
+    # 判断是否为ETF代码
+    is_etf = stock_code.startswith(('51', '159', '56', '58'))
+    table_name = 'etf_daily_kline' if is_etf else 'daily_kline'
+
     try:
         conn = sqlite3.connect(DB_PATH)
         try:
@@ -108,11 +112,11 @@ def get_daily_data_from_sqlite(stock_code: str, days: Optional[int] = None) -> p
                 if not start_date:
                     start_date = (datetime.now() - timedelta(days=int(days * 1.5))).strftime('%Y-%m-%d')
                 df = pd.read_sql_query(
-                    "SELECT * FROM daily_kline WHERE code = ? AND date >= ? ORDER BY date",
+                    f"SELECT * FROM {table_name} WHERE code = ? AND date >= ? ORDER BY date",
                     conn, params=[stock_code, start_date]
                 )
             else:
-                df = pd.read_sql_query("SELECT * FROM daily_kline WHERE code = ? ORDER BY date", conn, params=[stock_code])
+                df = pd.read_sql_query(f"SELECT * FROM {table_name} WHERE code = ? ORDER BY date", conn, params=[stock_code])
             return df
         finally:
             conn.close()
@@ -267,6 +271,7 @@ def init_pool_tables():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
+                type TEXT DEFAULT 'stock',
                 entry_price REAL NOT NULL,
                 entry_date TEXT NOT NULL,
                 shares INTEGER NOT NULL DEFAULT 0,
@@ -285,6 +290,7 @@ def init_pool_tables():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
+                type TEXT DEFAULT 'stock',
                 watch_price REAL NOT NULL,
                 watch_date TEXT NOT NULL,
                 target_price REAL,
@@ -295,6 +301,10 @@ def init_pool_tables():
                 updated_at TEXT NOT NULL
             )
         """)
+
+        # 索引
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_position_pool_type ON position_pool(type)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_candidate_pool_type ON candidate_pool(type)")
 
         conn.commit()
         logger.info("持仓池/候选池表初始化完成")
@@ -309,22 +319,25 @@ def init_pool_tables():
 def add_position(code: str, name: str, entry_price: float, entry_date: str,
                  shares: int = 0, position_type: str = '趋势',
                  stop_loss: float = None, take_profit: float = None,
-                 notes: str = None) -> bool:
+                 notes: str = None, type: str = 'stock') -> bool:
     """
     添加持仓到持仓池
+
+    参数:
+        type: 标的类型 'stock' 或 'etf'
     """
     conn = get_db_connection()
     try:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn.execute("""
             INSERT INTO position_pool
-            (code, name, entry_price, entry_date, shares, position_type,
+            (code, name, type, entry_price, entry_date, shares, position_type,
              stop_loss, take_profit, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (code, name, entry_price, entry_date, shares, position_type,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (code, name, type, entry_price, entry_date, shares, position_type,
               stop_loss, take_profit, notes, now, now))
         conn.commit()
-        logger.info(f"添加持仓: {code}({name})")
+        logger.info(f"添加持仓: {code}({name}) [{type}]")
         return True
     except sqlite3.IntegrityError:
         logger.warning(f"持仓已存在: {code}")
@@ -384,13 +397,19 @@ def update_position(code: str, **kwargs) -> bool:
         conn.close()
 
 
-def get_all_positions() -> list:
+def get_all_positions(type: Optional[str] = None) -> list:
     """
     获取所有持仓
+
+    参数:
+        type: 标的类型过滤 ('stock'/'etf'/None=全部)
     """
     conn = get_db_connection()
     try:
-        rows = conn.execute("SELECT * FROM position_pool ORDER BY created_at DESC").fetchall()
+        if type:
+            rows = conn.execute("SELECT * FROM position_pool WHERE type = ? ORDER BY created_at DESC", (type,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM position_pool ORDER BY created_at DESC").fetchall()
         return [dict(row) for row in rows]
     except Exception as e:
         logger.error(f"获取持仓列表失败: {e}")
@@ -418,22 +437,25 @@ def get_position_by_code(code: str) -> dict:
 
 def add_candidate(code: str, name: str, watch_price: float, watch_date: str,
                   target_price: float = None, watch_type: str = '趋势回调',
-                  watch_reason: str = None, notes: str = None) -> bool:
+                  watch_reason: str = None, notes: str = None, type: str = 'stock') -> bool:
     """
     添加候选到候选池
+
+    参数:
+        type: 标的类型 'stock' 或 'etf'
     """
     conn = get_db_connection()
     try:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn.execute("""
             INSERT INTO candidate_pool
-            (code, name, watch_price, watch_date, target_price, watch_type,
+            (code, name, type, watch_price, watch_date, target_price, watch_type,
              watch_reason, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (code, name, watch_price, watch_date, target_price, watch_type,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (code, name, type, watch_price, watch_date, target_price, watch_type,
               watch_reason, notes, now, now))
         conn.commit()
-        logger.info(f"添加候选: {code}({name})")
+        logger.info(f"添加候选: {code}({name}) [{type}]")
         return True
     except sqlite3.IntegrityError:
         logger.warning(f"候选已存在: {code}")
@@ -493,13 +515,19 @@ def update_candidate(code: str, **kwargs) -> bool:
         conn.close()
 
 
-def get_all_candidates() -> list:
+def get_all_candidates(type: Optional[str] = None) -> list:
     """
     获取所有候选
+
+    参数:
+        type: 标的类型过滤 ('stock'/'etf'/None=全部)
     """
     conn = get_db_connection()
     try:
-        rows = conn.execute("SELECT * FROM candidate_pool ORDER BY created_at DESC").fetchall()
+        if type:
+            rows = conn.execute("SELECT * FROM candidate_pool WHERE type = ? ORDER BY created_at DESC", (type,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM candidate_pool ORDER BY created_at DESC").fetchall()
         return [dict(row) for row in rows]
     except Exception as e:
         logger.error(f"获取候选列表失败: {e}")

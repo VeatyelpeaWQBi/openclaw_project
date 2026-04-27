@@ -537,15 +537,15 @@ def get_stocks_daily_closes(stock_codes, start_date, end_date):
 
 def get_all_stocks_daily_data(codes, start_date, end_date):
     """
-    批量获取多只股票的完整日K数据（OHLCV），按 code 分组返回
+    批量获取多只股票/ETF的完整日K数据（OHLCV），按 code 分组返回
 
     参数:
-        codes: list[str] 股票代码列表
+        codes: list[str] 股票/ETF代码列表
         start_date: 起始日期 'YYYY-MM-DD'
         end_date: 结束日期 'YYYY-MM-DD'
 
     返回:
-        dict: {code: DataFrame} 每只股票的日K（date升序）
+        dict: {code: DataFrame} 每只股票/ETF的日K（date升序）
     """
     if not codes:
         return {}
@@ -557,11 +557,19 @@ def get_all_stocks_daily_data(codes, start_date, end_date):
             for i in range(0, len(codes), BATCH_SIZE):
                 batch = codes[i:i + BATCH_SIZE]
                 placeholders = ','.join(['?'] * len(batch))
+                # 同时查询股票和ETF日K数据（合并共同字段）
                 df_batch = pd.read_sql_query(
-                    f"SELECT * FROM daily_kline "
-                    f"WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0 "
-                    f"ORDER BY code, date",
-                    conn, params=batch + [start_date, end_date]
+                    f"""
+                    SELECT code, name, date, open, high, low, close, volume, amount, change_pct
+                    FROM daily_kline
+                    WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0
+                    UNION ALL
+                    SELECT code, name, date, open, high, low, close, volume, amount, change_pct
+                    FROM etf_daily_kline
+                    WHERE code IN ({placeholders}) AND date >= ? AND date <= ? AND volume > 0
+                    ORDER BY code, date
+                    """,
+                    conn, params=batch + [start_date, end_date] + batch + [start_date, end_date]
                 )
                 dfs.append(df_batch)
         finally:

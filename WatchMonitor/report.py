@@ -293,13 +293,22 @@ def generate_position_report():
             indicators = pr.get('indicators', {})  # 技术指标
 
             # 持仓基本信息
-            profit_sign = '+' if profit_pct >= 0 else ''
-            profit_color = 'red' if profit_pct > 0 else 'green' if profit_pct < 0 else ''
+            if profit_pct is None:
+                profit_pct = 0
+                profit_sign = ''
+                profit_color = ''
+            else:
+                profit_sign = '+' if profit_pct >= 0 else ''
+                profit_color = 'red' if profit_pct > 0 else 'green' if profit_pct < 0 else ''
 
-            lines.append(f"- **{name} ({code})** — {position_type}持仓")
-            if profit_color:
+            if current_price is None:
+                lines.append(f"- **{name} ({code})** — {position_type}持仓")
+                lines.append(f"  - 成本{entry_price:.2f} | 现价未知 (无日K数据)")
+            elif profit_color:
+                lines.append(f"- **{name} ({code})** — {position_type}持仓")
                 lines.append(f"  - 成本{entry_price:.2f} | 现价<font color=\"{profit_color}\">{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)</font>")
             else:
+                lines.append(f"- **{name} ({code})** — {position_type}持仓")
                 lines.append(f"  - 成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
             lines.append("")
 

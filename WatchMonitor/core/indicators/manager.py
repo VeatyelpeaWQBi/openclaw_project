@@ -83,7 +83,7 @@ class IndicatorManager:
 
     def analyze_stock(self, code: str, df: DataFrame, context: Dict) -> Dict:
         """
-        分析单只股票（一站式接口）
+        分析单只股票/ETF（一站式接口）
 
         流程：
         1. 根据配置动态实例化各指标对象
@@ -92,12 +92,13 @@ class IndicatorManager:
         4. 释放所有指标对象
 
         参数:
-            code: 股票代码
+            code: 股票/ETF代码
             df: 日K数据DataFrame
             context: 上下文信息 {
                 'current_price': float,
                 'is_position': bool,
                 'is_candidate': bool,
+                'is_etf': bool,           # 是否ETF（自动检测）
                 'position_type': str,
                 'entry_price': float (持仓时),
                 'watch_price': float (候选时),
@@ -126,8 +127,9 @@ class IndicatorManager:
             logger.warning(f"[{code}] 日K数据为空，跳过分析")
             return result
 
-        # 添加code到context
+        # 添加code和is_etf到context
         context['code'] = code
+        context['is_etf'] = code.startswith(('51', '159', '56', '58'))
 
         # 获取启用的指标配置列表
         indicators_config = self.config.get('indicators', [])

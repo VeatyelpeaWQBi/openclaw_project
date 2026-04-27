@@ -5,31 +5,35 @@
 用法:
     # 持仓池操作
     python3 pool_manager.py position add --code 002594 --name "比亚迪" --entry-price 250 --entry-date 2026-03-15 --stop-loss 235
+    python3 pool_manager.py position add --code 512480 --name "半导体ETF" --entry-price 2.50 --entry-date 2026-03-15 --type etf
     python3 pool_manager.py position list
+    python3 pool_manager.py position list --type etf
     python3 pool_manager.py position remove --code 002594
     python3 pool_manager.py position import --file positions.csv
     python3 pool_manager.py position export --file positions.csv
-    
+
     # 候选池操作
     python3 pool_manager.py candidate add --code 300750 --name "宁德时代" --watch-price 210 --watch-date 2026-04-15
+    python3 pool_manager.py candidate add --code 159915 --name "创业板ETF" --watch-price 1.80 --watch-date 2026-04-15 --type etf
     python3 pool_manager.py candidate list
+    python3 pool_manager.py candidate list --type etf
     python3 pool_manager.py candidate remove --code 300750
     python3 pool_manager.py candidate import --file candidates.csv
     python3 pool_manager.py candidate export --file candidates.csv
-    
+
     # 技术指标计算
     python3 pool_manager.py test-indicators              # 批量计算持仓池所有股票
     python3 pool_manager.py test-indicators --save       # 批量计算并保存
     python3 pool_manager.py test-indicators --code 002594  # 计算单只股票
-    python3 pool_manager.py test-indicators --code 002594 --save  # 计算并保存单只股票
-    
+    python3 pool_manager.py test-indicators --code 512480 --save  # 计算ETF并保存
+
     # 其他操作
     python3 pool_manager.py generate-template              # 生成CSV模板文件
     python3 pool_manager.py init                           # 初始化数据库表
 
 CSV文件格式:
-    持仓池: code,name,entry_price,entry_date,shares,position_type,stop_loss,take_profit,notes
-    候选池: code,name,watch_price,watch_date,target_price,watch_type,watch_reason,notes
+    持仓池: code,name,type,entry_price,entry_date,shares,position_type,stop_loss,take_profit,notes
+    候选池: code,name,type,watch_price,watch_date,target_price,watch_type,watch_reason,notes
 """
 
 import argparse
@@ -61,7 +65,10 @@ def cmd_position_add(args):
     if not args.code or not args.name or not args.entry_price or not args.entry_date:
         print("❌ 缺少必要参数: --code, --name, --entry-price, --entry-date")
         return False
-    
+
+    # 自动识别ETF代码
+    type_val = args.type if args.type else ('etf' if args.code.startswith(('51', '159', '56', '58')) else 'stock')
+
     success = add_position(
         code=args.code,
         name=args.name,
@@ -71,14 +78,15 @@ def cmd_position_add(args):
         position_type=args.position_type or '趋势',
         stop_loss=float(args.stop_loss) if args.stop_loss else None,
         take_profit=float(args.take_profit) if args.take_profit else None,
-        notes=args.notes
+        notes=args.notes,
+        type=type_val
     )
-    
+
     if success:
-        print(f"✅ 添加持仓成功: {args.code}({args.name})")
+        print(f"✅ 添加持仓成功: {args.code}({args.name}) [{type_val}]")
     else:
         print(f"❌ 添加持仓失败: {args.code} 可能已存在")
-    
+
     return success
 
 
@@ -133,18 +141,20 @@ def cmd_position_update(args):
 
 def cmd_position_list(args):
     """列出所有持仓"""
-    positions = get_all_positions()
-    
+    type_filter = args.type if hasattr(args, 'type') and args.type else None
+    positions = get_all_positions(type=type_filter)
+
     if not positions:
-        print("持仓池为空")
+        print(f"持仓池为空 (过滤条件: {type_filter or '全部'})")
         return True
-    
+
     print(f"\n{'='*80}")
-    print(f"持仓池列表 ({len(positions)}只)")
+    print(f"持仓池列表 ({len(positions)}只) [{type_filter or '全部'}]")
     print(f"{'='*80}")
-    
+
     for p in positions:
-        print(f"\n股票代码: {p['code']}")
+        type_str = p.get('type', 'stock')
+        print(f"\n股票代码: {p['code']} [{type_str}]")
         print(f"股票名称: {p['name']}")
         print(f"买入价格: {p['entry_price']:.2f}")
         print(f"买入日期: {p['entry_date']}")
@@ -154,7 +164,7 @@ def cmd_position_list(args):
         print(f"止盈价:   {p['take_profit'] if p['take_profit'] else '未设置'}")
         print(f"备注:     {p['notes'] if p['notes'] else '无'}")
         print(f"添加时间: {p['created_at']}")
-    
+
     return True
 
 
@@ -184,7 +194,10 @@ def cmd_candidate_add(args):
     if not args.code or not args.name or not args.watch_price or not args.watch_date:
         print("❌ 缺少必要参数: --code, --name, --watch-price, --watch-date")
         return False
-    
+
+    # 自动识别ETF代码
+    type_val = args.type if args.type else ('etf' if args.code.startswith(('51', '159', '56', '58')) else 'stock')
+
     success = add_candidate(
         code=args.code,
         name=args.name,
@@ -193,14 +206,15 @@ def cmd_candidate_add(args):
         target_price=float(args.target_price) if args.target_price else None,
         watch_type=args.watch_type or '趋势回调',
         watch_reason=args.watch_reason,
-        notes=args.notes
+        notes=args.notes,
+        type=type_val
     )
-    
+
     if success:
-        print(f"✅ 添加候选成功: {args.code}({args.name})")
+        print(f"✅ 添加候选成功: {args.code}({args.name}) [{type_val}]")
     else:
         print(f"❌ 添加候选失败: {args.code} 可能已存在")
-    
+
     return success
 
 
@@ -253,18 +267,20 @@ def cmd_candidate_update(args):
 
 def cmd_candidate_list(args):
     """列出所有候选"""
-    candidates = get_all_candidates()
-    
+    type_filter = args.type if hasattr(args, 'type') and args.type else None
+    candidates = get_all_candidates(type=type_filter)
+
     if not candidates:
-        print("候选池为空")
+        print(f"候选池为空 (过滤条件: {type_filter or '全部'})")
         return True
-    
+
     print(f"\n{'='*80}")
-    print(f"候选池列表 ({len(candidates)}只)")
+    print(f"候选池列表 ({len(candidates)}只) [{type_filter or '全部'}]")
     print(f"{'='*80}")
-    
+
     for c in candidates:
-        print(f"\n股票代码: {c['code']}")
+        type_str = c.get('type', 'stock')
+        print(f"\n股票代码: {c['code']} [{type_str}]")
         print(f"股票名称: {c['name']}")
         print(f"关注价格: {c['watch_price']:.2f}")
         print(f"关注日期: {c['watch_date']}")
@@ -273,7 +289,7 @@ def cmd_candidate_list(args):
         print(f"关注原因: {c['watch_reason'] if c['watch_reason'] else '无'}")
         print(f"备注:     {c['notes'] if c['notes'] else '无'}")
         print(f"添加时间: {c['created_at']}")
-    
+
     return True
 
 
@@ -721,8 +737,8 @@ def main():
     
     # 添加持仓
     pos_add = position_subparsers.add_parser('add', help='添加持仓')
-    pos_add.add_argument('--code', required=True, help='股票代码')
-    pos_add.add_argument('--name', required=True, help='股票名称')
+    pos_add.add_argument('--code', required=True, help='股票/ETF代码')
+    pos_add.add_argument('--name', required=True, help='股票/ETF名称')
     pos_add.add_argument('--entry-price', required=True, help='买入价格')
     pos_add.add_argument('--entry-date', required=True, help='买入日期 YYYY-MM-DD')
     pos_add.add_argument('--shares', type=int, default=0, help='持仓数量')
@@ -730,6 +746,7 @@ def main():
     pos_add.add_argument('--stop-loss', help='止损价')
     pos_add.add_argument('--take-profit', help='止盈价')
     pos_add.add_argument('--notes', help='备注')
+    pos_add.add_argument('--type', choices=['stock', 'etf'], help='标的类型(不传则自动识别)')
     pos_add.set_defaults(func=cmd_position_add)
     
     # 删除持仓
@@ -749,6 +766,7 @@ def main():
     
     # 列出持仓
     pos_list = position_subparsers.add_parser('list', help='列出所有持仓')
+    pos_list.add_argument('--type', choices=['stock', 'etf'], help='过滤标的类型')
     pos_list.set_defaults(func=cmd_position_list)
     
     # 查看持仓详情
@@ -772,14 +790,15 @@ def main():
     
     # 添加候选
     cand_add = candidate_subparsers.add_parser('add', help='添加候选')
-    cand_add.add_argument('--code', required=True, help='股票代码')
-    cand_add.add_argument('--name', required=True, help='股票名称')
+    cand_add.add_argument('--code', required=True, help='股票/ETF代码')
+    cand_add.add_argument('--name', required=True, help='股票/ETF名称')
     cand_add.add_argument('--watch-price', required=True, help='关注价格')
     cand_add.add_argument('--watch-date', required=True, help='关注日期 YYYY-MM-DD')
     cand_add.add_argument('--target-price', help='目标买入价')
     cand_add.add_argument('--watch-type', default='趋势回调', help='关注类型: 趋势回调/底部反转/突破回踩')
     cand_add.add_argument('--watch-reason', help='关注原因')
     cand_add.add_argument('--notes', help='备注')
+    cand_add.add_argument('--type', choices=['stock', 'etf'], help='标的类型(不传则自动识别)')
     cand_add.set_defaults(func=cmd_candidate_add)
     
     # 删除候选
@@ -798,6 +817,7 @@ def main():
     
     # 列出候选
     cand_list = candidate_subparsers.add_parser('list', help='列出所有候选')
+    cand_list.add_argument('--type', choices=['stock', 'etf'], help='过滤标的类型')
     cand_list.set_defaults(func=cmd_candidate_list)
     
     # 查看候选详情
