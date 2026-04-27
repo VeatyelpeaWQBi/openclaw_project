@@ -48,18 +48,18 @@ logger = logging.getLogger(__name__)
 def call_mine_clearance(code: str) -> Optional[Dict]:
     """
     调用扫雷接口
-    
+
     参数:
         code: 股票代码
-        
+
     返回:
         dict: 扫雷结果 或 None（调用失败）
     """
     try:
         import adata
         result = adata.sentiment.mine.mine_clearance_tdx(code)
-        # adata返回DataFrame，需要正确判断
-        if result is not None and not result.empty:
+        # adata返回DataFrame或None，需要正确判断
+        if result is not None and hasattr(result, 'empty') and not result.empty:
             # 如果有数据，说明有风险
             return {
                 'code': code,
@@ -69,7 +69,7 @@ def call_mine_clearance(code: str) -> Optional[Dict]:
         return {'code': code, 'has_mine': False}
     except Exception as e:
         logger.warning(f"扫雷接口调用失败 [{code}]: {e}")
-        return None
+        return {'code': code, 'has_mine': False, 'error': str(e)}
 
 
 # ==================== 持仓池风险信号检测 ====================

@@ -262,9 +262,14 @@ def get_stock_adx(code: str, calc_date: Optional[str] = None) -> Optional[dict]:
         
         row = cursor.fetchone()
         conn.close()
-        
+
         if row is None:
-            logger.warning(f"[{code}] ADX数据不存在: {calc_date}")
+            # ETF无ADX数据是正常的，用debug级别
+            is_etf = code.startswith(('51', '159', '56', '58'))
+            if is_etf:
+                logger.debug(f"[{code}] ETF无ADX数据: {calc_date}")
+            else:
+                logger.warning(f"[{code}] ADX数据不存在: {calc_date}")
             return None
         
         adx, plus_di, minus_di = row
