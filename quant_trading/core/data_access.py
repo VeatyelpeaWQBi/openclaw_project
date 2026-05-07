@@ -213,7 +213,7 @@ def _sina_daily_kline(stock_code, market='sh', start_date=None, end_date=None):
 
     try:
         logger.debug(f"[新浪] 获取日K: {sina_code} ({start_date}~{end_date})")
-        df = ak.stock_zh_a_daily(symbol=sina_code, start_date=start_date, end_date=end_date)
+        df = ak.stock_zh_a_daily(symbol=sina_code, start_date=start_date, end_date=end_date, adjust="qfq")
 
         if df is None or df.empty:
             logger.warning(f"[新浪] {sina_code} 日K返回空数据（可能已退市或不存在）")

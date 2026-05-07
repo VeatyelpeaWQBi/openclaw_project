@@ -55,3 +55,5 @@ Thumbs.db
 **/test_scripts/
 CLAUDE.md
 */charts/*
+check_db.py
+fix_vcp_score.py
