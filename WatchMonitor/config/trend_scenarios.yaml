@@ -1,0 +1,91 @@
+# 趋势场景配置
+# 控制各场景分析的启用和参数
+
+version: 1.0
+
+# 趋势检测参数
+trend_detection:
+  # 均线排列权重
+  ma_arrangement_weight: 0.30
+  # 均线斜率权重
+  ma_slope_weight: 0.25
+  # SuperTrend权重
+  supertrend_weight: 0.25
+  # 价格位置权重
+  price_position_weight: 0.20
+
+  # 趋势分类阈值
+  uptrend_threshold: 60    # >=60为上升趋势
+  downtrend_threshold: 40  # <=40为下降趋势
+
+  # 历史数据天数
+  max_history_days: 120  # 分析使用的历史K线天数（覆盖所有场景需求）
+
+# 上升趋势场景配置
+uptrend_scenarios:
+  - name: strength_analysis
+    enabled: true
+    params:
+      # 上升强度判断
+      ma_alignment_threshold: 0.8  # 均线排列紧密度阈值
+      slope_strength_threshold: 0.7  # 斜率强度阈值
+
+  - name: top_structure
+    enabled: true
+    params:
+      # 顶部结构判断
+      volume_stagnation_days: 3
+      price_stagnation_pct: 2.0
+
+  - name: turning_point
+    enabled: true
+    params:
+      # 拐点信号阈值
+      ma5_turning_days: 5
+      ma_breakdown_periods: [10, 20]
+
+# 下跌趋势场景配置
+downtrend_scenarios:
+  - name: strength_analysis
+    enabled: true
+    params:
+      # 下跌强度判断
+      ma_alignment_threshold: 0.8
+      decline_speed_threshold: -2.0
+
+  - name: bottom_structure
+    enabled: true
+    params:
+      # 底部结构判断
+      decline_slowdown_days: 5
+      volume_shrink_threshold: 0.5
+
+  - name: bottom_stabilization
+    enabled: true
+    params:
+      # 企稳信号阈值
+      no_new_low_days: [3, 5]
+      ma_flat_days: 3
+
+# 震荡场景配置
+sideways_scenarios:
+  - name: range_analysis
+    enabled: true
+    params:
+      # 震荡区间判断
+      range_detection_days: 20
+      range_width_threshold: 0.10  # 区间宽度10%
+
+  - name: upward_breakout
+    enabled: true
+    params:
+      # 向上突破判断
+      breakout_volume_ratio: 1.5
+      pullback_check_days: 3
+
+  - name: downward_breakout
+    enabled: true
+    params:
+      # 向下突破判断
+      breakout_volume_ratio: 1.2
+      rebound_check_days: 3

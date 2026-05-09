@@ -369,12 +369,12 @@ def remove_position(code: str) -> bool:
 def update_position(code: str, **kwargs) -> bool:
     """
     更新持仓信息
-    可更新字段: stop_loss, take_profit, shares, notes, position_type
+    可更新字段: stop_loss, take_profit, shares, entry_price, notes, position_type
     """
     if not kwargs:
         return False
 
-    allowed_fields = ['stop_loss', 'take_profit', 'shares', 'notes', 'position_type']
+    allowed_fields = ['stop_loss', 'take_profit', 'shares', 'entry_price', 'notes', 'position_type']
     update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
 
     if not update_fields:

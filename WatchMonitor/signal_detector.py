@@ -39,6 +39,7 @@ from core.indicator_funcs import (
     check_breakdown_medium_bull_candle
 )
 from core.indicators.manager import IndicatorManager
+from core.trend.analyzer import TrendAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -822,3 +823,180 @@ def generate_indicator_report_with_manager(code: str, df: pd.DataFrame, context:
 
     # 生成报告
     return manager.generate_report_lines(indicators_data, context)
+
+
+# ==================== 趋势分析（新增） ====================
+
+def detect_position_risk_signals_with_trend(position: Dict) -> Dict:
+    """
+    检测持仓风险（含趋势分析）
+
+    参数:
+        position: 持仓信息 dict
+
+    返回:
+        dict: 持仓风险检测结果（包含趋势分析）
+    """
+    code = position['code']
+    name = position['name']
+
+    # 原有风险检测
+    result = detect_position_risk_signals(position)
+
+    # 新增：趋势分析
+    df = get_daily_data_from_sqlite(code, days=120)  # 优化：120天覆盖所有场景需求
+    if df.empty:
+        return result
+
+    analyzer = TrendAnalyzer()
+    context = {
+        'code': code,
+        'name': name,
+        'current_price': df['close'].iloc[-1],
+        'is_position': True,
+        'entry_price': position.get('entry_price'),
+        'position_type': position.get('position_type'),
+        'stop_loss': position.get('stop_loss'),
+        'take_profit': position.get('take_profit'),
+    }
+
+    trend_result = analyzer.analyze_stock(code, df, context)
+
+    # 合并趋势分析结果
+    result['trend'] = trend_result['trend']
+    result['scenario'] = trend_result['scenario']
+    result['signals'].extend(trend_result['signals'])
+
+    return result
+
+
+def detect_candidate_bottom_signals_with_trend(candidate: Dict) -> Dict:
+    """
+    检测候选抄底信号（含趋势分析）
+
+    参数:
+        candidate: 候选信息 dict
+
+    返回:
+        dict: 候选抄底检测结果（包含趋势分析）
+    """
+    code = candidate['code']
+    name = candidate['name']
+
+    # 原有抄底检测
+    result = detect_candidate_bottom_signals(candidate)
+
+    # 新增：趋势分析
+    df = get_daily_data_from_sqlite(code, days=120)  # 优化：120天覆盖所有场景需求
+    if df.empty:
+        return result
+
+    analyzer = TrendAnalyzer()
+    context = {
+        'code': code,
+        'name': name,
+        'current_price': df['close'].iloc[-1],
+        'is_candidate': True,
+        'watch_price': candidate.get('watch_price'),
+        'watch_type': candidate.get('watch_type'),
+        'watch_reason': candidate.get('watch_reason'),
+    }
+
+    trend_result = analyzer.analyze_stock(code, df, context)
+
+    # 合并趋势分析结果
+    result['trend'] = trend_result['trend']
+    result['scenario'] = trend_result['scenario']
+    result['signals'].extend(trend_result['signals'])
+
+    return result
+
+
+def detect_all_position_risks_with_trend() -> List[Dict]:
+    """
+    检测所有持仓的风险信号（含趋势分析）
+
+    返回:
+        list: 所有持仓的风险检测结果
+    """
+    positions = get_all_positions()
+    results = []
+
+    for pos in positions:
+        result = detect_position_risk_signals_with_trend(pos)
+        results.append(result)
+
+    # 按风险严重度排序
+    severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
+
+    def get_max_severity(signals):
+        if not signals:
+            return 99
+        severities = [s.get('severity', 'info') for s in signals]
+        return min([severity_order.get(s, 99) for s in severities])
+
+    results.sort(key=lambda x: get_max_severity(x['signals']))
+
+    return results
+
+
+def detect_all_candidate_signals_with_trend() -> List[Dict]:
+    """
+    检测所有候选的抄底信号（含趋势分析）
+
+    返回:
+        list: 所有候选的抄底检测结果
+    """
+    candidates = get_all_candidates()
+    results = []
+
+    for cand in candidates:
+        result = detect_candidate_bottom_signals_with_trend(cand)
+        results.append(result)
+
+    # 按评分排序
+    results.sort(key=lambda x: x['score'], reverse=True)
+
+    return results
+
+
+def detect_all_signals_with_trend() -> Dict:
+    """
+    检测所有信号（持仓池风险 + 候选池抄底，含趋势分析）
+
+    返回:
+        dict: {
+            'position_risks': list,
+            'candidate_signals': list,
+            'has_position_risk': bool,
+            'has_candidate_signal': bool,
+            'detect_time': str
+        }
+    """
+    detect_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    position_risks = detect_all_position_risks_with_trend()
+    candidate_signals = detect_all_candidate_signals_with_trend()
+
+    # 判断是否有风险信号
+    has_position_risk = False
+    for pr in position_risks:
+        for sig in pr['signals']:
+            if sig.get('severity') in ['fatal', 'critical', 'high', 'medium']:
+                has_position_risk = True
+                break
+
+    # 判断是否有抄底信号
+    has_candidate_signal = False
+    for cs in candidate_signals:
+        if cs['score'] >= 50:
+            has_candidate_signal = True
+            break
+
+    return {
+        'position_risks': position_risks,
+        'candidate_signals': candidate_signals,
+        'has_position_risk': has_position_risk,
+        'has_candidate_signal': has_candidate_signal,
+        'detect_time': detect_time
+    }
