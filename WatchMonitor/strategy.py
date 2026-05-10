@@ -18,7 +18,14 @@ from core.storage import merge_and_save_kline, get_daily_data_from_sqlite, INITI
 from core.paths import DB_PATH
 from core.adx_analyzer import get_market_adx_distribution, get_positions_with_adx, get_candidates_with_adx
 
-from config.sectors import is_attack_sector
+# 引用根目录config的sectors模块
+import sys, os
+# 向上2级到openclaw_project，再进入config
+_CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
+sys.path.insert(0, _CONFIG_DIR)
+# 直接import sectors（不能从config包导入）
+import sectors
+is_attack_sector = sectors.is_attack_sector
 from filters import filter_etf_candidates
 
 logger = logging.getLogger(__name__)
