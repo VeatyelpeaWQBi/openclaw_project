@@ -38,11 +38,12 @@ class IndicatorManager:
         初始化管理器
 
         参数:
-            config_path: YAML配置文件路径
+            config_path: YAML配置文件路径（默认使用根目录config）
         """
         if config_path is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            config_path = os.path.join(base_dir, 'config', 'indicators.yaml')
+            # 使用根目录config（向上4级）
+            root_config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'config')
+            config_path = os.path.join(root_config_dir, 'indicators.yaml')
 
         self.config_path = config_path
         self.config: Dict = {}

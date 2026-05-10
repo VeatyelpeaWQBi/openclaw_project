@@ -22,8 +22,10 @@ from pandas import DataFrame
 
 logger = logging.getLogger(__name__)
 
-# 配置文件路径
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../config/trend_scenarios.yaml')
+# 配置文件路径（统一使用根目录config）
+# detector.py在 WatchMonitor/core/trend/，向上4级到达根目录
+_ROOT_CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'config')
+CONFIG_PATH = os.path.join(_ROOT_CONFIG, 'trend_scenarios.yaml')
 
 
 class TrendDetector:
