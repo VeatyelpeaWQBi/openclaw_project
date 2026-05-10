@@ -53,6 +53,9 @@ Thumbs.db
 
 # ==================== 运行时生成的文件（含路径信息）====================
 **/test_scripts/
+**/test_case/
+**/output/
+**test**
 CLAUDE.md
 */charts/*
 check_db.py
