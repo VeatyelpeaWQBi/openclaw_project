@@ -865,6 +865,16 @@ def detect_position_risk_signals_with_trend(position: Dict) -> Dict:
     # 合并趋势分析结果
     result['trend'] = trend_result['trend']
     result['scenario'] = trend_result['scenario']
+    # 对于震荡趋势，保存区间信息
+    if trend_result['trend'].get('trend_type') == 'sideways':
+        scenario_analysis = trend_result['scenario'].get('analysis', {})
+        range_data = scenario_analysis.get('range', {})
+        if range_data:
+            # 将精确区间转换为模糊描述（保留2位小数）
+            high = range_data.get('high', 0)
+            low = range_data.get('low', 0)
+            if high > low:
+                result['sideways_range'] = f"{low:.2f}-{high:.2f}"
     result['signals'].extend(trend_result['signals'])
 
     return result
@@ -907,6 +917,16 @@ def detect_candidate_bottom_signals_with_trend(candidate: Dict) -> Dict:
     # 合并趋势分析结果
     result['trend'] = trend_result['trend']
     result['scenario'] = trend_result['scenario']
+    # 对于震荡趋势，保存区间信息
+    if trend_result['trend'].get('trend_type') == 'sideways':
+        scenario_analysis = trend_result['scenario'].get('analysis', {})
+        range_data = scenario_analysis.get('range', {})
+        if range_data:
+            # 将精确区间转换为模糊描述（保留2位小数）
+            high = range_data.get('high', 0)
+            low = range_data.get('low', 0)
+            if high > low:
+                result['sideways_range'] = f"{low:.2f}-{high:.2f}"
     result['signals'].extend(trend_result['signals'])
 
     return result
@@ -978,6 +998,17 @@ def detect_all_signals_with_trend() -> Dict:
     position_risks = detect_all_position_risks_with_trend()
     candidate_signals = detect_all_candidate_signals_with_trend()
 
+    # 基于趋势状态筛选信号
+    for pr in position_risks:
+        trend_type = pr.get('trend', {}).get('trend_type', '')
+        if trend_type:
+            pr['signals'] = _filter_signals_by_trend(pr['signals'], trend_type)
+
+    for cs in candidate_signals:
+        trend_type = cs.get('trend', {}).get('trend_type', '')
+        if trend_type:
+            cs['signals'] = _filter_signals_by_trend(cs['signals'], trend_type)
+
     # 判断是否有风险信号
     has_position_risk = False
     for pr in position_risks:
@@ -1000,3 +1031,65 @@ def detect_all_signals_with_trend() -> Dict:
         'has_candidate_signal': has_candidate_signal,
         'detect_time': detect_time
     }
+
+
+# ==================== 信号筛选（基于趋势状态） ====================
+
+def _filter_signals_by_trend(signals: List[Dict], trend_type: str) -> List[Dict]:
+    """
+    根据趋势状态筛选信号
+
+    参数:
+        signals: 原始信号列表
+        trend_type: 趋势类型 ('uptrend', 'downtrend', 'sideways')
+
+    返回:
+        List[Dict]: 筛选后的信号列表
+    """
+    # 定义各趋势类型下保留的信号类型
+    uptrend_keywords = ['top_divergence', 'high_sideways', 'macd_top_divergence',
+                       'ma5_turning', 'ma10_breakdown', 'ma20_breakdown',
+                       'high_upper_shadow', 'st_flip_bear', 'volume_stagnation',
+                       'high_long_upper_shadow', 'breakdown_bull', 'breakdown_medium_bull',
+                       'top_divergence', 'rsi_top_divergence']
+
+    downtrend_keywords = ['decline_slowdown', 'volume_shrink', 'long_lower_shadows',
+                         'macd_bottom_divergence', 'no_new_low', 'ma_turning_up',
+                         'ma_flat', 'moderate_volume', 'golden_cross',
+                         'bottom_divergence', 'rsi_bottom_divergence',
+                         'volume_shrink_extreme', 'long_lower_shadow']
+
+    sideways_keywords = ['breakout_up', 'breakout_up_volume', 'pullback_hold',
+                        'ma_bullish_arrangement', 'breakout_down',
+                        'breakout_down_volume', 'rebound_blocked',
+                        'ma_bearish_arrangement']
+
+    # 根据趋势类型选择关键词
+    if trend_type == 'uptrend':
+        keywords = uptrend_keywords
+    elif trend_type == 'downtrend':
+        keywords = downtrend_keywords
+    elif trend_type == 'sideways':
+        keywords = sideways_keywords
+    else:
+        # 未知趋势，保留所有信号
+        return signals
+
+    # 保留匹配的信号，同时保留严重程度高的信号（fatal/critical/high）
+    filtered_signals = []
+    for sig in signals:
+        severity = sig.get('severity', 'info')
+        sig_type = sig.get('type', '')
+
+        # 严重程度高的信号始终保留
+        if severity in ['fatal', 'critical', 'high']:
+            filtered_signals.append(sig)
+            continue
+
+        # 检查信号类型是否匹配趋势
+        for keyword in keywords:
+            if keyword in sig_type:
+                filtered_signals.append(sig)
+                break
+
+    return filtered_signals

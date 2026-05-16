@@ -274,7 +274,8 @@ def generate_position_report():
     lines.append("")
 
     try:
-        signals_result = detect_all_signals()
+        from signal_detector import detect_all_signals_with_trend
+        signals_result = detect_all_signals_with_trend()
         position_risks = signals_result['position_risks']
 
         if not position_risks:
@@ -310,6 +311,28 @@ def generate_position_report():
             else:
                 lines.append(f"- **{name} ({code})** — {position_type}持仓")
                 lines.append(f"  - 成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
+
+            # ========== 趋势状态显示 ==========
+            trend = pr.get('trend', {})
+            if trend:
+                trend_type = trend.get('trend_type', '')
+
+                # 趋势状态文本
+                if trend_type == 'uptrend':
+                    trend_text = '📈上涨'
+                elif trend_type == 'downtrend':
+                    trend_text = '📉下跌'
+                elif trend_type == 'sideways':
+                    # 震荡时显示区间
+                    sideways_range = pr.get('sideways_range', '')
+                    if sideways_range:
+                        trend_text = f'🜲震荡 {sideways_range}'
+                    else:
+                        trend_text = '🜲震荡'
+                else:
+                    trend_text = '🜲未知'
+
+                lines.append(f"  - 趋势状态: {trend_text}")
             lines.append("")
 
             # 筛选真实风险信号（排除扫雷）
@@ -464,18 +487,19 @@ def generate_position_mine_report():
 def generate_candidate_report():
     """
     生成候选池抄底信号报告（部分3）
-    
+
     返回:
         str: 候选池抄底信号报告文本
     """
     lines = []
     lines.append("## 🎯 候选池抄底信号")
     lines.append("")
-    
+
     try:
-        signals_result = detect_all_signals()
+        from signal_detector import detect_all_signals_with_trend
+        signals_result = detect_all_signals_with_trend()
         candidate_signals = signals_result['candidate_signals']
-        
+
         if not candidate_signals:
             lines.append("候选池为空")
             return '\n'.join(lines)
@@ -499,7 +523,29 @@ def generate_candidate_report():
                 lines.append(f"  关注价{watch_price:.2f} | 现价<font color=\"{drop_color}\">{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)</font>")
             else:
                 lines.append(f"  关注价{watch_price:.2f} | 现价{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)")
-            
+
+            # ========== 趋势状态显示 ==========
+            trend = cs.get('trend', {})
+            if trend:
+                trend_type = trend.get('trend_type', '')
+
+                # 趋势状态文本
+                if trend_type == 'uptrend':
+                    trend_text = '📈上涨'
+                elif trend_type == 'downtrend':
+                    trend_text = '📉下跌'
+                elif trend_type == 'sideways':
+                    # 震荡时显示区间
+                    sideways_range = cs.get('sideways_range', '')
+                    if sideways_range:
+                        trend_text = f'🜲震荡 {sideways_range}'
+                    else:
+                        trend_text = '🜲震荡'
+                else:
+                    trend_text = '🜲未知'
+
+                lines.append(f"  - 趋势状态: {trend_text}")
+
             # 信号列表（只显示关键信号）
             if signals:
                 for sig in signals:
