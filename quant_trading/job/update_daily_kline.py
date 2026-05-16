@@ -29,6 +29,7 @@ import random
 import requests
 import json
 from datetime import datetime
+import pandas as pd
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
@@ -41,6 +42,7 @@ from core.storage import (
     batch_upsert_index_daily_kline,
     batch_upsert_etf_daily_kline,
     get_recent_trade_dates, get_avg_volume_by_code,
+    get_db_connection,
 )
 from job.calc_scores import preload_data, run_scores_without_index, run_rs
 from strategies.trend_trading.score._base import get_all_codes
@@ -59,6 +61,14 @@ SINA_PAYLOAD = {
     "_s_r_a": "page",
 }
 
+# 除权除息检测配置
+QFQ_START_DATE = '2014-01-01'  # 复权刷新起始日期
+QFQ_MIN_INTERVAL = 3.0  # 最小刷新间隔（秒）
+QFQ_MAX_INTERVAL = 6.0  # 最大刷新间隔（秒）
+
+# 除权检测允许的微小差异（浮点数精度）
+ADJUSTMENT_TOLERANCE = 0.01
+
 
 def _get_page_count():
     params = SINA_PAYLOAD.copy()
@@ -72,6 +82,184 @@ def _get_page_count():
     except Exception:
         pass
     return 69
+
+
+def _get_latest_trading_day_le_today(today):
+    """获取小于等于today的最新交易日"""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT trade_date FROM trade_calendar
+            WHERE trade_status = 1 AND trade_date <= ?
+            ORDER BY trade_date DESC LIMIT 1
+        """, (today,)).fetchone()
+        return row['trade_date'] if row else None
+    finally:
+        conn.close()
+
+
+def _load_previous_day_close(trade_date):
+    """获取上一个交易日所有股票的收盘价"""
+    prev_date = get_trading_day_offset_from(trade_date, -1)
+    if not prev_date:
+        return {}
+
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT code, close FROM daily_kline WHERE date = ?",
+            (prev_date,)
+        ).fetchall()
+        return {row['code']: row['close'] for row in rows if row['close']}
+    finally:
+        conn.close()
+
+
+def _is_market_closed():
+    """判断当前是否已收盘（15:00后 或 中午休盘时间 11:30~12:59）"""
+    now = datetime.now()
+    current_time = now.time()
+    current_hour = current_time.hour
+    current_minute = current_time.minute
+
+    # 周末视为收盘
+    if now.weekday() >= 5:
+        return True
+
+    # 15:00后 或 11:30~12:59 休盘时间视为可执行复权刷新
+    if current_hour >= 15:
+        return True
+    if current_hour == 11 and current_minute >= 30:
+        return True
+    if current_hour == 12:
+        return True
+
+    return False
+
+
+def _notify_adjustment_queue(queue):
+    """输出待刷新股票列表"""
+    if not queue:
+        return
+
+    logger.info("=" * 60)
+    logger.info(f"🔔 除权除息检测完成: {len(queue)}只股票待复权刷新")
+    logger.info("=" * 60)
+
+    for i, item in enumerate(queue[:20], 1):
+        code, name, diff_pct = item['code'], item['name'], item['diff_pct']
+        logger.info(f"  {i:2d}. {code} {name}: 差异{diff_pct:.1f}%")
+
+    if len(queue) > 20:
+        logger.info(f"  ... 还有{len(queue)-20}只股票")
+
+    logger.info("=" * 60)
+
+
+def _code_to_market(code):
+    """根据代码判断市场"""
+    if code.startswith(('6', '9')):
+        return 'sh'
+    return 'sz'
+
+
+def _refresh_single_stock_qfq(code, name):
+    """刷新单只股票2014年至今的前复权日K"""
+    market = _code_to_market(code)
+
+    try:
+        from core.data_access import _sina_daily_kline
+
+        df = _sina_daily_kline(
+            code, market=market,
+            start_date=QFQ_START_DATE.replace('-', ''),
+            end_date=datetime.now().strftime('%Y%m%d')
+        )
+
+        if df.empty:
+            return False
+
+        # 删除旧数据
+        conn = get_db_connection()
+        conn.execute("DELETE FROM daily_kline WHERE code = ?", (code,))
+        conn.commit()
+        conn.close()
+
+        # 写入前复权数据
+        rows = []
+        for _, row in df.iterrows():
+            date_str = row['date'].strftime('%Y-%m-%d')
+            rows.append((
+                code, name, date_str,
+                float(row['open']) if pd.notna(row['open']) else None,
+                float(row['high']) if pd.notna(row['high']) else None,
+                float(row['low']) if pd.notna(row['low']) else None,
+                float(row['close']) if pd.notna(row['close']) else None,
+                int(row['volume']) if pd.notna(row['volume']) else None,
+                float(row['amount']) if pd.notna(row['amount']) else None,
+                None, None, None, None, None, None, None, None
+            ))
+
+        success, _ = batch_upsert_daily_kline(rows)
+        return success > 0
+
+    except Exception as e:
+        logger.error(f"刷新 {code} 失败: {e}")
+        return False
+
+
+def _adjust_dividend_stocks(queue):
+    """批量刷新待复权股票的前复权日K（盘后执行）"""
+    if not queue or not _is_market_closed():
+        return 0
+
+    logger.info(f"开始刷新 {len(queue)} 只股票的前复权日K...")
+
+    success_count = 0
+    for i, item in enumerate(queue, 1):
+        code, name = item['code'], item['name']
+        if _refresh_single_stock_qfq(code, name):
+            success_count += 1
+        else:
+            logger.warning(f"  [{i}/{len(queue)}] {code} {name} 刷新失败")
+
+        # 间隔3~6秒防封
+        time.sleep(QFQ_MIN_INTERVAL + random.random() * (QFQ_MAX_INTERVAL - QFQ_MIN_INTERVAL))
+
+        if i % 10 == 0:
+            logger.info(f"  进度: {i}/{len(queue)}, 成功{success_count}")
+
+    logger.info(f"复权刷新完成: {success_count}/{len(queue)} 只")
+    return success_count
+
+
+def _recalc_scores_for_codes(codes, today):
+    """重新计算指定股票的技术指标（只计算刷新的股票）"""
+    if not codes:
+        return
+
+    logger.info(f"重新计算 {len(codes)} 只股票的技术指标...")
+
+    try:
+        index_codes = get_watchlist_index_codes()
+        if not index_codes:
+            index_codes = ['000510']
+
+        max_lookback = 250
+        stock_data, index_closes, all_dates = preload_data(
+            codes, index_codes[0], today, max_lookback
+        )
+
+        if all_dates:
+            vcp_count, adx_count = run_scores_without_index(stock_data, all_dates, days=1)
+
+            rs_count = 0
+            for index_code in index_codes:
+                rs_count += run_rs(index_code, stock_data, all_dates, days=1)
+
+            logger.info(f"技术指标重新计算完成: VCP={vcp_count}, ADX={adx_count}, RS={rs_count}")
+    except Exception as e:
+        logger.error(f"技术指标计算失败: {e}")
 
 
 def fetch_all_market():
@@ -139,12 +327,13 @@ def _load_avg_volume(trade_date, lookback_days=5):
     return avg_map
 
 
-def save_to_db(data_list, trade_date):
+def save_to_db(data_list, trade_date, prev_close_map):
     # 预加载前5日均量（用于计算量比）
     avg_vol_map = _load_avg_volume(trade_date)
 
     rows = []
     skip = 0
+    adjustment_queue = []
 
     for item in data_list:
         code = str(item.get('symbol', '')).strip()
@@ -163,6 +352,19 @@ def save_to_db(data_list, trade_date):
         if close_price is None or close_price <= 0:
             skip += 1
             continue
+
+        # 除权检测：对比API settlement与DB昨收
+        api_settlement = _safe_float(item.get('settlement'))
+        if api_settlement and prev_close_map.get(code):
+            db_yest_close = prev_close_map[code]
+            if db_yest_close and db_yest_close > 0:
+                # 直接检查是否不一致（考虑浮点数精度）
+                if abs(api_settlement - db_yest_close) > ADJUSTMENT_TOLERANCE:
+                    adjustment_queue.append({
+                        'code': code,
+                        'name': name,
+                        'diff_pct': abs(api_settlement - db_yest_close) / db_yest_close * 100
+                    })
 
         # 反推流通股本
         nmc_val = _safe_float(item.get('nmc'))
@@ -193,7 +395,7 @@ def save_to_db(data_list, trade_date):
 
     success, error = batch_upsert_daily_kline(rows)
     logger.info(f"写入完成: 成功{success}, 跳过{skip}, 失败{error}")
-    return success
+    return success, adjustment_queue
 
 
 def _safe_float(val):
@@ -370,11 +572,14 @@ def _update_klines(today):
     步骤1：更新个股+指数+ETF日K数据
 
     返回:
-        dict: {'kline_count': int, 'index_count': int, 'etf_count': int}
+        dict: {'kline_count': int, 'index_count': int, 'etf_count': int, 'adjustment_queue': list}
     """
+    # 获取昨收数据用于除权检测
+    prev_close_map = _load_previous_day_close(today)
+
     # 更新个股日K
     data = fetch_all_market()
-    kline_count = save_to_db(data, today) if data else 0
+    kline_count, adjustment_queue = save_to_db(data, today, prev_close_map) if data else (0, [])
 
     # 更新指数日K
     index_count = fetch_and_save_index_daily_kline(today)
@@ -382,7 +587,7 @@ def _update_klines(today):
     # 更新ETF日K
     etf_count = fetch_and_save_etf_daily_kline(today)
 
-    return {'kline_count': kline_count or 0, 'index_count': index_count or 0, 'etf_count': etf_count or 0}
+    return {'kline_count': kline_count or 0, 'index_count': index_count or 0, 'etf_count': etf_count or 0, 'adjustment_queue': adjustment_queue}
 
 
 def _update_scores(today):
@@ -432,26 +637,49 @@ def _update_scores(today):
 
 
 def run():
-    today = datetime.now().strftime('%Y-%m-%d')
-    logger.info(f"=== 更新全市场日K — {today} ===")
+    # 获取当前日期
+    current_date = datetime.now().strftime('%Y-%m-%d')
+
+    # 如果今天是非交易日，使用小于等于今天的最新交易日作为上下文日期
+    latest_trade = _get_latest_trading_day_le_today(current_date)
+    if latest_trade and latest_trade != current_date:
+        context_date = latest_trade
+        logger.info(f"今天 {current_date} 为非交易日，使用上下文日期 {context_date}")
+    else:
+        context_date = current_date
+
+    logger.info(f"=== 更新全市场日K — {context_date} ===")
     start_time = time.time()
 
     # 步骤1：更新日K数据
-    kline_result = _update_klines(today)
+    kline_result = _update_klines(context_date)
+    adjustment_queue = kline_result.get('adjustment_queue', [])
 
-    # 步骤2：计算评分
-    score_result = _update_scores(today)
+    # 步骤2：通知待刷新队列
+    _notify_adjustment_queue(adjustment_queue)
 
-    logger.info(f"=== 完成: 个股+指数+评分更新到 {today} ===")
+    # 步骤3：如果收盘后（或中午休盘时间），执行复权刷新
+    if adjustment_queue and _is_market_closed():
+        _adjust_dividend_stocks(adjustment_queue)
+        _recalc_scores_for_codes([item['code'] for item in adjustment_queue], context_date)
+
+    # 步骤4：计算评分
+    score_result = _update_scores(context_date)
+
+    logger.info(f"=== 完成: 个股+指数+评分更新到 {context_date} ===")
 
     elapsed = time.time() - start_time
     elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
     logger.info(f"⏱️ 总耗时: {elapsed_str}")
 
-    # 返回统计结果供shell脚本通知用
+    # 返回统计结果供shell脚本通知用（不返回adjustment_queue减少数据量）
     return {
-        'date': today,
-        **kline_result,
+        'date': current_date,
+        'context_date': context_date,
+        'kline_count': kline_result.get('kline_count', 0),
+        'index_count': kline_result.get('index_count', 0),
+        'etf_count': kline_result.get('etf_count', 0),
+        'adjustment_count': len(adjustment_queue),
         **score_result,
         'elapsed': elapsed_str,
     }
