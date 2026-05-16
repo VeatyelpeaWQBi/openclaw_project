@@ -46,30 +46,32 @@ class SidewaysScenario(BaseScenario):
             lookback_days = min(30, len(df))
             recent = df.tail(lookback_days)
 
-            # 计算震荡区间
-            high = recent['high'].max()
-            low = recent['low'].min()
+            # 使用分位数计算区间（避免单点极值影响）
+            bottom_low = np.percentile(recent['low'], 10)    # 底部区间下界
+            bottom_high = np.percentile(recent['low'], 25)   # 底部区间上界
+            top_low = np.percentile(recent['high'], 75)      # 顶部区间下界
+            top_high = np.percentile(recent['high'], 90)     # 顶部区间上界
             current_price = df['close'].iloc[-1]
 
-            range_width = (high - low) / low * 100
+            # 区间宽度（基于核心震荡区域 25%-75%）
+            core_high = np.percentile(recent['high'], 75)
+            core_low = np.percentile(recent['low'], 25)
+            range_width = (core_high - core_low) / core_low * 100 if core_low > 0 else 0
 
-            # 区间中位
-            mid = (high + low) / 2
-
-            # 价格在区间位置（防止除零）
-            price_position = 50 if high <= low else (current_price - low) / (high - low) * 100
-
-            # 震荡时长（在区间内震荡的天数）
-            in_range_days = len(recent[(recent['high'] <= high) & (recent['low'] >= low)])
+            # 价格在核心区间的位置
+            price_position = 50 if core_high <= core_low else (current_price - core_low) / (core_high - core_low) * 100
 
             # 只存储分析结果，不生成报告
             self._analysis_result['range'] = {
-                'high': round(high, 2),
-                'low': round(low, 2),
+                'bottom_low': round(bottom_low, 2),
+                'bottom_high': round(bottom_high, 2),
+                'top_low': round(top_low, 2),
+                'top_high': round(top_high, 2),
+                'core_high': round(core_high, 2),
+                'core_low': round(core_low, 2),
                 'width_pct': round(range_width, 2),
-                'mid': round(mid, 2),
                 'price_position': round(price_position, 1),
-                'in_range_days': in_range_days,
+                'in_range_days': len(recent),
             }
 
         except Exception as e:
@@ -89,17 +91,17 @@ class SidewaysScenario(BaseScenario):
             if not range_data:
                 return
 
-            high = range_data.get('high')
-            low = range_data.get('low')
+            top_low = range_data.get('top_low')
+            top_high = range_data.get('top_high')
             current_price = df['close'].iloc[-1]
 
-            if high is None or low is None:
+            if top_low is None or top_high is None:
                 return
 
-            # 1. 突破上沿
-            if current_price > high:
+            # 1. 突破上沿（价格超过顶部区间下界）
+            if current_price > top_low:
                 analysis_data['breakout_up'] = {
-                    'high': high,
+                    'top_low': top_low,
                     'current_price': current_price,
                 }
 
@@ -118,7 +120,7 @@ class SidewaysScenario(BaseScenario):
             if len(df) >= 3:
                 pullback_days = 0
                 for i in range(1, min(4, len(df))):
-                    if df['close'].iloc[-i] < high and df['close'].iloc[-i] > high * 0.97:
+                    if df['close'].iloc[-i] < top_high and df['close'].iloc[-i] > top_low * 0.97:
                         pullback_days = i
                         break
                 analysis_data['pullback'] = {
@@ -155,17 +157,17 @@ class SidewaysScenario(BaseScenario):
             if not range_data:
                 return
 
-            high = range_data.get('high')
-            low = range_data.get('low')
+            bottom_low = range_data.get('bottom_low')
+            bottom_high = range_data.get('bottom_high')
             current_price = df['close'].iloc[-1]
 
-            if high is None or low is None:
+            if bottom_low is None or bottom_high is None:
                 return
 
-            # 1. 跌破下沿
-            if current_price < low:
+            # 1. 跌破下沿（价格低于底部区间上界）
+            if current_price < bottom_high:
                 analysis_data['breakout_down'] = {
-                    'low': low,
+                    'bottom_high': bottom_high,
                     'current_price': current_price,
                 }
 
@@ -184,7 +186,7 @@ class SidewaysScenario(BaseScenario):
             if len(df) >= 3:
                 blocked_days = 0
                 for i in range(1, min(4, len(df))):
-                    if df['close'].iloc[-i] > low and df['close'].iloc[-i] < low * 1.03:
+                    if df['close'].iloc[-i] > bottom_low and df['close'].iloc[-i] < bottom_high * 1.03:
                         blocked_days = i
                         break
                 analysis_data['rebound'] = {
@@ -220,10 +222,11 @@ class SidewaysScenario(BaseScenario):
 
         # 突破上沿
         if 'breakout_up' in upward_data:
+            top_low = upward_data['breakout_up'].get('top_low', 0)
             signals.append({
                 'type': 'breakout_up',
                 'severity': 'medium',
-                'message': f"突破上沿 {upward_data['breakout_up']['high']:.2f}"
+                'message': f"突破顶部区间 {top_low:.2f}"
             })
 
         # 放量突破
@@ -259,10 +262,11 @@ class SidewaysScenario(BaseScenario):
 
         # 跌破下沿
         if 'breakout_down' in downward_data:
+            bottom_high = downward_data['breakout_down'].get('bottom_high', 0)
             signals.append({
                 'type': 'breakout_down',
                 'severity': 'medium',
-                'message': f"跌破下沿 {downward_data['breakout_down']['low']:.2f}"
+                'message': f"跌破底部区间 {bottom_high:.2f}"
             })
 
         # 放量下跌
@@ -304,13 +308,16 @@ class SidewaysScenario(BaseScenario):
         # 震荡区间报告
         range_data = self._analysis_result.get('range', {})
         if range_data:
-            high = range_data.get('high', 0)
-            low = range_data.get('low', 0)
+            bottom_low = range_data.get('bottom_low', 0)
+            bottom_high = range_data.get('bottom_high', 0)
+            top_low = range_data.get('top_low', 0)
+            top_high = range_data.get('top_high', 0)
             width_pct = range_data.get('width_pct', 0)
             price_pos = range_data.get('price_position', 0)
             in_range_days = range_data.get('in_range_days', 0)
             self._report_lines.append(
-                f"    - 震荡区间: [{low:.2f}, {high:.2f}]，宽度{width_pct:.1f}%，"
+                f"    - 震荡区间: 底部[{bottom_low:.2f}~{bottom_high:.2f}] "
+                f"顶部[{top_low:.2f}~{top_high:.2f}]，宽度{width_pct:.1f}%，"
                 f"价格位置{price_pos:.0f}%，震荡{in_range_days}天"
             )
 

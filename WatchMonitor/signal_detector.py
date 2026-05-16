@@ -876,11 +876,12 @@ def detect_position_risk_signals_with_trend(position: Dict) -> Dict:
         scenario_analysis = trend_result['scenario'].get('analysis', {})
         range_data = scenario_analysis.get('range', {})
         if range_data:
-            # 将精确区间转换为模糊描述（保留2位小数）
-            high = range_data.get('high', 0)
-            low = range_data.get('low', 0)
-            if high > low:
-                result['sideways_range'] = f"{low:.2f}-{high:.2f}"
+            bottom_low = range_data.get('bottom_low', 0)
+            bottom_high = range_data.get('bottom_high', 0)
+            top_low = range_data.get('top_low', 0)
+            top_high = range_data.get('top_high', 0)
+            if top_high > bottom_low:
+                result['sideways_range'] = f"底部{bottom_low:.2f}~{bottom_high:.2f} 顶部{top_low:.2f}~{top_high:.2f}"
     result['signals'].extend(trend_result['signals'])
 
     return result
@@ -928,11 +929,12 @@ def detect_candidate_bottom_signals_with_trend(candidate: Dict) -> Dict:
         scenario_analysis = trend_result['scenario'].get('analysis', {})
         range_data = scenario_analysis.get('range', {})
         if range_data:
-            # 将精确区间转换为模糊描述（保留2位小数）
-            high = range_data.get('high', 0)
-            low = range_data.get('low', 0)
-            if high > low:
-                result['sideways_range'] = f"{low:.2f}-{high:.2f}"
+            bottom_low = range_data.get('bottom_low', 0)
+            bottom_high = range_data.get('bottom_high', 0)
+            top_low = range_data.get('top_low', 0)
+            top_high = range_data.get('top_high', 0)
+            if top_high > bottom_low:
+                result['sideways_range'] = f"底部{bottom_low:.2f}~{bottom_high:.2f} 顶部{top_low:.2f}~{top_high:.2f}"
     result['signals'].extend(trend_result['signals'])
 
     return result
