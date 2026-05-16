@@ -15,7 +15,7 @@ from core.data_access import get_index_realtime, get_market_sentiment, get_marke
 from core.paths import REPORTS_DIR
 from core.storage import get_daily_data_from_sqlite
 from core.indicators.manager import IndicatorManager
-from signal_detector import detect_all_signals
+from signal_detector import detect_all_signals_with_trend
 from fetch_fear_index import get_fear_index
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 def generate_market_report(result):
     """
     生成大盘分析报告（部分1）
-    
+
     参数:
         result: WatchMonitorStrategy.run() 的返回值
-        
+
     返回:
         str: 大盘分析报告文本
     """
@@ -169,7 +169,7 @@ def generate_market_report(result):
             traded_minutes = volume.get('traded_minutes', 240)
             direction = '放量' if is_fang else '缩量'
 
-            # 显示文案：估算时标注“≈昨日同期”，收盘后显示“昨日全天”
+            # 显示文案：估算时标注"≈昨日同期"，收盘后显示"昨日全天"
             if is_estimated and traded_minutes < 240:
                 yesterday_label = f"≈昨日同期{yesterday:.0f}亿(估算)"
             else:
@@ -238,13 +238,13 @@ def generate_market_report(result):
                 stock_count = detail['stock_count']
                 is_attack = detail['is_attack']
                 lead_stocks = detail['lead_stocks']
-                
+
                 sign = '+' if change_pct > 0 else ''
                 attack_flag = '进攻型' if is_attack else ''
-                
+
                 lines.append(f"- **{name}** ({sign}{change_pct:.2f}%) {attack_flag}")
                 lines.append(f"     成分股: **{stock_count}**只")
-                
+
                 if lead_stocks:
                     lead_str = ', '.join([f"{s['name']}({s['change_pct']:+.2f}%)" for s in lead_stocks])
                     lines.append(f"     领涨股: {lead_str}")
@@ -260,6 +260,188 @@ def generate_market_report(result):
     return '\n'.join(lines)
 
 
+def generate_single_position_report(pr):
+    """
+    生成单只持仓的报告（内部函数）
+
+    参数:
+        pr: 单只持仓数据
+
+    返回:
+        list: 报告行列表
+    """
+    lines = []
+    code = pr['code']
+    name = pr['name']
+    position_type = pr['position_type']
+    entry_price = pr['entry_price']
+    current_price = pr['current_price']
+    profit_pct = pr['profit_pct']
+    signals = pr['signals']
+    mine_result = pr['mine_result']
+    indicators = pr.get('indicators', {})
+
+    # 持仓基本信息
+    if profit_pct is None:
+        profit_pct = 0
+        profit_sign = ''
+        profit_color = ''
+    else:
+        profit_sign = '+' if profit_pct >= 0 else ''
+        profit_color = 'red' if profit_pct > 0 else 'green' if profit_pct < 0 else ''
+
+    if current_price is None:
+        lines.append(f"- **{name} ({code})** — {position_type}持仓")
+        lines.append(f"  - 成本{entry_price:.2f} | 现价未知 (无日K数据)")
+    elif profit_color:
+        lines.append(f"- **{name} ({code})** — {position_type}持仓")
+        lines.append(f"  - 成本{entry_price:.2f} | 现价<font color=\"{profit_color}\">{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)</font>")
+    else:
+        lines.append(f"- **{name} ({code})** — {position_type}持仓")
+        lines.append(f"  - 成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
+
+    # ========== 趋势状态显示 ==========
+    trend = pr.get('trend', {})
+    if trend:
+        trend_type = trend.get('trend_type', '')
+
+        # 趋势状态文本
+        if trend_type == 'uptrend':
+            trend_text = '📈上涨'
+        elif trend_type == 'downtrend':
+            trend_text = '📉下跌'
+        elif trend_type == 'sideways':
+            # 震荡时显示区间
+            sideways_range = pr.get('sideways_range', '')
+            if sideways_range:
+                trend_text = f'🜲震荡 {sideways_range}'
+            else:
+                trend_text = '🜲震荡'
+        else:
+            trend_text = '🜲未知'
+
+        lines.append(f"  - 趋势状态: {trend_text}")
+    lines.append("")
+
+    # 筛选真实风险信号（排除扫雷）
+    risk_signals = [s for s in signals if s['type'] != 'mine_warning']
+
+    # 先显示风险信号（如果有）
+    if risk_signals:
+        # 按严重度排序显示
+        severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
+        sorted_signals = sorted(risk_signals, key=lambda x: severity_order.get(x.get('severity', 'info'), 99))
+
+        for sig in sorted_signals:
+            severity = sig.get('severity', 'info')
+            message = sig.get('message', '')
+
+            # 根据严重度选择图标
+            if severity == 'fatal':
+                icon = '🔴🔴'
+            elif severity == 'critical':
+                icon = '🔴'
+            elif severity == 'high':
+                icon = '🔴'
+            elif severity == 'medium':
+                icon = '⚠️'
+            elif severity == 'warning':
+                icon = '⚠️'
+            elif severity == 'positive':
+                icon = '✅'
+            else:
+                icon = '💡'
+
+            lines.append(f"  - {icon} {message}")
+    else:
+        lines.append("  - ✅ 暂无风险信号")
+    lines.append("")
+
+    # ========== 技术概要分析（通过IndicatorManager一站式调用） ==========
+    # 获取日K数据用于指标分析
+    df = get_daily_data_from_sqlite(code, days=340)
+    if df is not None and not df.empty:
+        lines.append("  - 📊 技术概要:")
+
+        # 创建IndicatorManager实例
+        manager = IndicatorManager()
+        context = {
+            'current_price': current_price,
+            'is_position': True,
+            'position_type': position_type,
+            'entry_price': entry_price,
+        }
+
+        # 一站式分析（计算、信号、报告、评分全部在内部完成）
+        result = manager.analyze_stock(code, df, context)
+
+        # 直接获取报告内容（黑盒生成，无需二次加工）
+        report_lines = result.get('report_lines', [])
+        lines.extend(report_lines)
+
+        # 获取综合评分
+        total_score = result.get('total_score', 0)
+
+        # 综合评价（评分结果已在指标对象内部计算）
+        if total_score >= 6:
+            trend_judge = '📈强势向上'
+        elif total_score >= 3:
+            trend_judge = '🟢偏强向上'
+        elif total_score >= 1:
+            trend_judge = '📊偏多震荡'
+        elif total_score <= -6:
+            trend_judge = '📉强势向下'
+        elif total_score <= -3:
+            trend_judge = '🔴偏弱向下'
+        elif total_score <= -1:
+            trend_judge = '📊偏空震荡'
+        else:
+            trend_judge = '⚪中性震荡'
+
+        lines.append(f"    - **综合判断**: {trend_judge} (总分{total_score:.1f})")
+
+    lines.append("")
+    return lines
+
+
+def generate_position_reports(group_size: int = 3):
+    """
+    生成持仓池风险信号报告（按组生成，避免消息过长）
+
+    参数:
+        group_size: 每组的个股数量（默认3）
+
+    返回:
+        list: 报告文本列表
+    """
+    try:
+        signals_result = detect_all_signals_with_trend()
+        position_risks = signals_result['position_risks']
+
+        if not position_risks:
+            return ["## 🚨 持仓池风险信号\n\n持仓池为空"]
+
+        # 分组
+        groups = [position_risks[i:i + group_size] for i in range(0, len(position_risks), group_size)]
+        reports = []
+
+        for idx, group in enumerate(groups, 1):
+            lines = []
+            lines.append(f"## 🚨 持仓池风险信号 ({idx}/{len(groups)})")
+            lines.append("")
+
+            for pr in group:
+                lines.extend(generate_single_position_report(pr))
+
+            reports.append('\n'.join(lines))
+
+        return reports
+
+    except Exception as e:
+        logger.warning(f"检测持仓池风险信号失败: {e}")
+        return ["## 🚨 持仓池风险信号\n\n检测失败，请查看日志"]
+
+
 def generate_position_report():
     """
     生成持仓池风险信号报告上半部分（部分2）
@@ -269,156 +451,8 @@ def generate_position_report():
     返回:
         str: 持仓池风险信号报告文本（不含扫雷）
     """
-    lines = []
-    lines.append("## 🚨 持仓池风险信号")
-    lines.append("")
-
-    try:
-        from signal_detector import detect_all_signals_with_trend
-        signals_result = detect_all_signals_with_trend()
-        position_risks = signals_result['position_risks']
-
-        if not position_risks:
-            lines.append("持仓池为空")
-            return '\n'.join(lines)
-
-        for pr in position_risks:
-            code = pr['code']
-            name = pr['name']
-            position_type = pr['position_type']
-            entry_price = pr['entry_price']
-            current_price = pr['current_price']
-            profit_pct = pr['profit_pct']
-            signals = pr['signals']
-            mine_result = pr['mine_result']
-            indicators = pr.get('indicators', {})  # 技术指标
-
-            # 持仓基本信息
-            if profit_pct is None:
-                profit_pct = 0
-                profit_sign = ''
-                profit_color = ''
-            else:
-                profit_sign = '+' if profit_pct >= 0 else ''
-                profit_color = 'red' if profit_pct > 0 else 'green' if profit_pct < 0 else ''
-
-            if current_price is None:
-                lines.append(f"- **{name} ({code})** — {position_type}持仓")
-                lines.append(f"  - 成本{entry_price:.2f} | 现价未知 (无日K数据)")
-            elif profit_color:
-                lines.append(f"- **{name} ({code})** — {position_type}持仓")
-                lines.append(f"  - 成本{entry_price:.2f} | 现价<font color=\"{profit_color}\">{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)</font>")
-            else:
-                lines.append(f"- **{name} ({code})** — {position_type}持仓")
-                lines.append(f"  - 成本{entry_price:.2f} | 现价{current_price:.2f} ({profit_sign}{profit_pct:.1f}%)")
-
-            # ========== 趋势状态显示 ==========
-            trend = pr.get('trend', {})
-            if trend:
-                trend_type = trend.get('trend_type', '')
-
-                # 趋势状态文本
-                if trend_type == 'uptrend':
-                    trend_text = '📈上涨'
-                elif trend_type == 'downtrend':
-                    trend_text = '📉下跌'
-                elif trend_type == 'sideways':
-                    # 震荡时显示区间
-                    sideways_range = pr.get('sideways_range', '')
-                    if sideways_range:
-                        trend_text = f'🜲震荡 {sideways_range}'
-                    else:
-                        trend_text = '🜲震荡'
-                else:
-                    trend_text = '🜲未知'
-
-                lines.append(f"  - 趋势状态: {trend_text}")
-            lines.append("")
-
-            # 筛选真实风险信号（排除扫雷）
-            risk_signals = [s for s in signals if s['type'] != 'mine_warning']
-
-            # 先显示风险信号（如果有）
-            if risk_signals:
-                # 按严重度排序显示
-                severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
-                sorted_signals = sorted(risk_signals, key=lambda x: severity_order.get(x.get('severity', 'info'), 99))
-
-                for sig in sorted_signals:
-                    severity = sig.get('severity', 'info')
-                    message = sig.get('message', '')
-
-                    # 根据严重度选择图标
-                    if severity == 'fatal':
-                        icon = '🔴🔴'
-                    elif severity == 'critical':
-                        icon = '🔴'
-                    elif severity == 'high':
-                        icon = '🔴'
-                    elif severity == 'medium':
-                        icon = '⚠️'
-                    elif severity == 'warning':
-                        icon = '⚠️'
-                    elif severity == 'positive':
-                        icon = '✅'
-                    else:
-                        icon = '💡'
-
-                    lines.append(f"  - {icon} {message}")
-            else:
-                lines.append("  - ✅ 暂无风险信号")
-            lines.append("")
-
-            # ========== 技术概要分析（通过IndicatorManager一站式调用） ==========
-            # 获取日K数据用于指标分析
-            df = get_daily_data_from_sqlite(code, days=340)
-            if df is not None and not df.empty:
-                lines.append("  - 📊 技术概要:")
-
-                # 创建IndicatorManager实例
-                manager = IndicatorManager()
-                context = {
-                    'current_price': current_price,
-                    'is_position': True,
-                    'position_type': position_type,
-                    'entry_price': entry_price,
-                }
-
-                # 一站式分析（计算、信号、报告、评分全部在内部完成）
-                result = manager.analyze_stock(code, df, context)
-
-                # 直接获取报告内容（黑盒生成，无需二次加工）
-                report_lines = result.get('report_lines', [])
-                lines.extend(report_lines)
-
-                # 获取综合评分
-                total_score = result.get('total_score', 0)
-
-                # 综合评价（评分结果已在指标对象内部计算）
-                if total_score >= 6:
-                    trend_judge = '📈强势向上'
-                elif total_score >= 3:
-                    trend_judge = '🟢偏强向上'
-                elif total_score >= 1:
-                    trend_judge = '📊偏多震荡'
-                elif total_score <= -6:
-                    trend_judge = '📉强势向下'
-                elif total_score <= -3:
-                    trend_judge = '🔴偏弱向下'
-                elif total_score <= -1:
-                    trend_judge = '📊偏空震荡'
-                else:
-                    trend_judge = '⚪中性震荡'
-
-                lines.append(f"    - **综合判断**: {trend_judge} (总分{total_score:.1f})")
-
-            lines.append("")
-
-    except Exception as e:
-        logger.warning(f"检测持仓池风险信号失败: {e}")
-        lines.append("检测失败，请查看日志")
-
-    return '\n'.join(lines)
+    reports = generate_position_reports(group_size=999)  # 不分组，返回完整报告
+    return reports[0] if reports else ""
 
 
 def generate_position_mine_report():
@@ -430,32 +464,56 @@ def generate_position_mine_report():
     返回:
         str: 扫雷风险报告文本，无扫雷项时返回空字符串
     """
-    lines = []
-    has_mine = False  # 标记是否有扫雷项
+    reports = generate_position_mine_reports(group_size=999)  # 不分组，返回完整报告
+    return reports[0] if reports else ""
 
+
+def generate_position_mine_reports(group_size: int = 3):
+    """
+    生成持仓池扫雷风险报告（按组生成，避免消息过长）
+
+    参数:
+        group_size: 每组的个股数量（默认3）
+
+    返回:
+        list: 扫雷报告文本列表，无扫雷项时返回空列表
+    """
     try:
-        signals_result = detect_all_signals()
+        signals_result = detect_all_signals_with_trend()
         position_risks = signals_result['position_risks']
 
         if not position_risks:
-            return ''  # 持仓池为空，无扫雷报告
+            return []  # 持仓池为空，无扫雷报告
 
+        # 筛选有扫雷风险的持仓
+        mined_positions = []
         for pr in position_risks:
-            code = pr['code']
-            name = pr['name']
-            current_price = pr['current_price']
-            signals = pr['signals']
-            mine_result = pr['mine_result']
-
-            # 扫雷警告（从signals中获取详细信息）
+            signals = pr.get('signals', [])
             mine_signals = [s for s in signals if s['type'] == 'mine_warning']
-
             if mine_signals:
-                if not has_mine:
-                    # 第一个扫雷项，添加标题
-                    lines.append("## 💣 持仓池扫雷风险")
-                    lines.append("")
-                    has_mine = True
+                mined_positions.append(pr)
+
+        if not mined_positions:
+            return []  # 无扫雷项
+
+        # 分组
+        groups = [mined_positions[i:i + group_size] for i in range(0, len(mined_positions), group_size)]
+        reports = []
+
+        for idx, group in enumerate(groups, 1):
+            lines = []
+            lines.append(f"## 💣 持仓池扫雷风险 ({idx}/{len(groups)})")
+            lines.append("")
+
+            for pr in group:
+                code = pr['code']
+                name = pr['name']
+                current_price = pr['current_price']
+                signals = pr['signals']
+                mine_result = pr['mine_result']
+
+                # 扫雷警告
+                mine_signals = [s for s in signals if s['type'] == 'mine_warning']
 
                 lines.append(f"- **{name} ({code})** — 现价{current_price:.2f}")
 
@@ -465,7 +523,6 @@ def generate_position_mine_report():
 
                 # 如果有mine_result详细信息，也显示
                 if mine_result:
-                    # mine_result可能包含更多扫雷细节
                     mine_items = mine_result.get('items', [])
                     if mine_items:
                         for item in mine_items:
@@ -475,13 +532,165 @@ def generate_position_mine_report():
 
                 lines.append("")
 
+            reports.append('\n'.join(lines))
+
+        return reports
+
     except Exception as e:
         logger.warning(f"检测持仓池扫雷风险失败: {e}")
-        if has_mine:
-            lines.append("扫雷检测失败，请查看日志")
-        return '\n'.join(lines) if has_mine else ''
+        return ["## 💣 持仓池扫雷风险\n\n扫雷检测失败，请查看日志"]
 
-    return '\n'.join(lines) if has_mine else ''
+
+def generate_single_candidate_report(cs):
+    """
+    生成单只候选的报告（内部函数）
+
+    参数:
+        cs: 单只候选数据
+
+    返回:
+        list: 报告行列表
+    """
+    lines = []
+    code = cs['code']
+    name = cs['name']
+    watch_type = cs['watch_type']
+    watch_price = cs['watch_price']
+    current_price = cs['current_price']
+    drop_pct = cs['drop_pct']
+    signals = cs['signals']
+    mine_result = cs['mine_result']
+
+    # 基本信息行
+    drop_sign = '+' if drop_pct >= 0 else ''
+    drop_color = 'red' if drop_pct > 0 else 'green' if drop_pct < 0 else ''
+
+    lines.append(f"- **{name} ({code})** — {watch_type}")
+    if drop_color:
+        lines.append(f"  关注价{watch_price:.2f} | 现价<font color=\"{drop_color}\">{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)</font>")
+    else:
+        lines.append(f"  关注价{watch_price:.2f} | 现价{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)")
+
+    # ========== 趋势状态显示 ==========
+    trend = cs.get('trend', {})
+    if trend:
+        trend_type = trend.get('trend_type', '')
+
+        # 趋势状态文本
+        if trend_type == 'uptrend':
+            trend_text = '📈上涨'
+        elif trend_type == 'downtrend':
+            trend_text = '📉下跌'
+        elif trend_type == 'sideways':
+            # 震荡时显示区间
+            sideways_range = cs.get('sideways_range', '')
+            if sideways_range:
+                trend_text = f'🜲震荡 {sideways_range}'
+            else:
+                trend_text = '🜲震荡'
+        else:
+            trend_text = '🜲未知'
+
+        lines.append(f"  - 趋势状态: {trend_text}")
+
+    # 信号列表（只显示关键信号）
+    if signals:
+        for sig in signals:
+            if sig['type'] in ['no_data', 'mine_warning']:
+                continue
+            message = sig.get('message', '')
+            lines.append(f"  - {message}")
+
+    # ========== 技术概览（候选池，通过IndicatorManager一站式调用） ==========
+    # 获取日K数据用于指标分析
+    df_candidate = get_daily_data_from_sqlite(code, days=340)
+    if df_candidate is not None and not df_candidate.empty:
+        lines.append("  - 📊 技术概览:")
+
+        # 创建IndicatorManager实例
+        manager = IndicatorManager()
+        context = {
+            'current_price': current_price,
+            'is_candidate': True,
+            'watch_price': watch_price,
+        }
+
+        # 一站式分析
+        result = manager.analyze_stock(code, df_candidate, context)
+
+        # 直接获取报告内容
+        report_lines = result.get('report_lines', [])
+        lines.extend(report_lines)
+
+        # ========== 抄底机会综合判断 ==========
+        total_score = result.get('total_score', 0)
+
+        # 跌幅评分（候选池特有，跌幅越大抄底机会越好）
+        drop_score = 0
+        if drop_pct <= -10:
+            drop_score = 4
+        elif drop_pct <= -5:
+            drop_score = 2
+        elif drop_pct <= -2:
+            drop_score = 1
+
+        # 抄底机会评价（技术指标评分 + 跌幅评分）
+        combined_score = total_score + drop_score
+
+        if combined_score >= 5:
+            judge = '🟢绝佳'
+        elif combined_score >= 3:
+            judge = '🟢较好'
+        elif combined_score >= 1:
+            judge = '🟡可关注'
+        elif combined_score >= -1:
+            judge = '⚪观望'
+        else:
+            judge = '🔴不宜'
+
+        # 显示抄底机会
+        lines.append(f"    - **抄底机会**: {judge}")
+
+    lines.append("")
+    return lines
+
+
+def generate_candidate_reports(group_size: int = 3):
+    """
+    生成候选池抄底信号报告（按组生成，避免消息过长）
+
+    参数:
+        group_size: 每组的个股数量（默认3）
+
+    返回:
+        list: 报告文本列表
+    """
+    try:
+        signals_result = detect_all_signals_with_trend()
+        candidate_signals = signals_result['candidate_signals']
+
+        if not candidate_signals:
+            return ["## 🎯 候选池抄底信号\n\n候选池为空"]
+
+        # 分组
+        groups = [candidate_signals[i:i + group_size] for i in range(0, len(candidate_signals), group_size)]
+        reports = []
+
+        for idx, group in enumerate(groups, 1):
+            lines = []
+            lines.append(f"## 🎯 候选池抄底信号 ({idx}/{len(groups)})")
+            lines.append("")
+
+            for cs in group:
+                lines.extend(generate_single_candidate_report(cs))
+
+            reports.append('\n'.join(lines))
+
+        return reports
+
+    except Exception as e:
+        logger.warning(f"检测候选池抄底信号失败: {e}")
+        return ["## 🎯 候选池抄底信号\n\n检测失败，请查看日志"]
 
 
 def generate_candidate_report():
@@ -491,126 +700,8 @@ def generate_candidate_report():
     返回:
         str: 候选池抄底信号报告文本
     """
-    lines = []
-    lines.append("## 🎯 候选池抄底信号")
-    lines.append("")
-
-    try:
-        from signal_detector import detect_all_signals_with_trend
-        signals_result = detect_all_signals_with_trend()
-        candidate_signals = signals_result['candidate_signals']
-
-        if not candidate_signals:
-            lines.append("候选池为空")
-            return '\n'.join(lines)
-        
-        for cs in candidate_signals:
-            code = cs['code']
-            name = cs['name']
-            watch_type = cs['watch_type']
-            watch_price = cs['watch_price']
-            current_price = cs['current_price']
-            drop_pct = cs['drop_pct']
-            signals = cs['signals']
-            mine_result = cs['mine_result']
-            
-            # 基本信息行
-            drop_sign = '+' if drop_pct >= 0 else ''
-            drop_color = 'red' if drop_pct > 0 else 'green' if drop_pct < 0 else ''
-            
-            lines.append(f"- **{name} ({code})** — {watch_type}")
-            if drop_color:
-                lines.append(f"  关注价{watch_price:.2f} | 现价<font color=\"{drop_color}\">{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)</font>")
-            else:
-                lines.append(f"  关注价{watch_price:.2f} | 现价{current_price:.2f} ({drop_sign}{drop_pct:.1f}%)")
-
-            # ========== 趋势状态显示 ==========
-            trend = cs.get('trend', {})
-            if trend:
-                trend_type = trend.get('trend_type', '')
-
-                # 趋势状态文本
-                if trend_type == 'uptrend':
-                    trend_text = '📈上涨'
-                elif trend_type == 'downtrend':
-                    trend_text = '📉下跌'
-                elif trend_type == 'sideways':
-                    # 震荡时显示区间
-                    sideways_range = cs.get('sideways_range', '')
-                    if sideways_range:
-                        trend_text = f'🜲震荡 {sideways_range}'
-                    else:
-                        trend_text = '🜲震荡'
-                else:
-                    trend_text = '🜲未知'
-
-                lines.append(f"  - 趋势状态: {trend_text}")
-
-            # 信号列表（只显示关键信号）
-            if signals:
-                for sig in signals:
-                    if sig['type'] in ['no_data', 'mine_warning']:
-                        continue
-                    message = sig.get('message', '')
-                    lines.append(f"  - {message}")
-            
-            # ========== 技术概览（候选池，通过IndicatorManager一站式调用） ==========
-            # 获取日K数据用于指标分析
-            df_candidate = get_daily_data_from_sqlite(code, days=340)
-            if df_candidate is not None and not df_candidate.empty:
-                lines.append("  - 📊 技术概览:")
-
-                # 创建IndicatorManager实例
-                manager = IndicatorManager()
-                context = {
-                    'current_price': current_price,
-                    'is_candidate': True,
-                    'watch_price': watch_price,
-                }
-
-                # 一站式分析
-                result = manager.analyze_stock(code, df_candidate, context)
-
-                # 直接获取报告内容
-                report_lines = result.get('report_lines', [])
-                lines.extend(report_lines)
-
-                # ========== 抄底机会综合判断 ==========
-                total_score = result.get('total_score', 0)
-
-                # 跌幅评分（候选池特有，跌幅越大抄底机会越好）
-                drop_score = 0
-                if drop_pct <= -10:
-                    drop_score = 4
-                elif drop_pct <= -5:
-                    drop_score = 2
-                elif drop_pct <= -2:
-                    drop_score = 1
-
-                # 抄底机会评价（技术指标评分 + 跌幅评分）
-                combined_score = total_score + drop_score
-
-                if combined_score >= 5:
-                    judge = '🟢绝佳'
-                elif combined_score >= 3:
-                    judge = '🟢较好'
-                elif combined_score >= 1:
-                    judge = '🟡可关注'
-                elif combined_score >= -1:
-                    judge = '⚪观望'
-                else:
-                    judge = '🔴不宜'
-
-                # 显示抄底机会
-                lines.append(f"    - **抄底机会**: {judge}")
-
-            lines.append("")
-            
-    except Exception as e:
-        logger.warning(f"检测候选池抄底信号失败: {e}")
-        lines.append("检测失败，请查看日志")
-    
-    return '\n'.join(lines)
+    reports = generate_candidate_reports(group_size=999)  # 不分组，返回完整报告
+    return reports[0] if reports else ""
 
 
 def generate_report(result):
@@ -658,42 +749,62 @@ def generate_report(result):
     return '\n'.join(lines)
 
 
-def save_report_parts(date_str, part1, part2_upper, part2_mine, part3):
+def save_report_parts(date_str, part1, part2_reports, part2_mine_reports, part3_reports):
     """
-    保存4个部分的报告文件
-    - part2_mine（扫雷部分）为空时不保存
+    保存报告文件（支持分组）
 
     参数:
         date_str: 日期字符串
         part1: 大盘分析报告
-        part2_upper: 持仓池风险报告上半部分（不含扫雷）
-        part2_mine: 持仓池扫雷风险报告下半部分（可能为空）
-        part3: 候选池抄底报告
+        part2_reports: 持仓池报告列表
+        part2_mine_reports: 扫雷报告列表
+        part3_reports: 候选池报告列表
 
     返回:
-        tuple: (path1, path2_upper, path2_mine或None, path3)
+        dict: {
+            'part1': str,
+            'part2_upper': list,
+            'part2_mine': list or None,
+            'part3': list,
+        }
     """
     from core.storage import ensure_dirs
     ensure_dirs()
 
     path1 = os.path.join(REPORTS_DIR, f'report_{date_str}_part1.md')
-    path2_upper = os.path.join(REPORTS_DIR, f'report_{date_str}_part2_upper.md')
-    path3 = os.path.join(REPORTS_DIR, f'report_{date_str}_part3.md')
 
     with open(path1, 'w', encoding='utf-8') as f:
         f.write(part1)
 
-    with open(path2_upper, 'w', encoding='utf-8') as f:
-        f.write(part2_upper)
+    # 保存部分2分组报告
+    part2_upper_paths = []
+    for idx, report in enumerate(part2_reports, 1):
+        path = os.path.join(REPORTS_DIR, f'report_{date_str}_part2_upper_{idx}.md')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(report)
+        part2_upper_paths.append(path)
 
-    with open(path3, 'w', encoding='utf-8') as f:
-        f.write(part3)
+    # 保存部分2下半（扫雷）- 支持分组
+    part2_mine_paths = []
+    if part2_mine_reports:
+        for idx, report in enumerate(part2_mine_reports, 1):
+            path = os.path.join(REPORTS_DIR, f'report_{date_str}_part2_mine_{idx}.md')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(report)
+            part2_mine_paths.append(path)
 
-    # 扫雷部分仅在非空时保存
-    path2_mine = None
-    if part2_mine:
-        path2_mine = os.path.join(REPORTS_DIR, f'report_{date_str}_part2_mine.md')
-        with open(path2_mine, 'w', encoding='utf-8') as f:
-            f.write(part2_mine)
+    # 保存部分3分组报告
+    part3_paths = []
+    for idx, report in enumerate(part3_reports, 1):
+        path = os.path.join(REPORTS_DIR, f'report_{date_str}_part3_{idx}.md')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(report)
+        part3_paths.append(path)
 
-    return (path1, path2_upper, path2_mine, path3)
+    return {
+        'part1': path1,
+        'part2_upper': part2_upper_paths,
+        'part2_mine': part2_mine_paths,
+        'part3': part3_paths,
+    }
+

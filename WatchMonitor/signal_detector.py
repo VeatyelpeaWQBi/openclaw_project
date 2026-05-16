@@ -1047,22 +1047,34 @@ def _filter_signals_by_trend(signals: List[Dict], trend_type: str) -> List[Dict]
         List[Dict]: 筛选后的信号列表
     """
     # 定义各趋势类型下保留的信号类型
-    uptrend_keywords = ['top_divergence', 'high_sideways', 'macd_top_divergence',
-                       'ma5_turning', 'ma10_breakdown', 'ma20_breakdown',
-                       'high_upper_shadow', 'st_flip_bear', 'volume_stagnation',
-                       'high_long_upper_shadow', 'breakdown_bull', 'breakdown_medium_bull',
-                       'top_divergence', 'rsi_top_divergence']
+    uptrend_keywords = [
+        # 顶部结构
+        'top_divergence', 'rsi_top_divergence', 'macd_top_divergence',
+        'high_sideways',
+        # 下跌预警
+        'ma5_turning', 'ma10_breakdown', 'ma20_breakdown',
+        'high_upper_shadow', 'high_long_upper_shadow', 'st_flip_bear',
+        'volume_stagnation',
+        # 跌破信号
+        'breakdown_big_bull_candle', 'breakdown_medium_bull_candle',
+    ]
 
-    downtrend_keywords = ['decline_slowdown', 'volume_shrink', 'long_lower_shadows',
-                         'macd_bottom_divergence', 'no_new_low', 'ma_turning_up',
-                         'ma_flat', 'moderate_volume', 'golden_cross',
-                         'bottom_divergence', 'rsi_bottom_divergence',
-                         'volume_shrink_extreme', 'long_lower_shadow']
+    downtrend_keywords = [
+        # 底部结构
+        'bottom_divergence', 'rsi_bottom_divergence', 'macd_bottom_divergence',
+        # 企稳信号
+        'no_new_low', 'decline_slowdown', 'volume_shrink',
+        'long_lower_shadows', 'long_lower_shadow', 'volume_shrink_extreme',
+        # 上涨信号
+        'ma_turning_up', 'ma_flat', 'moderate_volume', 'golden_cross',
+    ]
 
-    sideways_keywords = ['breakout_up', 'breakout_up_volume', 'pullback_hold',
-                        'ma_bullish_arrangement', 'breakout_down',
-                        'breakout_down_volume', 'rebound_blocked',
-                        'ma_bearish_arrangement']
+    sideways_keywords = [
+        # 向上突破
+        'breakout_up', 'breakout_up_volume', 'pullback_hold', 'ma_bullish_arrangement',
+        # 向下突破
+        'breakout_down', 'breakout_down_volume', 'rebound_blocked', 'ma_bearish_arrangement',
+    ]
 
     # 根据趋势类型选择关键词
     if trend_type == 'uptrend':
@@ -1075,18 +1087,17 @@ def _filter_signals_by_trend(signals: List[Dict], trend_type: str) -> List[Dict]
         # 未知趋势，保留所有信号
         return signals
 
-    # 保留匹配的信号，同时保留严重程度高的信号（fatal/critical/high）
     filtered_signals = []
     for sig in signals:
         severity = sig.get('severity', 'info')
         sig_type = sig.get('type', '')
 
-        # 严重程度高的信号始终保留
-        if severity in ['fatal', 'critical', 'high']:
+        # 只保留fatal/critical级别信号（止损、扫雷等）
+        if severity in ['fatal', 'critical']:
             filtered_signals.append(sig)
             continue
 
-        # 检查信号类型是否匹配趋势
+        # 其他级别信号需要匹配趋势类型
         for keyword in keywords:
             if keyword in sig_type:
                 filtered_signals.append(sig)

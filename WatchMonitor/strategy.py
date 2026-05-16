@@ -272,31 +272,36 @@ def main():
     date_str = result['date_str']
 
     # 导入报告生成模块
-    from report import generate_market_report, generate_position_report, generate_position_mine_report, generate_candidate_report, save_report_parts
+    from report import generate_market_report, generate_position_reports, generate_position_mine_reports, generate_candidate_reports, save_report_parts
 
-    # 生成4部分报告（扫雷部分可选）
+    # 生成报告（持仓池和候选池按分组生成）
     part1 = generate_market_report(result)
-    part2_upper = generate_position_report()
-    part2_mine = generate_position_mine_report()
-    part3 = generate_candidate_report()
+    part2_reports = generate_position_reports()  # 返回列表
+    part2_mine_reports = generate_position_mine_reports()  # 返回列表
+    part3_reports = generate_candidate_reports()  # 返回列表
 
     # 输出报告
     print("\n===== 部分1：大盘分析 =====")
     print(part1)
     print("\n===== 部分2上半：持仓池风险 =====")
-    print(part2_upper)
-    if part2_mine:
+    for idx, report in enumerate(part2_reports, 1):
+        print(f"\n--- 持仓池({idx}/{len(part2_reports)}) ---")
+        print(report)
+    if part2_mine_reports:
         print("\n===== 部分2下半：持仓池扫雷风险 =====")
-        print(part2_mine)
+        for idx, report in enumerate(part2_mine_reports, 1):
+            print(f"\n--- 扫雷({idx}/{len(part2_mine_reports)}) ---")
+            print(report)
     print("\n===== 部分3：候选池抄底 =====")
-    print(part3)
+    for idx, report in enumerate(part3_reports, 1):
+        print(f"\n--- 候选池({idx}/{len(part3_reports)}) ---")
+        print(report)
 
-    # 保存报告文件
-    paths = save_report_parts(date_str, part1, part2_upper, part2_mine, part3)
-    path_strs = [paths[0], paths[1]]
-    if paths[2]:
-        path_strs.append(paths[2])
-    path_strs.append(paths[3])
+    # 保存报告文件（新接口支持分组）
+    paths = save_report_parts(date_str, part1, part2_reports, part2_mine_reports, part3_reports)
+    path_strs = [paths['part1']] + paths['part2_upper']
+    path_strs.extend(paths['part2_mine'])
+    path_strs.extend(paths['part3'])
     logger.info(f"报告已保存: {', '.join(path_strs)}")
 
     elapsed = (datetime.now() - start_time).total_seconds()
