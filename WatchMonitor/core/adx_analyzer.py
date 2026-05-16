@@ -248,28 +248,44 @@ def get_stock_adx(code: str, calc_date: Optional[str] = None) -> Optional[dict]:
     """
     if calc_date is None:
         calc_date = datetime.now().strftime('%Y-%m-%d')
-    
+
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
+
+        # 先尝试查询指定日期的数据
         cursor.execute("""
             SELECT adx, plus_di, minus_di
             FROM adx_score
             WHERE code = ? AND calc_date = ?
             ORDER BY calc_date DESC LIMIT 1
         """, (code, calc_date))
-        
+
         row = cursor.fetchone()
+
+        # 如果指定日期没有数据，查询最新的数据
+        if row is None:
+            cursor.execute("""
+                SELECT adx, plus_di, minus_di, calc_date
+                FROM adx_score
+                WHERE code = ?
+                ORDER BY calc_date DESC LIMIT 1
+            """, (code,))
+            result = cursor.fetchone()
+            if result:
+                adx, plus_di, minus_di, actual_date = result
+                row = (adx, plus_di, minus_di)
+                logger.debug(f"[{code}] 使用最新ADX数据: {actual_date}")
+
         conn.close()
 
         if row is None:
             # ETF无ADX数据是正常的，用debug级别
             is_etf = code.startswith(('51', '159', '56', '58'))
             if is_etf:
-                logger.debug(f"[{code}] ETF无ADX数据: {calc_date}")
+                logger.debug(f"[{code}] ETF无ADX数据")
             else:
-                logger.warning(f"[{code}] ADX数据不存在: {calc_date}")
+                logger.warning(f"[{code}] ADX数据不存在")
             return None
         
         adx, plus_di, minus_di = row

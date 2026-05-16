@@ -33,6 +33,7 @@ class ADXIndicator(BaseIndicator):
                 'adx': adx_info.get('adx'),
                 'trend_type': adx_info.get('trend_type'),
                 'display': adx_info.get('display'),
+                'summary': adx_info.get('summary'),
             }
 
     def _detect_signals(self) -> None:

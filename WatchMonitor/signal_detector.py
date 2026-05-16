@@ -104,6 +104,7 @@ def detect_position_risk_signals(position: Dict) -> Dict:
         'name': name,
         'position_type': position_type,
         'entry_price': entry_price,
+        'shares': position.get('shares', 0),  # 新增：持仓股数
         'signals': [],
         'current_price': None,
         'profit_pct': None,
@@ -426,16 +427,21 @@ def detect_all_position_risks() -> List[Dict]:
         result = detect_position_risk_signals(pos)
         results.append(result)
     
-    # 按风险严重度排序
+    # 按持仓类型排序（短线 -> 波段 -> 趋势），同类型内按风险严重度排序
+    position_type_order = {'短线': 0, '波段': 1, '趋势': 2}
     severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
-    
+
+    def get_position_type_priority(x):
+        position_type = x.get('position_type', '趋势')
+        return position_type_order.get(position_type, 2)
+
     def get_max_severity(signals):
         if not signals:
             return 99
         severities = [s.get('severity', 'info') for s in signals]
         return min([severity_order.get(s, 99) for s in severities])
-    
-    results.sort(key=lambda x: get_max_severity(x['signals']))
+
+    results.sort(key=lambda x: (get_position_type_priority(x), get_max_severity(x['signals'])))
     
     return results
 
@@ -946,8 +952,13 @@ def detect_all_position_risks_with_trend() -> List[Dict]:
         result = detect_position_risk_signals_with_trend(pos)
         results.append(result)
 
-    # 按风险严重度排序
+    # 按持仓类型排序（短线 -> 波段 -> 趋势），同类型内按风险严重度排序
+    position_type_order = {'短线': 0, '波段': 1, '趋势': 2}
     severity_order = {'fatal': 0, 'critical': 1, 'high': 2, 'medium': 3, 'warning': 4, 'info': 5, 'positive': 6}
+
+    def get_position_type_priority(x):
+        position_type = x.get('position_type', '趋势')
+        return position_type_order.get(position_type, 2)
 
     def get_max_severity(signals):
         if not signals:
@@ -955,7 +966,7 @@ def detect_all_position_risks_with_trend() -> List[Dict]:
         severities = [s.get('severity', 'info') for s in signals]
         return min([severity_order.get(s, 99) for s in severities])
 
-    results.sort(key=lambda x: get_max_severity(x['signals']))
+    results.sort(key=lambda x: (get_position_type_priority(x), get_max_severity(x['signals'])))
 
     return results
 

@@ -421,13 +421,27 @@ def generate_position_reports(group_size: int = 3):
         if not position_risks:
             return ["## 🚨 持仓池风险信号\n\n持仓池为空"]
 
+        # 计算持仓总市值
+        total_market_value = 0
+        for pr in position_risks:
+            shares = pr.get('shares', 0)
+            current_price = pr.get('current_price', 0)
+            if shares and current_price:
+                total_market_value += shares * current_price
+
         # 分组
         groups = [position_risks[i:i + group_size] for i in range(0, len(position_risks), group_size)]
         reports = []
 
+        # 格式化总市值（万元）
+        if total_market_value >= 10000:
+            total_value_str = f"{total_market_value/10000:.2f}万"
+        else:
+            total_value_str = f"{total_market_value:.0f}"
+
         for idx, group in enumerate(groups, 1):
             lines = []
-            lines.append(f"## 🚨 持仓池风险信号 ({idx}/{len(groups)})")
+            lines.append(f"## 🚨 持仓池风险信号 ({idx}/{len(groups)}) | 总市值: {total_value_str}")
             lines.append("")
 
             for pr in group:
