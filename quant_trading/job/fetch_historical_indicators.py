@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Job: 全量刷新历史RS、ADX、VCP数据
+Job: 全量刷新历史RS、ADX、VCP、技术指标数据
 
 功能：
-  - 全量计算RS、ADX、VCP三个技术指标的历史数据
-  - 支持分别计算或批量计算三个指标
+  - 全量计算RS、ADX、VCP三个技术指标评分的历史数据
+  - 全量计算技术指标（MA、SuperTrend、MACD、RSI、OBV、量比、K线形态）的历史数据
+  - 支持分别计算或批量计算各指标
   - RS：相对强度评分，基于与基准指数的相对表现
   - ADX：平均趋向指数，衡量趋势强度
   - VCP：波动率收缩形态，识别平台整理后的突破机会
+  - 技术指标：MA、SuperTrend、MACD、RSI、OBV、量比、K线形态
 
 用法：
   # 计算所有指标（默认）
@@ -22,11 +24,14 @@ Job: 全量刷新历史RS、ADX、VCP数据
   # 只计算VCP指标
   python job/fetch_historical_indicators.py --indicators vcp
 
+  # 只计算技术指标
+  python job/fetch_historical_indicators.py --indicators indicators
+
   # 计算RS和ADX
   python job/fetch_historical_indicators.py --indicators rs,adx
 
   # 计算所有指标
-  python job/fetch_historical_indicators.py --indicators rs,adx,vcp
+  python job/fetch_historical_indicators.py --indicators rs,adx,vcp,indicators
 
   # 指定基准指数（仅RS使用）
   python job/fetch_historical_indicators.py --benchmark 000510
@@ -49,6 +54,7 @@ if _project_root not in sys.path:
 from strategies.trend_trading.score.rs_core import calc_rs_scores_full
 from strategies.trend_trading.score.adx_core import calc_adx_batch
 from strategies.trend_trading.score.vcp_core import calc_vcp_batch
+from strategies.trend_trading.score.indicators_core import calc_indicators_batch
 
 # 日志配置（移到main块内以避免路径问题）
 logger = logging.getLogger(__name__)
@@ -63,7 +69,7 @@ def run_full(indicators, benchmark=None, adx_period=None):
     全量模式：计算指定指标的历史数据
 
     参数:
-        indicators: list[str] 要计算的指标列表 ['rs', 'adx', 'vcp']
+        indicators: list[str] 要计算的指标列表 ['rs', 'adx', 'vcp', 'indicators']
         benchmark: str 基准指数代码（仅RS使用）
         adx_period: int ADX计算周期
 
@@ -94,6 +100,9 @@ def run_full(indicators, benchmark=None, adx_period=None):
             elif indicator == 'vcp':
                 count = calc_vcp_batch()
                 results['vcp'] = count
+            elif indicator == 'indicators':
+                count = calc_indicators_batch()
+                results['indicators'] = count
             else:
                 logger.warning(f"未知指标: {indicator}，跳过")
                 results[indicator] = 0
@@ -120,9 +129,9 @@ def run_full(indicators, benchmark=None, adx_period=None):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='全量刷新历史RS、ADX、VCP数据')
-    parser.add_argument('--indicators', type=str, default='rs,adx,vcp',
-                        help='要计算的指标，逗号分隔（rs,adx,vcp）')
+    parser = argparse.ArgumentParser(description='全量刷新历史RS、ADX、VCP、技术指标数据')
+    parser.add_argument('--indicators', type=str, default='rs,adx,vcp,indicators',
+                        help='要计算的指标，逗号分隔（rs,adx,vcp,indicators）')
     parser.add_argument('--benchmark', type=str, default=DEFAULT_BENCHMARK,
                         help=f'基准指数代码（仅RS使用，默认{DEFAULT_BENCHMARK}）')
     parser.add_argument('--adx-period', type=int, default=DEFAULT_ADX_PERIOD,
@@ -145,11 +154,11 @@ if __name__ == '__main__':
 
     # 解析指标列表
     indicators = [i.strip().lower() for i in args.indicators.split(',') if i.strip()]
-    valid_indicators = {'rs', 'adx', 'vcp'}
+    valid_indicators = {'rs', 'adx', 'vcp', 'indicators'}
     indicators = [i for i in indicators if i in valid_indicators]
 
     if not indicators:
-        logger.error("没有有效的指标，请指定 rs、adx 或 vcp")
+        logger.error("没有有效的指标，请指定 rs、adx、vcp 或 indicators")
         sys.exit(1)
 
     logger.info(f"=== 开始全量刷新历史指标数据 ===")

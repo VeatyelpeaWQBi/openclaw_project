@@ -243,15 +243,18 @@ def _recalc_scores_for_codes(codes):
         return
 
     logger.info(f"开始全量刷新 {len(codes)} 只股票的历史技术指标...")
-    logger.info(f"指标: RS + ADX + VCP")
+    logger.info(f"指标: RS + ADX + VCP + 技术指标(MA/SuperTrend/MACD/RSI/OBV/量比/K线形态)")
 
     from core.storage import get_daily_data_from_sqlite, save_adx_score, save_vcp_score
     from strategies.trend_trading.score.adx_core import _extract_adx_records, DEFAULT_PERIOD
     from strategies.trend_trading.score.vcp_core import _calc_vcp_for_stock_df
+    from strategies.trend_trading.score.indicators_core import _extract_indicator_records as _extract_ti_records
+    from strategies.trend_trading.score.indicators_core import _save_indicators_batch
 
     total_rs = 0
     total_adx = 0
     total_vcp = 0
+    total_indicators = 0
     failed_codes = []
 
     # 获取基准指数列表
@@ -363,6 +366,21 @@ def _recalc_scores_for_codes(codes):
                 total_rs += rs_count_for_code
                 logger.info(f"  RS: {rs_count_for_code} 条")
 
+            # 5. 技术指标全量刷新
+            try:
+                conn = get_db_connection()
+                conn.execute("DELETE FROM technical_indicators WHERE code = ?", (code,))
+                conn.commit()
+                conn.close()
+
+                ti_records = _extract_ti_records(code, df)
+                if ti_records:
+                    _save_indicators_batch(ti_records)
+                    total_indicators += len(ti_records)
+                    logger.info(f"  技术指标: {len(ti_records)} 条")
+            except Exception as e:
+                logger.warning(f"  {code} 技术指标计算失败: {e}")
+
             # 输出进度
             if idx % 5 == 0 or idx == len(codes):
                 elapsed = time.time() - start_time
@@ -383,6 +401,7 @@ def _recalc_scores_for_codes(codes):
     logger.info(f"  RS: {total_rs} 条")
     logger.info(f"  ADX: {total_adx} 条")
     logger.info(f"  VCP: {total_vcp} 条")
+    logger.info(f"  技术指标: {total_indicators} 条")
     logger.info(f"  失败: {len(failed_codes)} 只")
     logger.info(f"  耗时: {elapsed_str}")
 
