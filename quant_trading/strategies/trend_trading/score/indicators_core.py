@@ -598,7 +598,7 @@ def calc_indicators_batch():
     start_time = time.time()
 
     for idx, code in enumerate(codes):
-        df = get_daily_data_from_sqlite(code)
+        df = get_daily_data_from_sqlite(code, days=10000)
         records = _extract_indicator_records(code, df)
         if records:
             _save_indicators_batch(records)

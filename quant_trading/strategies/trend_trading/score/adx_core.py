@@ -255,7 +255,7 @@ def calc_adx_batch(period: int = DEFAULT_PERIOD) -> int:
     start_time = time.time()
 
     for idx, code in enumerate(codes):
-        df = get_daily_data_from_sqlite(code)
+        df = get_daily_data_from_sqlite(code, days=10000)
         records = _extract_adx_records(code, df, period)
         if records:
             save_adx_score(records)
@@ -437,7 +437,7 @@ def get_adx_score(code: str, calc_date: str, period: int = DEFAULT_PERIOD) -> di
         conn.close()
 
     # 2. DB miss，实时计算
-    df = get_daily_data_from_sqlite(code)
+    df = get_daily_data_from_sqlite(code, days=10000)
     if df.empty or len(df) < period * 2:
         return None
 

@@ -60,7 +60,7 @@ from strategies.trend_trading.score.indicators_core import calc_indicators_batch
 logger = logging.getLogger(__name__)
 
 # 配置参数
-DEFAULT_BENCHMARK = '000510'  # 默认基准指数（中证500）
+DEFAULT_BENCHMARK = '000985'  # 默认基准指数（中证全指）
 DEFAULT_ADX_PERIOD = 14       # 默认ADX周期
 
 

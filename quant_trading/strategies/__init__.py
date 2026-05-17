@@ -2,12 +2,6 @@
 策略包
 包含策略注册表和所有可用策略
 """
-from strategies.trend_trading.strategy import TrendTradingStrategy
-
-# 策略注册表：名称 -> 策略类
-STRATEGY_MAP = {
-    'trend_trading': TrendTradingStrategy,
-}
 
 
 def get_strategy(name='trend_trading'):
@@ -20,6 +14,12 @@ def get_strategy(name='trend_trading'):
     返回:
         BaseStrategy 实例
     """
+    from strategies.trend_trading.strategy import TrendTradingStrategy
+
+    STRATEGY_MAP = {
+        'trend_trading': TrendTradingStrategy,
+    }
+
     cls = STRATEGY_MAP.get(name)
     if cls is None:
         raise ValueError(f"未知策略: {name}，可用: {list(STRATEGY_MAP.keys())}")

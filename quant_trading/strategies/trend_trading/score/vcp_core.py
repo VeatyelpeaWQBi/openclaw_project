@@ -607,7 +607,7 @@ def calc_vcp_batch():
     start_time = time.time()
 
     for idx, code in enumerate(codes):
-        df = get_daily_data_from_sqlite(code)
+        df = get_daily_data_from_sqlite(code, days=10000)
         if df.empty:
             continue
 
