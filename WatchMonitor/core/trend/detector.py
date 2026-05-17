@@ -271,12 +271,12 @@ class TrendDetector:
         - SuperTrend空头且稳定：0分
         - 频繁切换：50分
         """
-        if len(df) < 20:
+        if len(df) < 100:
             return 50, {'reason': '数据不足'}
 
         try:
             from core.indicator_funcs import calculate_supertrend, check_supertrend_flip
-            st_df = calculate_supertrend(df, atr_period=10, multiplier=3.0)
+            st_df = calculate_supertrend(df, atr_period=90, multiplier=3.0)
 
             if st_df is None or st_df.empty:
                 return 50, {'reason': 'SuperTrend计算失败'}

@@ -6,6 +6,7 @@ SuperTrend技术指标模块
 - 提供信号、报告、评分输出
 """
 
+from datetime import datetime
 from typing import Dict, List
 from pandas import DataFrame
 
@@ -23,7 +24,32 @@ class SuperTrendIndicator(BaseIndicator):
         if self.df is None or self.df.empty:
             return
 
-        atr_period = self.params.get('atr_period', 10)
+        code = self.context.get('code')
+        if not code:
+            # 无代码，直接计算
+            self._calculate_realtime()
+            return
+
+        # 优先从DB读取
+        from core.storage import get_technical_indicators
+        today = datetime.now().strftime('%Y-%m-%d')
+        db_data = get_technical_indicators(code, today)
+
+        if db_data:
+            self._data = {
+                'st_direction': db_data.get('st_direction'),
+                'st_upper_band': db_data.get('st_upper_band'),
+                'st_lower_band': db_data.get('st_lower_band'),
+                'st_atr': db_data.get('st_atr'),
+            }
+            return
+
+        # 回退到实时计算
+        self._calculate_realtime()
+
+    def _calculate_realtime(self) -> None:
+        """实时计算SuperTrend指标"""
+        atr_period = self.params.get('atr_period', 90)
         multiplier = self.params.get('multiplier', 3.0)
 
         # 调用原有计算函数

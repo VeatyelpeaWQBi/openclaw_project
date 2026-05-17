@@ -473,13 +473,13 @@ def calculate_atr(df, period=14):
     return atr
 
 
-def calculate_supertrend(df, atr_period=10, multiplier=3.0):
+def calculate_supertrend(df, atr_period=90, multiplier=3.0):
     """
     计算SuperTrend指标
 
     参数:
         df: DataFrame，需要包含 high, low, close 列
-        atr_period: ATR周期，默认10
+        atr_period: ATR周期，默认90
         multiplier: ATR乘数，默认3.0
 
     返回:
@@ -546,13 +546,13 @@ def calculate_supertrend(df, atr_period=10, multiplier=3.0):
     })
 
 
-def is_supertrend_bullish(df, atr_period=10, multiplier=3.0):
+def is_supertrend_bullish(df, atr_period=90, multiplier=3.0):
     """
     判断SuperTrend是否为多头趋势
 
     参数:
         df: DataFrame，需要包含 high, low, close 列
-        atr_period: ATR周期，默认10
+        atr_period: ATR周期，默认90
         multiplier: ATR乘数，默认3.0
 
     返回:
@@ -894,13 +894,13 @@ def check_breakdown_medium_bull_candle(df, lookback=20, min_change_pct=2.5, max_
 
 # ==================== SuperTrend翻空检测 ====================
 
-def check_supertrend_flip(df, atr_period=10, multiplier=3.0):
+def check_supertrend_flip(df, atr_period=90, multiplier=3.0):
     """
     检测SuperTrend翻空/翻多
 
     参数:
         df: DataFrame
-        atr_period: ATR周期
+        atr_period: ATR周期，默认90
         multiplier: ATR乘数
 
     返回:
@@ -936,13 +936,13 @@ def check_supertrend_flip(df, atr_period=10, multiplier=3.0):
     return None
 
 
-def check_weekly_supertrend_flip(daily_df, atr_period=10, multiplier=3.0):
+def check_weekly_supertrend_flip(daily_df, atr_period=20, multiplier=3.0):
     """
     检测周线SuperTrend翻空/翻多
 
     参数:
         daily_df: 日K DataFrame
-        atr_period: ATR周期
+        atr_period: ATR周期，默认20周（约100个交易日）
         multiplier: ATR乘数
 
     返回:
@@ -984,7 +984,7 @@ def calculate_all_indicators(df):
     result.update(ma_slopes)
 
     # SuperTrend
-    st = calculate_supertrend(df, atr_period=10, multiplier=3.0)
+    st = calculate_supertrend(df, atr_period=90, multiplier=3.0)
     if not st.empty and len(st) > 0:
         result['st_upper_band'] = round(st['upper_band'].iloc[-1], 3) if not pd.isna(st['upper_band'].iloc[-1]) else None
         result['st_lower_band'] = round(st['lower_band'].iloc[-1], 3) if not pd.isna(st['lower_band'].iloc[-1]) else None

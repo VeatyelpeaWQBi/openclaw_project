@@ -6,6 +6,7 @@ K线形态技术指标模块
 - 提供信号、报告、评分输出
 """
 
+from datetime import datetime
 from typing import Dict, List
 from pandas import DataFrame
 
@@ -23,6 +24,31 @@ class CandleIndicator(BaseIndicator):
         if self.df is None or self.df.empty:
             return
 
+        code = self.context.get('code')
+        if not code:
+            # 无代码，直接计算
+            self._calculate_realtime()
+            return
+
+        # 优先从DB读取
+        from core.storage import get_technical_indicators
+        today = datetime.now().strftime('%Y-%m-%d')
+        db_data = get_technical_indicators(code, today)
+
+        if db_data:
+            self._data = {
+                'is_long_upper_shadow': db_data.get('is_long_upper_shadow', 0),
+                'is_long_lower_shadow': db_data.get('is_long_lower_shadow', 0),
+                'is_bullish_candle': db_data.get('is_bullish_candle', 0),
+                'is_bearish_candle': db_data.get('is_bearish_candle', 0),
+            }
+            return
+
+        # 回退到实时计算（K线形态信号检测需要完整数据）
+        self._calculate_realtime()
+
+    def _calculate_realtime(self) -> None:
+        """实时计算K线形态"""
         from core.indicator_funcs import identify_candle_patterns
 
         self._data = identify_candle_patterns(self.df) or {}

@@ -6,6 +6,7 @@ MA均线技术指标模块
 - 提供信号、报告、评分输出
 """
 
+from datetime import datetime
 from typing import Dict, List
 from pandas import DataFrame
 
@@ -23,6 +24,32 @@ class MAIndicator(BaseIndicator):
         if self.df is None or self.df.empty:
             return
 
+        code = self.context.get('code')
+        if not code:
+            # 无代码，直接计算
+            self._calculate_realtime()
+            return
+
+        # 优先从DB读取
+        from core.storage import get_technical_indicators
+        today = datetime.now().strftime('%Y-%m-%d')
+        db_data = get_technical_indicators(code, today)
+
+        if db_data:
+            self._data = {}
+            periods = self.params.get('periods', [5, 10, 20, 60, 120, 250])
+            slope_periods = self.params.get('slope_periods', [5, 10, 20])
+            for period in periods:
+                self._data[f'ma{period}'] = db_data.get(f'ma{period}')
+            for period in slope_periods:
+                self._data[f'ma{period}_slope'] = db_data.get(f'ma{period}_slope', 0)
+            return
+
+        # 回退到实时计算
+        self._calculate_realtime()
+
+    def _calculate_realtime(self) -> None:
+        """实时计算MA均线指标"""
         periods = self.params.get('periods', [5, 10, 20, 60, 120, 250])
         slope_periods = self.params.get('slope_periods', [5, 10, 20])
 

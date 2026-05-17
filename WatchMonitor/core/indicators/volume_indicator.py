@@ -6,6 +6,7 @@
 - 提供信号、报告、评分输出
 """
 
+from datetime import datetime
 from typing import Dict, List
 from pandas import DataFrame
 
@@ -23,6 +24,29 @@ class VolumeIndicator(BaseIndicator):
         if self.df is None or self.df.empty:
             return
 
+        code = self.context.get('code')
+        if not code:
+            # 无代码，直接计算
+            self._calculate_realtime()
+            return
+
+        # 优先从DB读取
+        from core.storage import get_technical_indicators
+        today = datetime.now().strftime('%Y-%m-%d')
+        db_data = get_technical_indicators(code, today)
+
+        if db_data:
+            periods = self.params.get('periods', [5, 20])
+            self._data = {}
+            for period in periods:
+                self._data[f'volume_ratio_{period}'] = db_data.get(f'volume_ratio_{period}')
+            return
+
+        # 回退到实时计算
+        self._calculate_realtime()
+
+    def _calculate_realtime(self) -> None:
+        """实时计算量比指标"""
         periods = self.params.get('periods', [5, 20])
 
         from core.indicator_funcs import calculate_volume_ratio
