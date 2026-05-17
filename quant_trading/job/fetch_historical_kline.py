@@ -36,14 +36,7 @@ from core.paths import DB_PATH
 from core.storage import get_db_connection, batch_upsert_daily_kline
 from core.data_access import _sina_daily_kline
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler('logs/fetch_historical_kline.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
+# 日志配置（移到main块内以避免路径问题）
 logger = logging.getLogger(__name__)
 
 # 配置参数
@@ -315,6 +308,16 @@ if __name__ == '__main__':
 
     # 确保日志目录存在
     os.makedirs('logs', exist_ok=True)
+
+    # 配置日志
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler('logs/fetch_historical_kline.log', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
 
     if args.codes:
         # 测试模式
