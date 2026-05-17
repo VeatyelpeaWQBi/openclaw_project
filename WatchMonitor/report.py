@@ -10,11 +10,12 @@ import sys
 
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 添加根目录路径
 
 from core.data_access import get_index_realtime, get_market_sentiment, get_market_volume_compare
 from core.paths import REPORTS_DIR
 from core.storage import get_daily_data_from_sqlite
-from core.indicators.manager import IndicatorManager
+from indicators import IndicatorManager
 from signal_detector import detect_all_signals_with_trend
 from fetch_fear_index import get_fear_index
 

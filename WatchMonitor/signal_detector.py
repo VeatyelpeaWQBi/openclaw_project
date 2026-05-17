@@ -10,6 +10,7 @@ import os
 
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 添加根目录路径
 
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -38,7 +39,7 @@ from core.indicator_funcs import (
     check_breakdown_big_bull_candle,
     check_breakdown_medium_bull_candle
 )
-from core.indicators.manager import IndicatorManager
+from indicators import IndicatorManager
 from core.trend.analyzer import TrendAnalyzer
 
 logger = logging.getLogger(__name__)

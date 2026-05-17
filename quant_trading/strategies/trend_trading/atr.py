@@ -4,10 +4,15 @@
 """
 
 import logging
+import sys
+import os
 
 import pandas as pd
 
-from core.indicators import calculate_atr
+# 添加根目录路径以引用公共模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+
+from indicators.utils import calculate_atr
 
 logger = logging.getLogger(__name__)
 

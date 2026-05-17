@@ -6,6 +6,8 @@
 - 通过配置循环调用（责任链模式）
 - 汇总评分和报告，返回完整分析结果
 - 分析完毕后释放所有指标对象
+
+公共模块：可被 WatchMonitor 和 quant_trading 两个项目引用
 """
 
 import os
@@ -38,17 +40,36 @@ class IndicatorManager:
         初始化管理器
 
         参数:
-            config_path: YAML配置文件路径（默认使用根目录config）
+            config_path: YAML配置文件路径（默认使用项目根目录config）
         """
         if config_path is None:
-            # 使用根目录config（向上4级）
-            root_config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'config')
-            config_path = os.path.join(root_config_dir, 'indicators.yaml')
+            # 尝试多个可能的配置路径
+            config_path = self._find_config_path()
 
         self.config_path = config_path
         self.config: Dict = {}
         self._load_config()
         self._load_registry()
+
+    def _find_config_path(self) -> str:
+        """查找 indicators.yaml 配置文件"""
+        possible_paths = [
+            # 相对路径：从当前模块位置向上找项目根目录
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'indicators.yaml'),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'indicators.yaml'),
+            # 环境变量
+            os.environ.get('INDICATORS_CONFIG', ''),
+        ]
+
+        for path in possible_paths:
+            if path and os.path.exists(path):
+                logger.info(f"找到指标配置文件: {path}")
+                return path
+
+        # 默认使用相对路径
+        default_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'indicators.yaml')
+        logger.warning(f"未找到指标配置文件，使用默认路径: {default_path}")
+        return default_path
 
     def _load_config(self) -> None:
         """加载YAML配置"""
@@ -76,7 +97,8 @@ class IndicatorManager:
 
         for name, (module_name, class_name) in registry_map.items():
             try:
-                module = importlib.import_module(f'core.indicators.{module_name}')
+                # 使用当前模块的包名作为前缀
+                module = importlib.import_module(f'{self.__module__}.{module_name}')
                 cls = getattr(module, class_name)
                 self._indicator_registry[name] = cls
             except Exception as e:

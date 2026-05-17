@@ -233,33 +233,161 @@ def _adjust_dividend_stocks(queue):
     return success_count
 
 
-def _recalc_scores_for_codes(codes, today):
-    """重新计算指定股票的技术指标（只计算刷新的股票）"""
+def _recalc_scores_for_codes(codes):
+    """
+    重新计算指定股票的全量历史技术指标
+
+    除权除息后，复权价格变化会影响所有历史指标，需要全量重新计算
+    """
     if not codes:
         return
 
-    logger.info(f"重新计算 {len(codes)} 只股票的技术指标...")
+    logger.info(f"开始全量刷新 {len(codes)} 只股票的历史技术指标...")
+    logger.info(f"指标: RS + ADX + VCP")
 
-    try:
-        index_codes = get_watchlist_index_codes()
-        if not index_codes:
-            index_codes = ['000510']
+    from core.storage import get_daily_data_from_sqlite, save_adx_score, save_vcp_score
+    from strategies.trend_trading.score.adx_core import _extract_adx_records, DEFAULT_PERIOD
+    from strategies.trend_trading.score.vcp_core import _calc_vcp_for_stock_df
 
-        max_lookback = 250
-        stock_data, index_closes, all_dates = preload_data(
-            codes, index_codes[0], today, max_lookback
-        )
+    total_rs = 0
+    total_adx = 0
+    total_vcp = 0
+    failed_codes = []
 
-        if all_dates:
-            vcp_count, adx_count = run_scores_without_index(stock_data, all_dates, days=1)
+    # 获取基准指数列表
+    index_codes = get_watchlist_index_codes()
+    if not index_codes:
+        index_codes = ['000510']
 
-            rs_count = 0
+    start_time = time.time()
+
+    for idx, code in enumerate(codes, 1):
+        try:
+            logger.info(f"[{idx}/{len(codes)}] 处理 {code}...")
+
+            # 1. 获取股票历史日K数据（使用足够大的天数获取全部）
+            df = get_daily_data_from_sqlite(code, days=10000)
+            if df.empty or len(df) < 250:
+                logger.warning(f"  {code} 数据不足，跳过")
+                failed_codes.append(code)
+                continue
+
+            # 2. ADX 全量刷新
+            try:
+                conn = get_db_connection()
+                conn.execute("DELETE FROM adx_score WHERE code = ?", (code,))
+                conn.commit()
+                conn.close()
+
+                adx_records = _extract_adx_records(code, df, DEFAULT_PERIOD)
+                if adx_records:
+                    save_adx_score(adx_records)
+                    total_adx += len(adx_records)
+                    logger.info(f"  ADX: {len(adx_records)} 条")
+            except Exception as e:
+                logger.warning(f"  {code} ADX计算失败: {e}")
+
+            # 3. VCP 全量刷新
+            try:
+                conn = get_db_connection()
+                conn.execute("DELETE FROM vcp_score WHERE code = ?", (code,))
+                conn.commit()
+                conn.close()
+
+                vcp_records = _calc_vcp_for_stock_df(code, df)
+                if vcp_records:
+                    save_vcp_score(vcp_records)
+                    total_vcp += len(vcp_records)
+                    logger.info(f"  VCP: {len(vcp_records)} 条")
+            except Exception as e:
+                logger.warning(f"  {code} VCP计算失败: {e}")
+
+            # 4. RS 全量刷新（需要对每个基准指数计算）
+            rs_count_for_code = 0
             for index_code in index_codes:
-                rs_count += run_rs(index_code, stock_data, all_dates, days=1)
+                try:
+                    # 删除该股票在这个基准指数下的RS数据
+                    conn = get_db_connection()
+                    conn.execute("DELETE FROM rs_score WHERE code = ? AND benchmark_code = ?",
+                                (code, index_code))
+                    conn.commit()
+                    conn.close()
 
-            logger.info(f"技术指标重新计算完成: VCP={vcp_count}, ADX={adx_count}, RS={rs_count}")
-    except Exception as e:
-        logger.error(f"技术指标计算失败: {e}")
+                    # 计算RS
+                    from strategies.trend_trading.score.rs_core import (
+                        calc_rs_for_date, get_all_trade_dates, get_index_members,
+                        load_index_closes, load_stock_closes
+                    )
+
+                    trade_days = get_all_trade_dates()
+                    stock_codes = get_index_members(index_code)
+                    if code not in stock_codes:
+                        continue
+
+                    lookback = 250
+                    start_date = trade_days[0]
+                    end_date = trade_days[-1]
+
+                    index_closes = load_index_closes(index_code, start_date, end_date)
+                    stock_closes = load_stock_closes([code], start_date, end_date)
+
+                    if not index_closes or code not in stock_closes:
+                        continue
+
+                    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                    # 遍历所有可计算的日期
+                    for calc_idx in range(lookback, len(trade_days)):
+                        calc_date = trade_days[calc_idx]
+                        past_date = trade_days[calc_idx - lookback]
+
+                        result = calc_rs_for_date(
+                            stock_closes, index_closes, [code], calc_date, past_date
+                        )
+
+                        if result:
+                            from core.storage import batch_upsert_rs_score
+                            batch_upsert_rs_score([
+                                (code, index_code, calc_date,
+                                 round(r['rs_ratio'], 6), r['rs_score'], r['rs_rank'],
+                                 round(r['stock_return'], 6), round(r['benchmark_return'], 6),
+                                 lookback, now_str)
+                                for r in result if r[0] == code
+                            ])
+                            rs_count_for_code += 1
+
+                except Exception as e:
+                    logger.warning(f"  {code} RS({index_code})计算失败: {e}")
+
+            if rs_count_for_code > 0:
+                total_rs += rs_count_for_code
+                logger.info(f"  RS: {rs_count_for_code} 条")
+
+            # 输出进度
+            if idx % 5 == 0 or idx == len(codes):
+                elapsed = time.time() - start_time
+                speed = idx / elapsed if elapsed > 0 else 0
+                logger.info(f"  进度: {idx}/{len(codes)}, 速度: {speed:.1f}只/秒")
+
+            # 间隔防止CPU占用过高
+            time.sleep(0.1)
+
+        except Exception as e:
+            logger.error(f"  {code} 处理失败: {e}")
+            failed_codes.append(code)
+
+    elapsed = time.time() - start_time
+    elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
+
+    logger.info(f"技术指标全量刷新完成:")
+    logger.info(f"  RS: {total_rs} 条")
+    logger.info(f"  ADX: {total_adx} 条")
+    logger.info(f"  VCP: {total_vcp} 条")
+    logger.info(f"  失败: {len(failed_codes)} 只")
+    logger.info(f"  耗时: {elapsed_str}")
+
+    if failed_codes:
+        logger.warning(f"失败的股票代码: {', '.join(failed_codes[:10])}")
 
 
 def fetch_all_market():
@@ -661,7 +789,7 @@ def run():
     # 步骤3：如果收盘后（或中午休盘时间），执行复权刷新
     if adjustment_queue and _is_market_closed():
         _adjust_dividend_stocks(adjustment_queue)
-        _recalc_scores_for_codes([item['code'] for item in adjustment_queue], context_date)
+        _recalc_scores_for_codes([item['code'] for item in adjustment_queue])
 
     # 步骤4：计算评分
     score_result = _update_scores(context_date)

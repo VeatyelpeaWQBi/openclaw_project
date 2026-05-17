@@ -18,11 +18,16 @@
 """
 
 import logging
+import sys
+import os
+
+# 添加根目录路径以引用公共模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from strategies.trend_trading.breakout import check_entry_signal, check_exit_signal
 from strategies.trend_trading.filters import trend_filter, is_eligible
 from strategies.trend_trading.atr import get_atr_value
-from core.indicators import is_supertrend_bullish
+from indicators.utils import is_supertrend_bullish
 from config.entry_filter import ENTRY_FILTER_CONFIG
 from strategies.trend_trading.score.composite_score import rank_signals
 from datetime import datetime as _dt

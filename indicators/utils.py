@@ -1,13 +1,18 @@
 """
-通用技术指标模块
-包含：SuperTrend指标、量比计算、周K转换等通用指标函数
+通用技术指标计算函数
+
+提供基础的指标计算函数，用于量化交易项目
+包含：SuperTrend指标、ATR、量比计算、周K转换等
+
+使用方式：
+    from indicators.utils import calculate_supertrend, calculate_atr, is_supertrend_bullish
 """
 
 import pandas as pd
 import numpy as np
 
 
-# ==================== SuperTrend 指标 ====================
+# ==================== ATR ====================
 
 def calculate_atr(df, period=14):
     """
@@ -43,6 +48,8 @@ def calculate_atr(df, period=14):
 
     return atr
 
+
+# ==================== SuperTrend 指标 ====================
 
 def calculate_supertrend(df, atr_period=10, multiplier=3.0):
     """
@@ -161,110 +168,6 @@ def check_multi_timeframe_supertrend(df_daily, df_weekly, atr_period=10, multipl
     daily_bullish = is_supertrend_bullish(df_daily, atr_period, multiplier) if not df_daily.empty else False
     weekly_bullish = is_supertrend_bullish(df_weekly, atr_period, multiplier) if not df_weekly.empty else False
     return daily_bullish, weekly_bullish, daily_bullish and weekly_bullish
-
-
-def get_supertrend_at_date(stock_code, target_date, lookback_days=60, atr_period=10, multiplier=3.0, db_path=None):
-    """
-    查询指定日期的SuperTrend多空趋势
-
-    基于交易日历回溯指定天数的交易日，查询日K数据后计算SuperTrend，
-    返回目标日期的趋势状态。
-
-    参数:
-        stock_code: 股票代码，如 '002261'
-        target_date: 目标日期，如 '2026-01-12'
-        lookback_days: 回溯交易日天数，默认60
-        atr_period: ATR周期，默认10
-        multiplier: ATR乘数，默认3.0
-        db_path: 数据库路径，默认使用项目配置
-
-    返回:
-        dict: {
-            'stock_code': str,
-            'target_date': str,
-            'is_bullish': bool,  # True=多头, False=空头
-            'close': float,     # 目标日期收盘价
-            'upper_band': float, # 上轨值
-            'lower_band': float, # 下轨值
-            'valid': bool       # 数据是否有效
-        }
-    """
-    from core.paths import DB_PATH
-    import sqlite3
-
-    if db_path is None:
-        db_path = DB_PATH
-
-    conn = sqlite3.connect(db_path)
-    try:
-        # 1. 查询交易日历，找到target_date及往前lookback_days个交易日
-        cursor = conn.execute(
-            "SELECT trade_date FROM trade_calendar WHERE trade_status=1 AND trade_date <= ? ORDER BY trade_date DESC LIMIT ?",
-            (target_date, lookback_days + 1)
-        )
-        trade_dates = [row[0] for row in cursor.fetchall()]
-        trade_dates.reverse()  # 升序
-
-        if len(trade_dates) < atr_period + 1:
-            return {
-                'stock_code': stock_code,
-                'target_date': target_date,
-                'is_bullish': False,
-                'close': 0.0,
-                'upper_band': 0.0,
-                'lower_band': 0.0,
-                'valid': False
-            }
-
-        start_date = trade_dates[0]
-        end_date = trade_dates[-1]
-
-        # 2. 查询该区间内的日K数据
-        df = pd.read_sql(
-            f'SELECT date, open, high, low, close, volume FROM daily_kline WHERE code=? AND date >= ? AND date <= ? ORDER BY date ASC',
-            conn, params=(stock_code, start_date, end_date)
-        )
-    finally:
-        conn.close()
-
-    if df.empty or len(df) < atr_period + 1:
-        return {
-            'stock_code': stock_code,
-            'target_date': target_date,
-            'is_bullish': False,
-            'close': 0.0,
-            'upper_band': 0.0,
-            'lower_band': 0.0,
-            'valid': False
-        }
-
-    df = df.set_index('date')
-
-    # 3. 计算SuperTrend
-    st = calculate_supertrend(df, atr_period, multiplier)
-
-    # 4. 找到目标日期的结果
-    if target_date not in st.index:
-        return {
-            'stock_code': stock_code,
-            'target_date': target_date,
-            'is_bullish': False,
-            'close': 0.0,
-            'upper_band': 0.0,
-            'lower_band': 0.0,
-            'valid': False
-        }
-
-    idx = st.index.get_loc(target_date)
-    return {
-        'stock_code': stock_code,
-        'target_date': target_date,
-        'is_bullish': bool(st['supertrend'].iloc[idx]),
-        'close': float(df['close'].iloc[idx]),
-        'upper_band': float(st['upper_band'].iloc[idx]) if pd.notna(st['upper_band'].iloc[idx]) else 0.0,
-        'lower_band': float(st['lower_band'].iloc[idx]) if pd.notna(st['lower_band'].iloc[idx]) else 0.0,
-        'valid': True
-    }
 
 
 # ==================== 量比计算 ====================
