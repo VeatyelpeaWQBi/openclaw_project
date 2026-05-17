@@ -597,7 +597,11 @@ def init_technical_indicators_table():
                 -- 量比
                 volume_ratio_5 REAL,
                 volume_ratio_20 REAL,
-                
+
+                -- OBV能量潮
+                obv REAL,
+                ma_obv REAL,  -- OBV的10日均线
+
                 -- K线形态
                 is_long_upper_shadow INTEGER DEFAULT 0,
                 is_long_lower_shadow INTEGER DEFAULT 0,
@@ -640,11 +644,11 @@ def save_technical_indicators(code: str, indicators: dict) -> bool:
              st_upper_band, st_lower_band, st_direction, st_atr,
              macd_dif, macd_dea, macd_histogram,
              macd_histogram_slope, macd_dif_slope, macd_dea_slope, macd_slope_summary,
-             rsi_14, volume_ratio_5, volume_ratio_20,
+             rsi_14, volume_ratio_5, volume_ratio_20, obv, ma_obv,
              is_long_upper_shadow, is_long_lower_shadow,
              is_bullish_candle, is_bearish_candle,
              created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             code, indicators.get('calc_date'),
             indicators.get('ma5'), indicators.get('ma10'), indicators.get('ma20'),
@@ -657,6 +661,7 @@ def save_technical_indicators(code: str, indicators: dict) -> bool:
             indicators.get('macd_dea_slope', 0), indicators.get('macd_slope_summary', '→震荡'),
             indicators.get('rsi_14'),
             indicators.get('volume_ratio_5'), indicators.get('volume_ratio_20'),
+            indicators.get('obv'), indicators.get('ma_obv'),
             indicators.get('is_long_upper_shadow', 0), indicators.get('is_long_lower_shadow', 0),
             indicators.get('is_bullish_candle', 0), indicators.get('is_bearish_candle', 0),
             indicators.get('created_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
@@ -860,6 +865,27 @@ def batch_update_technical_indicators(force: bool = False) -> dict:
             # 量比
             indicators['volume_ratio_5'] = calculate_volume_ratio(df, 5)
             indicators['volume_ratio_20'] = calculate_volume_ratio(df, 20)
+
+            # OBV能量潮
+            obv_values = [0]
+            close = df['close'].values
+            volume = df['volume'].values
+            for i in range(1, len(close)):
+                prev_obv = obv_values[-1]
+                if close[i] > close[i-1]:
+                    obv_values.append(prev_obv + volume[i])
+                elif close[i] < close[i-1]:
+                    obv_values.append(prev_obv - volume[i])
+                else:
+                    obv_values.append(prev_obv)
+
+            indicators['obv'] = int(obv_values[-1])
+
+            # OBV的30日均线
+            if len(obv_values) >= 30:
+                indicators['ma_obv'] = round(pd.Series(obv_values).rolling(30).mean().iloc[-1], 2)
+            else:
+                indicators['ma_obv'] = None
 
             # K线形态
             candle_data = identify_candle_patterns(df) or {}

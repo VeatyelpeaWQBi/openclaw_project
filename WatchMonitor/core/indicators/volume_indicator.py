@@ -40,6 +40,8 @@ class VolumeIndicator(BaseIndicator):
             self._data = {}
             for period in periods:
                 self._data[f'volume_ratio_{period}'] = db_data.get(f'volume_ratio_{period}')
+            self._data['obv'] = db_data.get('obv')
+            self._data['ma_obv'] = db_data.get('ma_obv')
             return
 
         # 回退到实时计算
@@ -54,6 +56,48 @@ class VolumeIndicator(BaseIndicator):
         self._data = {}
         for period in periods:
             self._data[f'volume_ratio_{period}'] = calculate_volume_ratio(self.df, period)
+
+        # OBV计算
+        obv, ma_obv = self._calculate_obv()
+        self._data['obv'] = obv
+        self._data['ma_obv'] = ma_obv
+
+    def _calculate_obv(self) -> tuple:
+        """
+        计算OBV能量潮及其均线
+
+        返回:
+            tuple: (obv值, ma_obv值)
+        """
+        if self.df.empty or len(self.df) < 2:
+            return 0, None
+
+        if 'close' not in self.df.columns or 'volume' not in self.df.columns:
+            return 0, None
+
+        close = self.df['close'].values
+        volume = self.df['volume'].values
+
+        # 计算OBV序列
+        obv_values = [0]
+        for i in range(1, len(close)):
+            prev_obv = obv_values[-1]
+            if close[i] > close[i-1]:
+                obv_values.append(prev_obv + volume[i])
+            elif close[i] < close[i-1]:
+                obv_values.append(prev_obv - volume[i])
+            else:
+                obv_values.append(prev_obv)
+
+        obv = int(obv_values[-1])
+
+        # 计算OBV的30日均线
+        ma_obv = None
+        if len(obv_values) >= 30:
+            import pandas as pd
+            ma_obv = round(pd.Series(obv_values).rolling(30).mean().iloc[-1], 2)
+
+        return obv, ma_obv
 
     def _detect_signals(self) -> None:
         """检测量比信号"""
