@@ -161,11 +161,6 @@ class WatchMonitorStrategy:
                 'metadata': dict,      # 额外元数据
             }
         """
-        # 新增：增量更新技术指标
-        from core.storage import batch_update_technical_indicators
-        update_result = batch_update_technical_indicators()
-        logger.info(f"技术指标更新: {update_result}")
-
         date_str = get_last_trading_date().strftime('%Y-%m-%d')
 
         # 1. 获取热门板块排名

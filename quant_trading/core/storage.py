@@ -1319,3 +1319,54 @@ def update_position_atr(account_id: int, code: str, new_atr: float) -> bool:
         return False
     finally:
         conn.close()
+
+
+# ==================== 技术指标保存 ====================
+
+def save_technical_indicators(code: str, indicators: dict) -> bool:
+    """
+    保存技术指标到数据库
+    """
+    if not indicators or 'calc_date' not in indicators:
+        logger.warning(f"技术指标数据无效: {code}")
+        return False
+
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO technical_indicators
+            (code, calc_date, ma5, ma10, ma20, ma60, ma120, ma250,
+             ma5_slope, ma10_slope, ma20_slope,
+             st_upper_band, st_lower_band, st_direction, st_atr,
+             macd_dif, macd_dea, macd_histogram,
+             rsi_14, volume_ratio_5, volume_ratio_20,
+             is_long_upper_shadow, is_long_lower_shadow,
+             is_bullish_candle, is_bearish_candle,
+             created_at, obv, ma_obv,
+             macd_histogram_slope, macd_dif_slope, macd_dea_slope, macd_slope_summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            code, indicators.get('calc_date'),
+            indicators.get('ma5'), indicators.get('ma10'), indicators.get('ma20'),
+            indicators.get('ma60'), indicators.get('ma120'), indicators.get('ma250'),
+            indicators.get('ma5_slope'), indicators.get('ma10_slope'), indicators.get('ma20_slope'),
+            indicators.get('st_upper_band'), indicators.get('st_lower_band'),
+            indicators.get('st_direction'), indicators.get('st_atr'),
+            indicators.get('macd_dif'), indicators.get('macd_dea'), indicators.get('macd_histogram'),
+            indicators.get('rsi_14'),
+            indicators.get('volume_ratio_5'), indicators.get('volume_ratio_20'),
+            indicators.get('is_long_upper_shadow', 0), indicators.get('is_long_lower_shadow', 0),
+            indicators.get('is_bullish_candle', 0), indicators.get('is_bearish_candle', 0),
+            indicators.get('created_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+            indicators.get('obv'), indicators.get('ma_obv'),
+            indicators.get('macd_histogram_slope', 0), indicators.get('macd_dif_slope', 0),
+            indicators.get('macd_dea_slope', 0), indicators.get('macd_slope_summary', '→震荡')
+        ))
+        conn.commit()
+        logger.debug(f"保存技术指标: {code} {indicators.get('calc_date')}")
+        return True
+    except Exception as e:
+        logger.error(f"保存技术指标失败: {e}")
+        return False
+    finally:
+        conn.close()

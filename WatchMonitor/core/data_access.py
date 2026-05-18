@@ -460,35 +460,71 @@ def get_index_realtime():
 def get_market_sentiment():
     """
     获取市场情绪（上涨/下跌/涨停/跌停）
+    基于本地数据库日K表统计，按所属市场区分涨跌停标准
+
+    涨跌停标准:
+        - 主板(60xxx/00xxx): ±10%
+        - 创业板(30xxx): ±20%
+        - 科创板(68xxx): ±20%
+        - 北交所(8xxx/4xxx): 忽略，不纳入统计
 
     返回:
-        dict: {'up': 941, 'down': 4172, 'limit_up': 22, 'limit_down': 16, 'flat': 69, 'activity_rate': 13.48}
+        dict: {'up': 1847, 'down': 3554, 'limit_up': 45, 'limit_down': 12, 'flat': 106, 'activity_rate': 34.18}
     """
     try:
-        df = ak.stock_market_activity_legu()
-        if df is None or df.empty:
-            logger.warning("市场情绪数据为空")
+        import sqlite3
+        from core.paths import DB_PATH
+        from datetime import datetime
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.execute(
+            "SELECT code, change_pct FROM daily_kline WHERE date = ? AND change_pct IS NOT NULL",
+            (today,)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            logger.warning(f"[{today}] 数据库中日K数据为空")
             return {}
 
-        data = {}
-        for _, row in df.iterrows():
-            item = str(row.get('item', ''))
-            value = row.get('value', 0)
-            if item == '上涨':
-                data['up'] = int(value) if value else 0
-            elif item == '下跌':
-                data['down'] = int(value) if value else 0
-            elif item == '涨停':
-                data['limit_up'] = int(value) if value else 0
-            elif item == '跌停':
-                data['limit_down'] = int(value) if value else 0
-            elif item == '平盘':
-                data['flat'] = int(value) if value else 0
-            elif item == '活跃度':
-                raw = str(value).replace('%', '')
-                data['activity_rate'] = float(raw) if raw else 0.0
+        up = down = flat = limit_up = limit_down = 0
+        for code, change_pct in rows:
+            # 忽略北交所个股（代码以8或4开头）
+            if code.startswith('8') or code.startswith('4'):
+                continue
 
-        logger.info(f"市场情绪: 上涨{data.get('up',0)}, 下跌{data.get('down',0)}, 涨停{data.get('limit_up',0)}, 跌停{data.get('limit_down',0)}, 活跃度{data.get('activity_rate', 0)}%")
+            if change_pct > 0:
+                up += 1
+                if code.startswith('30') or code.startswith('68'):
+                    if change_pct >= 19.9:
+                        limit_up += 1
+                else:
+                    if change_pct >= 9.9:
+                        limit_up += 1
+            elif change_pct < 0:
+                down += 1
+                if code.startswith('30') or code.startswith('68'):
+                    if change_pct <= -19.9:
+                        limit_down += 1
+                else:
+                    if change_pct <= -9.9:
+                        limit_down += 1
+            else:
+                flat += 1
+
+        total = up + down
+        data = {
+            'up': up,
+            'down': down,
+            'flat': flat,
+            'limit_up': limit_up,
+            'limit_down': limit_down,
+            'activity_rate': round(up / total * 100, 2) if total > 0 else 0.0,
+        }
+
+        logger.info(f"市场情绪(db): 上涨{up}, 下跌{down}, 涨停{limit_up}, 跌停{limit_down}, 平盘{flat}")
         return data
 
     except Exception as e:

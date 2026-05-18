@@ -35,6 +35,11 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+# 项目根目录（用于引用公共 indicators 包）
+_project_base = os.path.dirname(_project_root)
+if _project_base not in sys.path:
+    sys.path.insert(0, _project_base)
+
 from core.storage import (
     get_trading_day_offset_from,
     get_watchlist_index_codes,
@@ -42,7 +47,14 @@ from core.storage import (
     batch_upsert_index_daily_kline,
     batch_upsert_etf_daily_kline,
     get_recent_trade_dates, get_avg_volume_by_code,
-    get_db_connection,
+    get_db_connection, save_technical_indicators,
+)
+from indicators.utils import (
+    calculate_ma, calculate_ma_slope,
+    calculate_supertrend, calculate_atr,
+    calculate_macd, calculate_macd_slope,
+    calculate_rsi, calculate_volume_ratio,
+    identify_candle_patterns,
 )
 from job.calc_scores import preload_data, run_scores_without_index, run_rs
 from strategies.trend_trading.score._base import get_all_codes
@@ -783,6 +795,233 @@ def _update_scores(today):
     }
 
 
+def _should_force_ti_update():
+    """判断当前是否非交易时间（中午休盘、下午收盘后、节假日）"""
+    now = datetime.now()
+    current_time = now.time()
+    current_hour = current_time.hour
+    current_minute = current_time.minute
+
+    # 周末
+    if now.weekday() >= 5:
+        return True
+
+    # 15:00后收盘
+    if current_hour >= 15:
+        return True
+
+    # 11:30~12:59 午休
+    if current_hour == 11 and current_minute >= 30:
+        return True
+    if current_hour == 12:
+        return True
+
+    # 检查是否为交易日
+    try:
+        conn = get_db_connection()
+        today = now.strftime('%Y-%m-%d')
+        row = conn.execute(
+            "SELECT trade_status FROM trade_calendar WHERE trade_date = ?",
+            (today,)
+        ).fetchone()
+        conn.close()
+        if row and row['trade_status'] == 0:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def get_stale_indicator_codes(calc_date: str) -> list:
+    """
+    获取需要更新技术指标的股票代码（增量模式）
+    - 返回当日未更新过的股票代码列表
+    """
+    try:
+        conn = get_db_connection()
+        try:
+            # 获取所有有日K数据的股票代码
+            cursor = conn.execute("""
+                SELECT DISTINCT code FROM daily_kline
+                WHERE date >= ?
+            """, (calc_date,))
+            all_codes = [row[0] for row in cursor.fetchall()]
+
+            # 获取当日已更新的股票代码
+            cursor = conn.execute("""
+                SELECT DISTINCT code FROM technical_indicators
+                WHERE calc_date = ?
+            """, (calc_date,))
+            updated_codes = set(row[0] for row in cursor.fetchall())
+
+            # 返回未更新的代码
+            stale_codes = [code for code in all_codes if code not in updated_codes]
+            logger.debug(f"需要更新技术指标的股票: {len(stale_codes)}/{len(all_codes)}")
+            return stale_codes
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"获取待更新股票列表失败: {e}")
+        return []
+
+
+def batch_update_technical_indicators(force: bool = False) -> dict:
+    """
+    批量更新全市场技术指标（增量模式）
+
+    流程：
+    1. 获取最新交易日
+    2. 如果force=True，全量计算
+    3. 否则，只计算当日未更新过的股票
+    4. 批量写入technical_indicators表
+
+    返回: {'total': 5102, 'calculated': 123, 'skipped': 4979, 'elapsed': 12.5}
+    """
+    from core.storage import get_daily_data_from_sqlite
+
+    start_time = time.time()
+
+    # 1. 获取最新交易日
+    try:
+        conn = get_db_connection()
+        try:
+            row = conn.execute("""
+                SELECT trade_date FROM trade_calendar
+                WHERE trade_status = 1 AND trade_date <= ?
+                ORDER BY trade_date DESC LIMIT 1
+            """, (datetime.now().strftime('%Y-%m-%d'),)).fetchone()
+            if not row:
+                logger.warning("无交易日数据，跳过技术指标更新")
+                return {'total': 0, 'calculated': 0, 'skipped': 0, 'elapsed': 0}
+            calc_date = row[0]
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"获取交易日失败: {e}")
+        return {'total': 0, 'calculated': 0, 'skipped': 0, 'elapsed': 0}
+
+    logger.info(f"开始批量更新技术指标: {calc_date}")
+
+    # 2. 获取需要更新的股票代码
+    if force:
+        # 全量：获取所有有日K数据的股票
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute("SELECT DISTINCT code FROM daily_kline")
+            codes = [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+        logger.info(f"全量模式: 共 {len(codes)} 只股票")
+    else:
+        # 增量：只计算未更新的股票
+        codes = get_stale_indicator_codes(calc_date)
+        if not codes:
+            logger.info(f"技术指标已是最新 ({calc_date})，跳过")
+            return {'total': 0, 'calculated': 0, 'skipped': 0, 'elapsed': 0}
+
+    total = len(codes)
+    calculated = 0
+    skipped = 0
+
+    # 3. 逐股计算并保存
+    for idx, code in enumerate(codes, 1):
+        try:
+            # 读取日K数据（MA250需要至少250天，SuperTrend 90天ATR需要至少100天）
+            df = get_daily_data_from_sqlite(code, days=None)
+            if df.empty or len(df) < 250:
+                skipped += 1
+                continue
+
+            # 计算各项指标
+            indicators = {'calc_date': calc_date}
+
+            # MA
+            ma_values = calculate_ma(df, [5, 10, 20, 60, 120, 250])
+            indicators.update(ma_values)
+            ma_slopes = calculate_ma_slope(df, [5, 10, 20])
+            indicators.update(ma_slopes)
+
+            # SuperTrend
+            st_df = calculate_supertrend(df, 90, 3.0)
+            atr_val = calculate_atr(df, 90)
+            if not st_df.empty:
+                indicators['st_direction'] = 1 if st_df['supertrend'].iloc[-1] else -1
+                indicators['st_upper_band'] = float(st_df['upper_band'].iloc[-1])
+                indicators['st_lower_band'] = float(st_df['lower_band'].iloc[-1])
+                indicators['st_atr'] = float(atr_val.iloc[-1]) if not atr_val.empty else None
+
+            # MACD
+            macd_data = calculate_macd(df, 12, 26, 9)
+            indicators['macd_dif'] = macd_data.get('dif')
+            indicators['macd_dea'] = macd_data.get('dea')
+            indicators['macd_histogram'] = macd_data.get('histogram')
+
+            slope_data = calculate_macd_slope(df)
+            indicators['macd_histogram_slope'] = slope_data.get('macd_histogram_slope', 0)
+            indicators['macd_dif_slope'] = slope_data.get('macd_dif_slope', 0)
+            indicators['macd_dea_slope'] = slope_data.get('macd_dea_slope', 0)
+            indicators['macd_slope_summary'] = slope_data.get('macd_slope_summary', '→震荡')
+
+            # RSI
+            indicators['rsi_14'] = calculate_rsi(df, 14)
+
+            # 量比
+            indicators['volume_ratio_5'] = calculate_volume_ratio(df, 5)
+            indicators['volume_ratio_20'] = calculate_volume_ratio(df, 20)
+
+            # OBV能量潮
+            obv_values = [0]
+            close_vals = df['close'].values
+            volume_vals = df['volume'].values
+            for i in range(1, len(close_vals)):
+                prev_obv = obv_values[-1]
+                if close_vals[i] > close_vals[i-1]:
+                    obv_values.append(prev_obv + volume_vals[i])
+                elif close_vals[i] < close_vals[i-1]:
+                    obv_values.append(prev_obv - volume_vals[i])
+                else:
+                    obv_values.append(prev_obv)
+
+            indicators['obv'] = int(obv_values[-1])
+
+            # OBV的30日均线
+            if len(obv_values) >= 30:
+                indicators['ma_obv'] = round(pd.Series(obv_values).rolling(30).mean().iloc[-1], 2)
+            else:
+                indicators['ma_obv'] = None
+
+            # K线形态
+            candle_data = identify_candle_patterns(df) or {}
+            indicators['is_long_upper_shadow'] = candle_data.get('is_long_upper_shadow', 0)
+            indicators['is_long_lower_shadow'] = candle_data.get('is_long_lower_shadow', 0)
+            indicators['is_bullish_candle'] = candle_data.get('is_bullish_candle', 0)
+            indicators['is_bearish_candle'] = candle_data.get('is_bearish_candle', 0)
+
+            # 保存
+            save_technical_indicators(code, indicators)
+            calculated += 1
+
+            # 进度日志
+            if idx % 100 == 0:
+                elapsed = time.time() - start_time
+                logger.info(f"进度: {idx}/{total} ({calculated}计算), 耗时: {elapsed:.1f}s")
+
+        except Exception as e:
+            skipped += 1
+            logger.debug(f"[{code}] 计算失败: {e}")
+
+    elapsed = time.time() - start_time
+    logger.info(f"技术指标更新完成: 总计{total}, 已计算{calculated}, 跳过{skipped}, 耗时{elapsed:.1f}s")
+
+    return {
+        'total': total,
+        'calculated': calculated,
+        'skipped': skipped,
+        'elapsed': elapsed
+    }
+
+
 def run():
     # 获取当前日期
     current_date = datetime.now().strftime('%Y-%m-%d')
@@ -813,7 +1052,11 @@ def run():
     # 步骤4：计算评分
     score_result = _update_scores(context_date)
 
-    logger.info(f"=== 完成: 个股+指数+评分更新到 {context_date} ===")
+    # 步骤5：批量更新全市场技术指标（增量模式，非交易时间强制全量）
+    force_ti = _should_force_ti_update()
+    ti_result = batch_update_technical_indicators(force=force_ti)
+
+    logger.info(f"=== 完成: 个股+指数+评分+技术指标更新到 {context_date} ===")
 
     elapsed = time.time() - start_time
     elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
@@ -828,6 +1071,9 @@ def run():
         'etf_count': kline_result.get('etf_count', 0),
         'adjustment_count': len(adjustment_queue),
         **score_result,
+        'ti_total': ti_result.get('total', 0),
+        'ti_calculated': ti_result.get('calculated', 0),
+        'ti_skipped': ti_result.get('skipped', 0),
         'elapsed': elapsed_str,
     }
 
