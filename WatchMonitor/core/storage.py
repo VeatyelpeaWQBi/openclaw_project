@@ -648,7 +648,7 @@ def save_technical_indicators(code: str, indicators: dict) -> bool:
              is_bullish_candle, is_bearish_candle,
              created_at, obv, ma_obv,
              macd_histogram_slope, macd_dif_slope, macd_dea_slope, macd_slope_summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             code, indicators.get('calc_date'),
             indicators.get('ma5'), indicators.get('ma10'), indicators.get('ma20'),
