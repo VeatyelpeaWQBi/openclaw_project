@@ -98,7 +98,7 @@ class IndicatorManager:
         for name, (module_name, class_name) in registry_map.items():
             try:
                 # 使用当前模块的包名作为前缀
-                module = importlib.import_module(f'{self.__module__}.{module_name}')
+                module = importlib.import_module(f'indicators.{module_name}')
                 cls = getattr(module, class_name)
                 self._indicator_registry[name] = cls
             except Exception as e:
