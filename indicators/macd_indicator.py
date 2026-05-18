@@ -65,10 +65,10 @@ class MACDIndicator(BaseIndicator):
             'macd_dif': macd_data.get('dif'),
             'macd_dea': macd_data.get('dea'),
             'macd_histogram': macd_data.get('histogram'),
-            'macd_histogram_slope': slope_data.get('histogram_slope', 0),
-            'macd_dif_slope': slope_data.get('dif_slope', 0),
-            'macd_dea_slope': slope_data.get('dea_slope', 0),
-            'macd_slope_summary': slope_data.get('slope_summary', '→震荡'),
+            'macd_histogram_slope': slope_data.get('macd_histogram_slope', 0),
+            'macd_dif_slope': slope_data.get('macd_dif_slope', 0),
+            'macd_dea_slope': slope_data.get('macd_dea_slope', 0),
+            'macd_slope_summary': slope_data.get('macd_slope_summary', '→震荡'),
         }
 
     def _detect_signals(self) -> None:

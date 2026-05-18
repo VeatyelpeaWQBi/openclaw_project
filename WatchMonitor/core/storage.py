@@ -854,10 +854,10 @@ def batch_update_technical_indicators(force: bool = False) -> dict:
             indicators['macd_histogram'] = macd_data.get('histogram')
 
             slope_data = calculate_macd_slope(df)
-            indicators['macd_histogram_slope'] = slope_data.get('histogram_slope', 0)
-            indicators['macd_dif_slope'] = slope_data.get('dif_slope', 0)
-            indicators['macd_dea_slope'] = slope_data.get('dea_slope', 0)
-            indicators['macd_slope_summary'] = slope_data.get('slope_summary', '→震荡')
+            indicators['macd_histogram_slope'] = slope_data.get('macd_histogram_slope', 0)
+            indicators['macd_dif_slope'] = slope_data.get('macd_dif_slope', 0)
+            indicators['macd_dea_slope'] = slope_data.get('macd_dea_slope', 0)
+            indicators['macd_slope_summary'] = slope_data.get('macd_slope_summary', '→震荡')
 
             # RSI
             indicators['rsi_14'] = calculate_rsi(df, 14)

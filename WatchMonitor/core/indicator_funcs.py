@@ -290,10 +290,10 @@ def calculate_macd_slope(df, threshold=0.01):
     slope_summary = _get_macd_slope_summary(hist_slope, dif_slope, dea_slope)
 
     return {
-        'histogram_slope': hist_slope,
-        'dif_slope': dif_slope,
-        'dea_slope': dea_slope,
-        'slope_summary': slope_summary
+        'macd_histogram_slope': hist_slope,
+        'macd_dif_slope': dif_slope,
+        'macd_dea_slope': dea_slope,
+        'macd_slope_summary': slope_summary
     }
 
 
@@ -326,8 +326,6 @@ def _get_macd_slope_summary(hist_slope, dif_slope, dea_slope):
         return '🪂向下延续'
     elif hist_slope == -1 and dif_slope == 0 and dea_slope == 0:
         return '🪂下跌趋缓'
-    elif hist_slope == -1 and dif_slope == -1 and dea_slope == -1:
-        return '🪂向下加速'
     elif hist_slope == 1 and dif_slope == 0 and dea_slope == -1:
         return '→震荡'
     elif hist_slope == -1 and dif_slope == 1 and dea_slope == 1:
@@ -999,10 +997,10 @@ def calculate_all_indicators(df):
 
     # MACD斜率
     macd_slope = calculate_macd_slope(df)
-    result['macd_histogram_slope'] = macd_slope.get('histogram_slope', 0)
-    result['macd_dif_slope'] = macd_slope.get('dif_slope', 0)
-    result['macd_dea_slope'] = macd_slope.get('dea_slope', 0)
-    result['macd_slope_summary'] = macd_slope.get('slope_summary', '→震荡')
+    result['macd_histogram_slope'] = macd_slope.get('macd_histogram_slope', 0)
+    result['macd_dif_slope'] = macd_slope.get('macd_dif_slope', 0)
+    result['macd_dea_slope'] = macd_slope.get('macd_dea_slope', 0)
+    result['macd_slope_summary'] = macd_slope.get('macd_slope_summary', '→震荡')
 
     # RSI
     result['rsi_14'] = calculate_rsi(df, 14)
@@ -1017,5 +1015,26 @@ def calculate_all_indicators(df):
     result['is_long_lower_shadow'] = patterns.get('is_long_lower_shadow', 0)
     result['is_bullish_candle'] = patterns.get('is_bullish_candle', 0)
     result['is_bearish_candle'] = patterns.get('is_bearish_candle', 0)
+
+    # OBV能量潮
+    obv_values = [0]
+    close = df['close'].values
+    volume = df['volume'].values
+    for i in range(1, len(close)):
+        prev_obv = obv_values[-1]
+        if close[i] > close[i-1]:
+            obv_values.append(prev_obv + volume[i])
+        elif close[i] < close[i-1]:
+            obv_values.append(prev_obv - volume[i])
+        else:
+            obv_values.append(prev_obv)
+
+    result['obv'] = int(obv_values[-1])
+
+    # OBV的30日均线
+    if len(obv_values) >= 30:
+        result['ma_obv'] = round(pd.Series(obv_values).rolling(30).mean().iloc[-1], 2)
+    else:
+        result['ma_obv'] = None
 
     return result
