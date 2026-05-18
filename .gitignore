@@ -55,7 +55,6 @@ Thumbs.db
 **/test_scripts/
 **/test_case/
 **/output/
-**test**
 CLAUDE.md
 */charts/*
 check_db.py
