@@ -27,9 +27,11 @@ INITIAL_FETCH_DAYS = 50
 # ==================== SQLite辅助方法 ====================
 
 def get_db_connection() -> sqlite3.Connection:
-    """获取SQLite连接"""
+    """获取SQLite连接（WAL模式 + 5秒busy_timeout，防读写冲突）"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
