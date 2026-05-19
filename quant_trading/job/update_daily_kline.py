@@ -28,6 +28,7 @@ import logging
 import random
 import requests
 import json
+import asyncio
 from datetime import datetime
 import pandas as pd
 
@@ -72,11 +73,6 @@ SINA_PAYLOAD = {
     "symbol": "",
     "_s_r_a": "page",
 }
-
-# 除权除息检测配置
-QFQ_START_DATE = '2014-01-01'  # 复权刷新起始日期
-QFQ_MIN_INTERVAL = 3.0  # 最小刷新间隔（秒）
-QFQ_MAX_INTERVAL = 6.0  # 最大刷新间隔（秒）
 
 # 除权检测允许的微小差异（浮点数精度）
 ADJUSTMENT_TOLERANCE = 0.01
@@ -149,276 +145,20 @@ def _is_market_closed():
     return False
 
 
-def _notify_adjustment_queue(queue):
-    """输出待刷新股票列表"""
-    if not queue:
-        return
+async def _async_start_adjustment_job(adjustment_queue):
+    """异步启动独立JOB执行复权刷新（步骤2+3）"""
+    import tempfile, json
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(adjustment_queue, f)
+        queue_file = f.name
 
-    logger.info("=" * 60)
-    logger.info(f"🔔 除权除息检测完成: {len(queue)}只股票待复权刷新")
-    logger.info("=" * 60)
-
-    for i, item in enumerate(queue[:20], 1):
-        code, name, diff_pct = item['code'], item['name'], item['diff_pct']
-        logger.info(f"  {i:2d}. {code} {name}: 差异{diff_pct:.1f}%")
-
-    if len(queue) > 20:
-        logger.info(f"  ... 还有{len(queue)-20}只股票")
-
-    logger.info("=" * 60)
-
-
-def _code_to_market(code):
-    """根据代码判断市场"""
-    if code.startswith(('6', '9')):
-        return 'sh'
-    return 'sz'
-
-
-def _refresh_single_stock_qfq(code, name):
-    """刷新单只股票2014年至今的前复权日K"""
-    market = _code_to_market(code)
-
-    try:
-        from core.data_access import _sina_daily_kline
-
-        df = _sina_daily_kline(
-            code, market=market,
-            start_date=QFQ_START_DATE.replace('-', ''),
-            end_date=datetime.now().strftime('%Y%m%d')
-        )
-
-        if df.empty:
-            return False
-
-        # 删除旧数据
-        conn = get_db_connection()
-        conn.execute("DELETE FROM daily_kline WHERE code = ?", (code,))
-        conn.commit()
-        conn.close()
-
-        # 写入前复权数据
-        rows = []
-        for _, row in df.iterrows():
-            date_str = row['date'].strftime('%Y-%m-%d')
-            rows.append((
-                code, name, date_str,
-                float(row['open']) if pd.notna(row['open']) else None,
-                float(row['high']) if pd.notna(row['high']) else None,
-                float(row['low']) if pd.notna(row['low']) else None,
-                float(row['close']) if pd.notna(row['close']) else None,
-                int(row['volume']) if pd.notna(row['volume']) else None,
-                float(row['amount']) if pd.notna(row['amount']) else None,
-                None, None, None, None, None, None, None, None
-            ))
-
-        success, _ = batch_upsert_daily_kline(rows)
-        return success > 0
-
-    except Exception as e:
-        logger.error(f"刷新 {code} 失败: {e}")
-        return False
-
-
-def _adjust_dividend_stocks(queue):
-    """批量刷新待复权股票的前复权日K（盘后执行）"""
-    if not queue or not _is_market_closed():
-        return 0
-
-    logger.info(f"开始刷新 {len(queue)} 只股票的前复权日K...")
-
-    success_count = 0
-    for i, item in enumerate(queue, 1):
-        code, name = item['code'], item['name']
-        if _refresh_single_stock_qfq(code, name):
-            success_count += 1
-        else:
-            logger.warning(f"  [{i}/{len(queue)}] {code} {name} 刷新失败")
-
-        # 间隔3~6秒防封
-        time.sleep(QFQ_MIN_INTERVAL + random.random() * (QFQ_MAX_INTERVAL - QFQ_MIN_INTERVAL))
-
-        if i % 10 == 0:
-            logger.info(f"  进度: {i}/{len(queue)}, 成功{success_count}")
-
-    logger.info(f"复权刷新完成: {success_count}/{len(queue)} 只")
-    return success_count
-
-
-def _recalc_scores_for_codes(codes):
-    """
-    重新计算指定股票的全量历史技术指标
-
-    除权除息后，复权价格变化会影响所有历史指标，需要全量重新计算
-    """
-    if not codes:
-        return
-
-    logger.info(f"开始全量刷新 {len(codes)} 只股票的历史技术指标...")
-    logger.info(f"指标: RS + ADX + VCP + 技术指标(MA/SuperTrend/MACD/RSI/OBV/量比/K线形态)")
-
-    from core.storage import get_daily_data_from_sqlite, save_adx_score, save_vcp_score
-    from strategies.trend_trading.score.adx_core import _extract_adx_records, DEFAULT_PERIOD
-    from strategies.trend_trading.score.vcp_core import _calc_vcp_for_stock_df
-    from strategies.trend_trading.score.indicators_core import _extract_indicator_records as _extract_ti_records
-    from strategies.trend_trading.score.indicators_core import _save_indicators_batch
-
-    total_rs = 0
-    total_adx = 0
-    total_vcp = 0
-    total_indicators = 0
-    failed_codes = []
-
-    # 获取基准指数列表
-    index_codes = get_watchlist_index_codes()
-    if not index_codes:
-        index_codes = ['000510']
-
-    start_time = time.time()
-
-    for idx, code in enumerate(codes, 1):
-        try:
-            logger.info(f"[{idx}/{len(codes)}] 处理 {code}...")
-
-            # 1. 获取股票历史日K数据（使用足够大的天数获取全部）
-            df = get_daily_data_from_sqlite(code, days=10000)
-            if df.empty or len(df) < 250:
-                logger.warning(f"  {code} 数据不足，跳过")
-                failed_codes.append(code)
-                continue
-
-            # 2. ADX 全量刷新
-            try:
-                conn = get_db_connection()
-                conn.execute("DELETE FROM adx_score WHERE code = ?", (code,))
-                conn.commit()
-                conn.close()
-
-                adx_records = _extract_adx_records(code, df, DEFAULT_PERIOD)
-                if adx_records:
-                    save_adx_score(adx_records)
-                    total_adx += len(adx_records)
-                    logger.info(f"  ADX: {len(adx_records)} 条")
-            except Exception as e:
-                logger.warning(f"  {code} ADX计算失败: {e}")
-
-            # 3. VCP 全量刷新
-            try:
-                conn = get_db_connection()
-                conn.execute("DELETE FROM vcp_score WHERE code = ?", (code,))
-                conn.commit()
-                conn.close()
-
-                vcp_records = _calc_vcp_for_stock_df(code, df)
-                if vcp_records:
-                    save_vcp_score(vcp_records)
-                    total_vcp += len(vcp_records)
-                    logger.info(f"  VCP: {len(vcp_records)} 条")
-            except Exception as e:
-                logger.warning(f"  {code} VCP计算失败: {e}")
-
-            # 4. RS 全量刷新（需要对每个基准指数计算）
-            rs_count_for_code = 0
-            for index_code in index_codes:
-                try:
-                    # 删除该股票在这个基准指数下的RS数据
-                    conn = get_db_connection()
-                    conn.execute("DELETE FROM rs_score WHERE code = ? AND benchmark_code = ?",
-                                (code, index_code))
-                    conn.commit()
-                    conn.close()
-
-                    # 计算RS
-                    from strategies.trend_trading.score.rs_core import (
-                        calc_rs_for_date, get_all_trade_dates, get_index_members,
-                        load_index_closes, load_stock_closes
-                    )
-
-                    trade_days = get_all_trade_dates()
-                    stock_codes = get_index_members(index_code)
-                    if code not in stock_codes:
-                        continue
-
-                    lookback = 250
-                    start_date = trade_days[0]
-                    end_date = trade_days[-1]
-
-                    index_closes = load_index_closes(index_code, start_date, end_date)
-                    stock_closes = load_stock_closes([code], start_date, end_date)
-
-                    if not index_closes or code not in stock_closes:
-                        continue
-
-                    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-                    # 遍历所有可计算的日期
-                    for calc_idx in range(lookback, len(trade_days)):
-                        calc_date = trade_days[calc_idx]
-                        past_date = trade_days[calc_idx - lookback]
-
-                        result = calc_rs_for_date(
-                            stock_closes, index_closes, [code], calc_date, past_date
-                        )
-
-                        if result:
-                            from core.storage import batch_upsert_rs_score
-                            batch_upsert_rs_score([
-                                (code, index_code, calc_date,
-                                 round(r['rs_ratio'], 6), r['rs_score'], r['rs_rank'],
-                                 round(r['stock_return'], 6), round(r['benchmark_return'], 6),
-                                 lookback, now_str)
-                                for r in result if r[0] == code
-                            ])
-                            rs_count_for_code += 1
-
-                except Exception as e:
-                    logger.warning(f"  {code} RS({index_code})计算失败: {e}")
-
-            if rs_count_for_code > 0:
-                total_rs += rs_count_for_code
-                logger.info(f"  RS: {rs_count_for_code} 条")
-
-            # 5. 技术指标全量刷新
-            try:
-                conn = get_db_connection()
-                conn.execute("DELETE FROM technical_indicators WHERE code = ?", (code,))
-                conn.commit()
-                conn.close()
-
-                ti_records = _extract_ti_records(code, df)
-                if ti_records:
-                    _save_indicators_batch(ti_records)
-                    total_indicators += len(ti_records)
-                    logger.info(f"  技术指标: {len(ti_records)} 条")
-            except Exception as e:
-                logger.warning(f"  {code} 技术指标计算失败: {e}")
-
-            # 输出进度
-            if idx % 5 == 0 or idx == len(codes):
-                elapsed = time.time() - start_time
-                speed = idx / elapsed if elapsed > 0 else 0
-                logger.info(f"  进度: {idx}/{len(codes)}, 速度: {speed:.1f}只/秒")
-
-            # 间隔防止CPU占用过高
-            time.sleep(0.1)
-
-        except Exception as e:
-            logger.error(f"  {code} 处理失败: {e}")
-            failed_codes.append(code)
-
-    elapsed = time.time() - start_time
-    elapsed_str = f"{int(elapsed//60)}分{int(elapsed%60)}秒"
-
-    logger.info(f"技术指标全量刷新完成:")
-    logger.info(f"  RS: {total_rs} 条")
-    logger.info(f"  ADX: {total_adx} 条")
-    logger.info(f"  VCP: {total_vcp} 条")
-    logger.info(f"  技术指标: {total_indicators} 条")
-    logger.info(f"  失败: {len(failed_codes)} 只")
-    logger.info(f"  耗时: {elapsed_str}")
-
-    if failed_codes:
-        logger.warning(f"失败的股票代码: {', '.join(failed_codes[:10])}")
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "job.refresh_adjustment_stocks",
+        "--queue-file", queue_file,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL
+    )
+    logger.info(f"已异步启动复权刷新JOB (pid={proc.pid}), 队列文件: {queue_file}")
 
 
 def fetch_all_market():
@@ -1041,20 +781,16 @@ def run():
     kline_result = _update_klines(context_date)
     adjustment_queue = kline_result.get('adjustment_queue', [])
 
-    # 步骤2：通知待刷新队列
-    _notify_adjustment_queue(adjustment_queue)
-
-    # 步骤3：如果收盘后（或中午休盘时间），执行复权刷新
-    if adjustment_queue and _is_market_closed():
-        _adjust_dividend_stocks(adjustment_queue)
-        _recalc_scores_for_codes([item['code'] for item in adjustment_queue])
-
     # 步骤4：计算评分
     score_result = _update_scores(context_date)
 
     # 步骤5：批量更新全市场技术指标（增量模式，非交易时间强制全量）
     force_ti = _should_force_ti_update()
     ti_result = batch_update_technical_indicators(force=force_ti)
+
+    # 步骤2+3：异步启动独立JOB执行通知和复权刷新（移到步骤5之后）
+    if adjustment_queue and _is_market_closed():
+        asyncio.run(_async_start_adjustment_job(adjustment_queue))
 
     logger.info(f"=== 完成: 个股+指数+评分+技术指标更新到 {context_date} ===")
 
