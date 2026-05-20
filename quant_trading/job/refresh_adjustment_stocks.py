@@ -36,7 +36,6 @@ from core.storage import (
     get_watchlist_index_codes,
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 # QQ通知目标（与 cron_script/*.sh 保持一致）
@@ -388,6 +387,19 @@ def _send_qq_notification(message):
 
 
 def main():
+    # 确保日志目录存在
+    os.makedirs('logs', exist_ok=True)
+
+    # 配置日志：同时输出到文件和控制台
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler('logs/refresh_adjustment_stocks.log', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+
     parser = argparse.ArgumentParser(description="复权刷新独立JOB")
     parser.add_argument("--queue-file", required=True, help="待复权股票队列JSON文件路径")
     args = parser.parse_args()
