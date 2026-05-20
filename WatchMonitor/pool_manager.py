@@ -339,27 +339,52 @@ def cmd_position_import(args):
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             
+            # 获取CSV中的列名
+            fieldnames = reader.fieldnames or []
+            has_entry_date = 'entry_date' in fieldnames
+            
+            # 获取今天的日期作为默认值
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            
             for row in reader:
                 code = row.get('code', '').strip()
                 name = row.get('name', '').strip()
                 entry_price = row.get('entry_price', '').strip()
-                entry_date = row.get('entry_date', '').strip()
                 
-                if not code or not name or not entry_price or not entry_date:
+                # 如果没有entry_date列，自动使用当天日期
+                if has_entry_date:
+                    entry_date = row.get('entry_date', '').strip()
+                else:
+                    entry_date = today_str
+                
+                if not code or not name or not entry_price:
                     print(f"  ⚠️ 跳过无效行: {row}")
                     skip_count += 1
                     continue
+                
+                # 安全转换数值，缺失列自动为0或None
+                shares_val = row.get('shares', '').strip()
+                shares = int(shares_val) if shares_val else 0
+                
+                stop_loss_val = row.get('stop_loss', '').strip()
+                stop_loss = float(stop_loss_val) if stop_loss_val else None
+                
+                take_profit_val = row.get('take_profit', '').strip()
+                take_profit = float(take_profit_val) if take_profit_val else None
+                
+                position_type = row.get('position_type', '').strip() or '趋势'
+                notes = row.get('notes', '').strip() if row.get('notes') else None
                 
                 success = add_position(
                     code=code,
                     name=name,
                     entry_price=float(entry_price),
                     entry_date=entry_date,
-                    shares=int(row.get('shares', 0) or 0),
-                    position_type=row.get('position_type', '趋势') or '趋势',
-                    stop_loss=float(row.get('stop_loss')) if row.get('stop_loss') else None,
-                    take_profit=float(row.get('take_profit')) if row.get('take_profit') else None,
-                    notes=row.get('notes', '').strip() if row.get('notes') else None
+                    shares=shares,
+                    position_type=position_type,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    notes=notes
                 )
                 
                 if success:
@@ -442,26 +467,46 @@ def cmd_candidate_import(args):
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             
+            # 获取CSV中的列名
+            fieldnames = reader.fieldnames or []
+            has_watch_date = 'watch_date' in fieldnames
+            
+            # 获取今天的日期作为默认值
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            
             for row in reader:
                 code = row.get('code', '').strip()
                 name = row.get('name', '').strip()
                 watch_price = row.get('watch_price', '').strip()
-                watch_date = row.get('watch_date', '').strip()
                 
-                if not code or not name or not watch_price or not watch_date:
+                # 如果没有watch_date列，自动使用当天日期
+                if has_watch_date:
+                    watch_date = row.get('watch_date', '').strip()
+                else:
+                    watch_date = today_str
+                
+                if not code or not name or not watch_price:
                     print(f"  ⚠️ 跳过无效行: {row}")
                     skip_count += 1
                     continue
+                
+                # 安全转换数值，缺失列自动为None
+                target_price_val = row.get('target_price', '').strip()
+                target_price = float(target_price_val) if target_price_val else None
+                
+                watch_type = row.get('watch_type', '').strip() or '趋势回调'
+                watch_reason = row.get('watch_reason', '').strip() if row.get('watch_reason') else None
+                notes = row.get('notes', '').strip() if row.get('notes') else None
                 
                 success = add_candidate(
                     code=code,
                     name=name,
                     watch_price=float(watch_price),
                     watch_date=watch_date,
-                    target_price=float(row.get('target_price')) if row.get('target_price') else None,
-                    watch_type=row.get('watch_type', '趋势回调') or '趋势回调',
-                    watch_reason=row.get('watch_reason', '').strip() if row.get('watch_reason') else None,
-                    notes=row.get('notes', '').strip() if row.get('notes') else None
+                    target_price=target_price,
+                    watch_type=watch_type,
+                    watch_reason=watch_reason,
+                    notes=notes
                 )
                 
                 if success:
