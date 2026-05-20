@@ -374,7 +374,8 @@ def generate_single_position_report(pr):
         }
 
         # 一站式分析（计算、信号、报告、评分全部在内部完成）
-        result = manager.analyze_stock(code, df, context)
+        # force_realtime=True: 盯盘助手不依赖DB预计算指标，独立实时计算
+        result = manager.analyze_stock(code, df, context, force_realtime=True)
 
         # 直接获取报告内容（黑盒生成，无需二次加工）
         report_lines = result.get('report_lines', [])
@@ -631,7 +632,8 @@ def generate_single_candidate_report(cs):
         }
 
         # 一站式分析
-        result = manager.analyze_stock(code, df_candidate, context)
+        # force_realtime=True: 盯盘助手不依赖DB预计算指标，独立实时计算
+        result = manager.analyze_stock(code, df_candidate, context, force_realtime=True)
 
         # 直接获取报告内容
         report_lines = result.get('report_lines', [])

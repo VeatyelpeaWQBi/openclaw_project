@@ -30,6 +30,11 @@ class RSIIndicator(BaseIndicator):
             self._calculate_realtime()
             return
 
+        # 强制实时计算时不读DB（盯盘助手专用）
+        if self.context.get('force_realtime'):
+            self._calculate_realtime()
+            return
+
         # 优先从DB读取
         from core.storage import get_technical_indicators
         today = datetime.now().strftime('%Y-%m-%d')

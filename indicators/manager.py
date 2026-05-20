@@ -104,7 +104,7 @@ class IndicatorManager:
             except Exception as e:
                 logger.error(f"加载指标类 {name} 失败: {e}")
 
-    def analyze_stock(self, code: str, df: DataFrame, context: Dict) -> Dict:
+    def analyze_stock(self, code: str, df: DataFrame, context: Dict, force_realtime: bool = False) -> Dict:
         """
         分析单只股票/ETF（一站式接口）
 
@@ -126,6 +126,7 @@ class IndicatorManager:
                 'entry_price': float (持仓时),
                 'watch_price': float (候选时),
             }
+            force_realtime: 强制实时计算，不读DB预计算指标（盯盘助手专用）
 
         返回:
             Dict: {
@@ -153,6 +154,7 @@ class IndicatorManager:
         # 添加code和is_etf到context
         context['code'] = code
         context['is_etf'] = code.startswith(('51', '159', '56', '58'))
+        context['force_realtime'] = force_realtime
 
         # 获取启用的指标配置列表
         indicators_config = self.config.get('indicators', [])
