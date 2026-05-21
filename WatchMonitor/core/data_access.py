@@ -396,6 +396,63 @@ def get_stock_daily_kline_range(stock_code, market='sh', start_date=None, end_da
     time.sleep(random.uniform(0.6, 1.2))  # 防限流
     return df
 
+# ==================== 5. 指数日K线（本地数据库） ====================
+
+def get_index_daily_kline_from_db(index_code: str, days: int = 60) -> pd.DataFrame:
+    """
+    从本地数据库读取指数日K数据
+
+    参数:
+        index_code: 指数代码（如 '000001', '399001'）
+        days: 回溯天数（默认60天，ADX预热需27根K线）
+
+    返回:
+        DataFrame: 含 date, open, high, low, close 列，按日期升序排列
+    """
+    try:
+        import sqlite3
+        from datetime import datetime, timedelta
+        from core.paths import DB_PATH
+
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            df = pd.read_sql_query("""
+                SELECT date, open, high, low, close
+                FROM index_daily_kline
+                WHERE index_code = ? AND date >= ? AND date <= ?
+                ORDER BY date ASC
+            """, conn, params=(index_code, start_date, end_date))
+        finally:
+            conn.close()
+
+        if df.empty:
+            logger.warning(f"[{index_code}] 指数日K数据为空 ({start_date}~{end_date})")
+            return pd.DataFrame()
+
+        # 数据类型转换
+        for col in ['open', 'high', 'low', 'close']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # NaN处理：部分日期（如节假日）open/high/low为NaN，只有close可用
+        # 用close填充NaN，避免RMA平滑链断裂导致后续所有ADX为NaN
+        nan_count = df[['open', 'high', 'low']].isna().any(axis=1).sum()
+        if nan_count > 0:
+            df['open'] = df['open'].fillna(df['close'])
+            df['high'] = df['high'].fillna(df['close'])
+            df['low'] = df['low'].fillna(df['close'])
+            logger.debug(f"[{index_code}] 已修复{nan_count}行NaN数据(open/high/low用close填充)")
+
+        logger.info(f"[{index_code}] 指数日K: {len(df)}条 ({df['date'].min()}~{df['date'].max()})")
+        return df
+
+    except Exception as e:
+        logger.error(f"[{index_code}] 获取指数日K失败: {type(e).__name__}: {e}")
+        return pd.DataFrame()
+
+
 # ==================== 6. 市场概况（指数+情绪+成交量） ====================
 
 def get_index_realtime():

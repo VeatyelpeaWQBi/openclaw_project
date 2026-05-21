@@ -15,6 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 from core.data_access import get_index_realtime, get_market_sentiment, get_market_volume_compare
 from core.paths import REPORTS_DIR
 from core.storage import get_daily_data_from_sqlite
+from core.adx_analyzer import get_index_adx
+from core.index_adx_config import get_index_code_by_name
 from indicators import IndicatorManager
 from signal_detector import detect_all_signals_with_trend
 from fetch_fear_index import get_fear_index
@@ -59,12 +61,26 @@ def generate_market_report(result):
                 if name in indices:
                     idx = indices[name]
                     sign = '+' if idx['change_pct'] >= 0 else ''
+                    # 获取ADX数据
+                    index_code = get_index_code_by_name(name)
+                    adx_part = ''
+                    if index_code:
+                        try:
+                            adx_info = get_index_adx(index_code)
+                            if adx_info:
+                                display = adx_info.get('display', '')
+                                comment = adx_info.get('short_comment', '')
+                                adx_part = f" {display}"
+                                if comment:
+                                    adx_part += f" {comment}"
+                        except Exception:
+                            pass  # ADX数据缺失时静默跳过
                     if idx['change_pct'] > 0:
-                        lines.append(f"**<font color=\"red\">{name}</font>**: {idx['price']:.2f} **<font color=\"red\">({sign}{idx['change_pct']:.2f}%)</font>**")
+                        lines.append(f"**<font color=\"red\">{name}</font>**: {idx['price']:.2f} **<font color=\"red\">({sign}{idx['change_pct']:.2f}%)</font>**{adx_part}")
                     elif idx['change_pct'] < 0:
-                        lines.append(f"**<font color=\"green\">{name}</font>**: {idx['price']:.2f} **<font color=\"green\">({sign}{idx['change_pct']:.2f}%)</font>**")
+                        lines.append(f"**<font color=\"green\">{name}</font>**: {idx['price']:.2f} **<font color=\"green\">({sign}{idx['change_pct']:.2f}%)</font>**{adx_part}")
                     else:
-                        lines.append(f"**{name}**: {idx['price']:.2f} **({sign}{idx['change_pct']:.2f}%)**")
+                        lines.append(f"**{name}**: {idx['price']:.2f} **({sign}{idx['change_pct']:.2f}%)**{adx_part}")
             lines.append("")
 
         # 市场分化
@@ -126,6 +142,26 @@ def generate_market_report(result):
                 activity_rate = sentiment.get('activity_rate', 0)
                 if activity_rate:
                     lines.append(f"- 活跃度: **{activity_rate:.2f}%**")
+
+            # 市场情绪ADX状态
+            try:
+                sentiment_adx_indices = [
+                    ('000300', '权重股', '沪深300'),
+                    ('000852', '小盘股', '中证1000'),
+                    ('000985', '全市场综合', '中证全指'),
+                ]
+                for code, label, name in sentiment_adx_indices:
+                    try:
+                        adx_info = get_index_adx(code)
+                        if adx_info:
+                            display = adx_info.get('display', '')
+                            lines.append(f"- {label} ADX: {display}（{name}）")
+                        else:
+                            lines.append(f"- {label} ADX: 数据暂缺")
+                    except Exception:
+                        lines.append(f"- {label} ADX: 数据暂缺")
+            except Exception:
+                pass
             lines.append("")
 
         # 恐贪指数
