@@ -19,6 +19,7 @@ import logging
 import random
 import json
 import argparse
+import csv
 import subprocess
 from datetime import datetime
 import pandas as pd
@@ -84,6 +85,26 @@ def _notify_adjustment_queue(queue):
         logger.info(f"  ... 还有{len(queue)-20}只股票")
 
     logger.info("=" * 60)
+
+
+def _load_queue_from_csv(date_str):
+    """从 logs 目录读取当天的 CSV 队列文件"""
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    csv_path = os.path.join(log_dir, f'{date_str}.csv')
+    queue = []
+    if os.path.exists(csv_path):
+        with open(csv_path, 'r', encoding='utf-8', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                queue.append({
+                    'code': row['code'],
+                    'name': row['name'],
+                    'diff_pct': 0.0,
+                })
+        logger.info(f"已从CSV加载队列: {csv_path}, 共{len(queue)}只")
+    else:
+        logger.warning(f"CSV队列文件不存在: {csv_path}")
+    return queue
 
 
 def _code_to_market(code):
@@ -401,18 +422,22 @@ def main():
     )
 
     parser = argparse.ArgumentParser(description="复权刷新独立JOB")
-    parser.add_argument("--queue-file", required=True, help="待复权股票队列JSON文件路径")
+    parser.add_argument("--queue-file", help="待复权股票队列JSON文件路径（覆盖CSV）")
     args = parser.parse_args()
 
-    # 读取队列
-    with open(args.queue_file, 'r', encoding='utf-8') as f:
-        queue = json.load(f)
+    date_str = datetime.now().strftime('%Y-%m-%d')
+
+    # 读取队列：优先使用 --queue-file，否则读取当天CSV
+    if args.queue_file:
+        with open(args.queue_file, 'r', encoding='utf-8') as f:
+            queue = json.load(f)
+    else:
+        queue = _load_queue_from_csv(date_str)
 
     if not queue:
         logger.info("复权队列为空，无需执行")
         return
 
-    date_str = datetime.now().strftime('%Y-%m-%d')
     logger.info(f"=== 复权刷新JOB启动 — {date_str} ===")
 
     result = run_adjustment(queue)

@@ -28,7 +28,6 @@ import logging
 import random
 import requests
 import json
-import asyncio
 from datetime import datetime
 import pandas as pd
 
@@ -145,20 +144,18 @@ def _is_market_closed():
     return False
 
 
-async def _async_start_adjustment_job(adjustment_queue):
-    """异步启动独立JOB执行复权刷新（步骤2+3）"""
-    import tempfile, json
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(adjustment_queue, f)
-        queue_file = f.name
-
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-m", "job.refresh_adjustment_stocks",
-        "--queue-file", queue_file,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL
-    )
-    logger.info(f"已异步启动复权刷新JOB (pid={proc.pid}), 队列文件: {queue_file}")
+def _export_adjustment_queue(adjustment_queue, current_date):
+    """将待复权个股导出为CSV文件"""
+    import csv
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    csv_path = os.path.join(log_dir, f'{current_date}.csv')
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['code', 'name'])
+        for item in adjustment_queue:
+            writer.writerow([item['code'], item['name']])
+    logger.info(f"待复权个股已导出: {csv_path}, 共{len(adjustment_queue)}只")
 
 
 def fetch_all_market():
@@ -788,9 +785,9 @@ def run():
     force_ti = _should_force_ti_update()
     ti_result = batch_update_technical_indicators(force=force_ti)
 
-    # 步骤2+3：异步启动独立JOB执行通知和复权刷新（移到步骤5之后）
+    # 步骤2+3：将待复权个股导出CSV（移到步骤5之后）
     if adjustment_queue and _is_market_closed():
-        asyncio.run(_async_start_adjustment_job(adjustment_queue))
+        _export_adjustment_queue(adjustment_queue, current_date)
 
     logger.info(f"=== 完成: 个股+指数+评分+技术指标更新到 {context_date} ===")
 
