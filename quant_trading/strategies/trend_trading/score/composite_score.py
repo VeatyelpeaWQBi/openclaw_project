@@ -24,10 +24,10 @@ from strategies.trend_trading.score._base import get_trade_dates
 
 logger = logging.getLogger(__name__)
 
-# 综合评分权重
-WEIGHT_RS = 0.40
-WEIGHT_VCP = 0.35
-WEIGHT_ADX = 0.25
+# 综合评分权重（VCP已屏蔽，权重分配给RS和ADX）
+WEIGHT_RS = 0.55
+WEIGHT_VCP = 0.0   # VCP已屏蔽（计算开销大且效果不佳）
+WEIGHT_ADX = 0.45
 
 # 基准指数（RS计算用）
 DEFAULT_BENCHMARK = '000510'

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Job: 统一刷新全部评分（RS + VCP + ADX）
+Job: 统一刷新全部评分（RS + ADX）
 
 场景：日K数据更新后，一键刷新近N天的所有评分。
 支持全量和增量两种模式。
@@ -12,9 +12,11 @@ Job: 统一刷新全部评分（RS + VCP + ADX）
 
 流程：
   1. 一次性预加载全部股票日K + 指数收盘价到内存
-  2. VCP + ADX 评分（不依赖基准指数，执行一次）
+  2. ADX 评分（不依赖基准指数，执行一次）
   3. RS 评分（依赖基准指数，按 watchlist 中每个 index 循环）
   4. 输出汇总
+
+注：VCP评分已屏蔽（计算开销大且效果不佳）
 """
 
 import sys
@@ -36,7 +38,8 @@ from strategies.trend_trading.score._base import (
     get_all_stock_codes, get_all_etf_codes, get_all_codes, get_index_members,
 )
 from strategies.trend_trading.score.rs_core import calc_rs_scores_from_data, calc_rs_scores_full
-from strategies.trend_trading.score.vcp_core import calc_vcp_from_data, calc_vcp_batch
+# VCP已屏蔽（计算开销大且效果不佳）
+# from strategies.trend_trading.score.vcp_core import calc_vcp_from_data, calc_vcp_batch
 from strategies.trend_trading.score.adx_core import calc_adx_from_data, calc_adx_batch
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -83,7 +86,7 @@ def preload_data(codes, index_code, end_date, lookback_days):
 
 def run_scores_without_index(stock_data, all_dates, days, adx_period=14):
     """
-    运行 VCP + ADX 评分（不依赖基准指数）
+    运行 ADX 评分（VCP已屏蔽）
 
     参数:
         stock_data: {code: DataFrame} 预加载的日K数据
@@ -92,21 +95,15 @@ def run_scores_without_index(stock_data, all_dates, days, adx_period=14):
         adx_period: ADX计算周期
 
     返回:
-        (vcp_count, adx_count)
+        (vcp_count, adx_count)  # vcp_count 固定返回 0
     """
     logger.info(f"{'='*60}")
-    logger.info(f"  VCP + ADX 评分: {days}天")
+    logger.info(f"  ADX 评分: {days}天 (VCP已屏蔽)")
     logger.info(f"{'='*60}")
 
-    # VCP
-    vcp_start = time.time()
-    try:
-        vcp_count = calc_vcp_from_data(stock_data, all_dates, days)
-    except Exception as e:
-        logger.error(f"VCP评分异常: {e}")
-        vcp_count = 0
-    vcp_time = time.time() - vcp_start
-    logger.info(f"VCP完成: {vcp_count}条, 耗时{vcp_time:.0f}秒")
+    # VCP 已屏蔽（计算开销大且效果不佳）
+    vcp_count = 0
+    logger.info("VCP已屏蔽，跳过")
 
     # ADX
     adx_start = time.time()
@@ -170,7 +167,7 @@ def run_rs(index_code, stock_data, all_dates, days):
 
 
 def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
-    """CLI 主入口（VCP+ADX 一次 + RS 单指数）"""
+    """CLI 主入口（ADX 一次 + RS 单指数）"""
     if end_date is None:
         today = datetime.now().strftime('%Y-%m-%d')
         end_date = get_trading_day_offset_from(today, 0)
@@ -214,14 +211,9 @@ def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
         rs_time = time.time() - rs_start
         logger.info(f"[RS] 完成: {rs_count}条, 耗时{rs_time:.0f}秒")
 
-        vcp_start = time.time()
-        try:
-            vcp_count = calc_vcp_batch()
-        except Exception as e:
-            logger.error(f"[VCP] 评分异常: {e}")
-            vcp_count = 0
-        vcp_time = time.time() - vcp_start
-        logger.info(f"[VCP] 完成: {vcp_count}条, 耗时{vcp_time:.0f}秒")
+        # VCP 已屏蔽（计算开销大且效果不佳）
+        vcp_count = 0
+        logger.info("[VCP] 已屏蔽，跳过")
 
         adx_start = time.time()
         try:
@@ -246,7 +238,7 @@ def run(days=None, end_date=None, index_code=DEFAULT_INDEX, adx_period=14):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='统一刷新全部评分（RS+VCP+ADX）')
+    parser = argparse.ArgumentParser(description='统一刷新全部评分（RS+ADX）')
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument('--full', action='store_true', help='全量刷新')
     mode_group.add_argument('--days', type=int, default=DEFAULT_DAYS, help=f'近日刷新天数（默认{DEFAULT_DAYS}）')

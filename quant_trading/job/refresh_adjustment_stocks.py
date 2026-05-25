@@ -4,9 +4,11 @@ Job: 复权刷新 — 独立后台JOB
 
 接收待复权股票队列，执行：
 1. 前复权日K刷新（逐只从新浪API获取）
-2. 全量重新计算历史技术指标（RS + ADX + VCP + 技术指标）
+2. 全量重新计算历史技术指标（RS + ADX + 技术指标）
 
 完成后通过QQ发送通知。
+
+注：VCP评分已屏蔽（计算开销大且效果不佳）
 
 启动方式（由 update_daily_kline.py 异步调用）：
     python3 -m job.refresh_adjustment_stocks --queue-file /tmp/adjustment_queue.json
@@ -193,16 +195,19 @@ def _recalc_scores_for_codes(codes):
         return
 
     logger.info(f"开始全量刷新 {len(codes)} 只股票的历史技术指标...")
-    logger.info(f"指标: RS + ADX + VCP + 技术指标(MA/SuperTrend/MACD/RSI/OBV/量比/K线形态)")
+    logger.info(f"指标: RS + ADX + 技术指标(MA/SuperTrend/MACD/RSI/OBV/量比/K线形态) (VCP已屏蔽)")
 
-    from core.storage import get_daily_data_from_sqlite, save_adx_score, save_vcp_score
+    from core.storage import get_daily_data_from_sqlite, save_adx_score
+    # VCP已屏蔽（计算开销大且效果不佳）
+    # from core.storage import save_vcp_score
     from strategies.trend_trading.score.adx_core import _extract_adx_records, DEFAULT_PERIOD
-    from strategies.trend_trading.score.vcp_core import _calc_vcp_for_stock_df
+    # from strategies.trend_trading.score.vcp_core import _calc_vcp_for_stock_df
     from strategies.trend_trading.score.indicators_core import _extract_indicator_records as _extract_ti_records
     from strategies.trend_trading.score.indicators_core import _save_indicators_batch
 
     total_rs = 0
     total_adx = 0
+    # VCP已屏蔽（计算开销大且效果不佳）
     total_vcp = 0
     total_indicators = 0
     failed_codes = []
@@ -238,20 +243,20 @@ def _recalc_scores_for_codes(codes):
             except Exception as e:
                 logger.warning(f"  {code} ADX计算失败: {e}")
 
-            # VCP
-            try:
-                conn = get_db_connection()
-                conn.execute("DELETE FROM vcp_score WHERE code = ?", (code,))
-                conn.commit()
-                conn.close()
-
-                vcp_records = _calc_vcp_for_stock_df(code, df)
-                if vcp_records:
-                    save_vcp_score(vcp_records)
-                    total_vcp += len(vcp_records)
-                    logger.info(f"  VCP: {len(vcp_records)} 条")
-            except Exception as e:
-                logger.warning(f"  {code} VCP计算失败: {e}")
+            # VCP 已屏蔽（计算开销大且效果不佳）
+            # try:
+            #     conn = get_db_connection()
+            #     conn.execute("DELETE FROM vcp_score WHERE code = ?", (code,))
+            #     conn.commit()
+            #     conn.close()
+            #
+            #     vcp_records = _calc_vcp_for_stock_df(code, df)
+            #     if vcp_records:
+            #         save_vcp_score(vcp_records)
+            #         total_vcp += len(vcp_records)
+            #         logger.info(f"  VCP: {len(vcp_records)} 条")
+            # except Exception as e:
+            #     logger.warning(f"  {code} VCP计算失败: {e}")
 
             # RS
             rs_count_for_code = 0

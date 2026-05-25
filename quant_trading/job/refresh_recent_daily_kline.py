@@ -37,7 +37,8 @@ from core.paths import DB_PATH
 from core.storage import batch_upsert_daily_kline, get_watchlist_index_codes
 from core.data_access import _sina_daily_kline
 from job.calc_scores import preload_data, run_scores_without_index, run_rs
-from strategies.trend_trading.score.vcp_core import WINDOW
+# VCP已屏蔽（计算开销大且效果不佳）
+# from strategies.trend_trading.score.vcp_core import WINDOW
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -241,7 +242,7 @@ def run_custom(start_date, end_date, stock_codes, calc_scores=False):
 
 def calc_scores_for_stock_list(stock_codes, start_date, end_date):
     """
-    为指定股票列表计算历史日期范围的评分（VCP + ADX + RS）
+    为指定股票列表计算历史日期范围的评分（ADX + RS，VCP已屏蔽）
 
     与 update_daily_kline.py 的区别：
     - update_daily_kline.py 只计算当天（days=1）
@@ -263,17 +264,17 @@ def calc_scores_for_stock_list(stock_codes, start_date, end_date):
     start_dt = datetime.strptime(start_date, '%Y-%m-%d')
     range_days = (end_dt - start_dt).days + 1
 
-    # 计算各指标需要的预热期
-    vcp_warmup = WINDOW - 1  # VCP: 90天窗口 + 14天ATR = 104，预热103天
+    # 计算各指标需要的预热期（VCP已屏蔽）
+    # vcp_warmup = WINDOW - 1  # VCP: 90天窗口 + 14天ATR = 104，预热103天
     adx_warmup = 2 * 14 - 1  # ADX: 27天预热
     rs_warmup = 250  # RS: 250天历史数据
 
     # 取最大预热期 + 日历范围作为预加载天数
-    max_warmup = max(vcp_warmup, adx_warmup, rs_warmup)
+    max_warmup = max(adx_warmup, rs_warmup)
     lookback_days = max_warmup + range_days
 
     logger.info(f"计算范围: {start_date}~{end_date} ({range_days}天)")
-    logger.info(f"预热期: VCP={vcp_warmup}, ADX={adx_warmup}, RS={rs_warmup}, 最大={max_warmup}")
+    logger.info(f"预热期: ADX={adx_warmup}, RS={rs_warmup}, 最大={max_warmup} (VCP已屏蔽)")
 
     # 预加载数据（包含股票和指数）
     stock_data, index_closes, all_dates = preload_data(
@@ -315,14 +316,14 @@ def calc_scores_for_stock_list(stock_codes, start_date, end_date):
         logger.error("无足够数据计算评分")
         return 0
 
-    # 计算 VCP + ADX（不需要基准指数）
+    # 计算 ADX（VCP已屏蔽，不需要基准指数）
     vcp_count, adx_count = run_scores_without_index(stock_data, all_dates, calc_days)
 
     # 计算 RS（需要基准指数，按 watchlist 中每个指数循环）
     rs_count = run_rs(index_code, stock_data, all_dates, calc_days)
 
-    total = vcp_count + adx_count + rs_count
-    logger.info(f"=== 评分完成: VCP={vcp_count}, ADX={adx_count}, RS={rs_count}, 总计={total} ===")
+    total = adx_count + rs_count
+    logger.info(f"=== 评分完成: ADX={adx_count}, RS={rs_count}, 总计={total} (VCP已屏蔽) ===")
     return total
 
 

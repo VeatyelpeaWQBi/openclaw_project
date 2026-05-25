@@ -488,7 +488,7 @@ def _update_klines(today):
 
 def _update_scores(today):
     """
-    步骤2：统一计算 VCP + ADX + RS 评分
+    步骤2：统一计算 ADX + RS 评分（VCP已屏蔽）
 
     返回:
         dict: {'vcp_count': int, 'adx_count': int, 'rs_count': int, 'score_error': bool}
