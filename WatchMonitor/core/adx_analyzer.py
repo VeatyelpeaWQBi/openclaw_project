@@ -322,6 +322,10 @@ def get_stock_adx(code: str, calc_date: Optional[str] = None) -> Optional[dict]:
         trend_type, color, summary = classify_trend(adx, plus_di, minus_di)
         display = format_adx_display(adx, plus_di, minus_di)
         
+        # 查询近4天ADX历史用于趋势展示
+        history = get_stock_adx_history(code, days=4, calc_date=calc_date)
+        trend = format_adx_trend(history)
+
         return {
             'code': code,
             'adx': round(adx, 1),
@@ -331,11 +335,102 @@ def get_stock_adx(code: str, calc_date: Optional[str] = None) -> Optional[dict]:
             'color': color,
             'display': display,
             'summary': summary,
+            'history': history,
+            'trend': trend,
         }
-        
+
     except Exception as e:
         logger.error(f"[{code}] 获取ADX失败: {e}")
         return None
+
+
+def get_stock_adx_history(code: str, days: int = 4, calc_date: Optional[str] = None) -> list[dict]:
+    """
+    获取个股近N天的ADX历史数据
+
+    参数:
+        code: 股票代码
+        days: 取最近N天（默认4天，用于计算3天变化）
+        calc_date: 截止日期，默认今日
+
+    返回:
+        list[dict]: 按日期从新到旧排序，每个元素包含 calc_date/adx/plus_di/minus_di
+    """
+    if calc_date is None:
+        calc_date = datetime.now().strftime('%Y-%m-%d')
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # 查询截止日期前最近N天的ADX数据
+        cursor.execute("""
+            SELECT calc_date, adx, plus_di, minus_di
+            FROM adx_score
+            WHERE code = ? AND calc_date <= ?
+            ORDER BY calc_date DESC
+            LIMIT ?
+        """, (code, calc_date, days))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        history = []
+        for row in rows:
+            history.append({
+                'calc_date': row[0],
+                'adx': round(row[1], 1) if row[1] is not None else None,
+                'plus_di': round(row[2], 1) if row[2] is not None else None,
+                'minus_di': round(row[3], 1) if row[3] is not None else None,
+            })
+
+        return history
+
+    except Exception as e:
+        logger.warning(f"[{code}] 获取ADX历史失败: {e}")
+        return []
+
+
+def format_adx_trend(history: list[dict]) -> str:
+    """
+    格式化ADX近3天变化趋势
+
+    参数:
+        history: 近4天ADX数据（新→旧），来自 get_stock_adx_history 或 get_index_adx
+
+    返回:
+        str: （↑+0.1，↓-0.2，→0.0），数据不足时返回空字符串
+    """
+    if not history or len(history) < 2:
+        return ''
+
+    parts = []
+    # 计算近 min(3, len(history)-1) 天的变化
+    for i in range(min(3, len(history) - 1)):
+        curr_adx = history[i].get('adx')
+        prev_adx = history[i + 1].get('adx')
+
+        if curr_adx is None or prev_adx is None:
+            continue
+
+        delta = round(curr_adx - prev_adx, 1)
+
+        if abs(delta) < 0.05:
+            arrow = '→'
+            delta_str = f'{delta:.1f}'
+        elif delta > 0:
+            arrow = '↑'
+            delta_str = f'+{delta:.1f}'
+        else:
+            arrow = '↓'
+            delta_str = f'{delta:.1f}'
+
+        parts.append(f'{arrow}{delta_str}')
+
+    if not parts:
+        return ''
+
+    return '（' + '，'.join(parts) + '）'
 
 
 def get_positions_with_adx(calc_date: Optional[str] = None) -> list[dict]:
@@ -710,10 +805,22 @@ def get_index_adx(index_code: str, calc_date: Optional[str] = None) -> Optional[
             prev_plus_di = float(prev_row['plus_di'])
             prev_minus_di = float(prev_row['minus_di'])
 
-        # 5. 取最近3日ADX序列（用于连续变化检测）
+        # 5. 取最近3日ADX序列（用于连续变化检测，保持原有逻辑不变）
         recent_adx_series = []
         if len(valid) >= 3:
             recent_adx_series = valid['adx'].tail(3).tolist()
+
+        # 5b. 取最近4日完整ADX历史（用于近3天趋势展示）
+        history = []
+        for i in range(min(4, len(valid))):
+            row_hist = valid.iloc[-(i + 1)]
+            history.append({
+                'calc_date': str(row_hist['date'])[:10] if 'date' in row_hist else '',
+                'adx': float(row_hist['adx']) if pd.notna(row_hist['adx']) else None,
+                'plus_di': float(row_hist['plus_di']) if pd.notna(row_hist['plus_di']) else None,
+                'minus_di': float(row_hist['minus_di']) if pd.notna(row_hist['minus_di']) else None,
+            })
+        trend = format_adx_trend(history)
 
         # 6. 趋势分类与展示
         trend_type, color, summary = classify_trend(adx, plus_di, minus_di)
@@ -746,6 +853,8 @@ def get_index_adx(index_code: str, calc_date: Optional[str] = None) -> Optional[
             'prev_plus_di': round(prev_plus_di, 1) if prev_plus_di else None,
             'prev_minus_di': round(prev_minus_di, 1) if prev_minus_di else None,
             'recent_adx_series': [round(x, 1) for x in recent_adx_series],
+            'history': history,
+            'trend': trend,
         }
 
     except Exception as e:

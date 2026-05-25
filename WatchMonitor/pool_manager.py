@@ -48,7 +48,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.storage import (
     add_position, remove_position, update_position, get_all_positions, get_position_by_code,
+    clear_all_positions,
     add_candidate, remove_candidate, update_candidate, get_all_candidates, get_candidate_by_code,
+    clear_all_candidates,
     get_daily_data_from_sqlite, init_all_tables, save_technical_indicators, get_technical_indicators
 )
 from core.indicator_funcs import calculate_all_indicators, calculate_ma, calculate_macd, calculate_rsi
@@ -330,11 +332,15 @@ def cmd_position_import(args):
     print(f"\n{'='*60}")
     print(f"导入持仓池: {filepath}")
     print(f"{'='*60}")
-    
+
+    # 先清空持仓池
+    clear_all_positions()
+    print("  🗑️ 持仓池已清空")
+
     success_count = 0
     skip_count = 0
     error_count = 0
-    
+
     try:
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
@@ -458,11 +464,15 @@ def cmd_candidate_import(args):
     print(f"\n{'='*60}")
     print(f"导入候选池: {filepath}")
     print(f"{'='*60}")
-    
+
+    # 先清空候选池
+    clear_all_candidates()
+    print("  🗑️ 候选池已清空")
+
     success_count = 0
     skip_count = 0
     error_count = 0
-    
+
     try:
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)

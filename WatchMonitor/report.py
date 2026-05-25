@@ -69,8 +69,11 @@ def generate_market_report(result):
                             adx_info = get_index_adx(index_code)
                             if adx_info:
                                 display = adx_info.get('display', '')
+                                trend = adx_info.get('trend', '')
                                 comment = adx_info.get('short_comment', '')
                                 adx_part = f" {display}"
+                                if trend:
+                                    adx_part += trend
                                 if comment:
                                     adx_part += f" {comment}"
                         except Exception:
@@ -358,6 +361,17 @@ def generate_single_position_report(pr):
             trend_text = '🜲未知'
 
         lines.append(f"  - 趋势状态: {trend_text}")
+
+    # ADX趋势展示
+    try:
+        from core.adx_analyzer import get_stock_adx
+        adx_info = get_stock_adx(code)
+        if adx_info:
+            adx_line = f"  - ADX: {adx_info.get('display', '')}{adx_info.get('trend', '')}"
+            lines.append(adx_line)
+    except Exception:
+        pass  # ADX数据缺失时静默跳过
+
     lines.append("")
 
     # 筛选真实风险信号（排除扫雷）
@@ -644,6 +658,16 @@ def generate_single_candidate_report(cs):
             trend_text = '🜲未知'
 
         lines.append(f"  - 趋势状态: {trend_text}")
+
+    # ADX趋势展示
+    try:
+        from core.adx_analyzer import get_stock_adx
+        adx_info = get_stock_adx(code)
+        if adx_info:
+            adx_line = f"  - ADX: {adx_info.get('display', '')}{adx_info.get('trend', '')}"
+            lines.append(adx_line)
+    except Exception:
+        pass  # ADX数据缺失时静默跳过
 
     # 信号列表（只显示关键信号）
     if signals:

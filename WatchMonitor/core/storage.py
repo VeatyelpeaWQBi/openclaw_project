@@ -368,6 +368,23 @@ def remove_position(code: str) -> bool:
         conn.close()
 
 
+def clear_all_positions() -> bool:
+    """
+    清空持仓池（删除所有持仓）
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM position_pool")
+        conn.commit()
+        logger.info("持仓池已清空")
+        return True
+    except Exception as e:
+        logger.error(f"清空持仓池失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def update_position(code: str, **kwargs) -> bool:
     """
     更新持仓信息
@@ -481,6 +498,23 @@ def remove_candidate(code: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"删除候选失败: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def clear_all_candidates() -> bool:
+    """
+    清空候选池（删除所有候选）
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM candidate_pool")
+        conn.commit()
+        logger.info("候选池已清空")
+        return True
+    except Exception as e:
+        logger.error(f"清空候选池失败: {e}")
         return False
     finally:
         conn.close()

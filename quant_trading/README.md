@@ -49,7 +49,7 @@ quant_trading/
 │
 ├── core/                            # 核心模块（数据/指标/存储）
 │   ├── data_access.py               #   数据访问（API调用封装）
-│   ├── storage.py                   #   SQLite存储（含ADX/RS/VCP读写）
+│   ├── storage.py                   #   SQLite存储（含ADX/RS读写，VCP已屏蔽）
 │   ├── indicators.py                #   技术指标计算（SuperTrend等）
 │   ├── log_setup.py                 #   日志配置
 │   └── paths.py                     #   路径加载
@@ -83,7 +83,7 @@ quant_trading/
 │       └── score/                   #     ⭐ 评分模块
 │           ├── _base.py             #       共享工具（日期获取、批量预加载）
 │           ├── rs_core.py           #       RS相对强度评分
-│           ├── vcp_core.py          #       VCP波动收缩评分
+│           ├── vcp_core.py          #       VCP波动收缩评分（已屏蔽）
 │           └── adx_core.py          #       ADX趋势强度评分
 │
 ├── db_init/                         # 数据库初始化SQL
@@ -91,9 +91,9 @@ quant_trading/
 │
 ├── job/                             # 定时任务
 │   ├── update_daily_kline.py        #   全市场日K增量更新（新浪原生API）
-│   ├── calc_scores.py               #   ⭐ 统一评分入口（RS+VCP+ADX一键刷新）
+│   ├── calc_scores.py               #   ⭐ 统一评分入口（RS+ADX一键刷新，VCP已屏蔽）
 │   ├── calc_rs_score.py             #   RS相对强度评分（支持 --full/--days N）
-│   ├── calc_vcp_score.py            #   VCP波动收缩评分（支持 --full/--days N）
+│   ├── calc_vcp_score.py            #   VCP波动收缩评分（已屏蔽，直接返回0）
 │   ├── calc_adx_score.py            #   ADX趋势强度评分（支持 --full/--days N）
 │   ├── fetch_index_info.py          #   获取全A股指数元数据（中证指数官网）
 │   ├── fetch_index_members.py       #   获取指数成分股列表
@@ -116,7 +116,7 @@ quant_trading/
 │  负责：策略特有计算 + 评分模块                       │
 │  ┌─────────────────────────────────────────┐     │
 │  │ score/                                   │     │
-│  │  RS(相对强度) · VCP(波动收缩) · ADX(趋势)  │     │
+│  │  RS(相对强度) · ADX(趋势)（VCP已屏蔽）     │     │
 │  └─────────────────────────────────────────┘     │
 ├─────────────────────────────────────────────────┤
 │  Executor（调度层）                               │
@@ -150,13 +150,15 @@ quant_trading/
 
 ## ⭐ 评分体系
 
-### 三维评分
+### 三维评分（VCP已屏蔽）
 
-| 评分 | 算法 | 维度 | 输出表 |
-|------|------|------|--------|
-| RS（相对强度） | 个股250日涨幅 vs 基准指数涨幅，百分位排名 | 动量 | `rs_score` |
-| VCP（波动收缩） | 收缩率+突破+成交量，多周期 | 形态 | `vcp_score` |
-| ADX（趋势强度） | Wilder's 平滑方向指标，0-100映射 | 趋势 | `adx_score` |
+> **注意**：VCP（波动收缩）评分因计算开销大且效果不佳，已于 2026-05-25 全局屏蔽。综合评分权重已重新分配：RS 0.55 + ADX 0.45。
+
+| 评分 | 算法 | 维度 | 输出表 | 状态 |
+|------|------|------|--------|------|
+| RS（相对强度） | 个股250日涨幅 vs 基准指数涨幅，百分位排名 | 动量 | `rs_score` | ✅ 启用 |
+| VCP（波动收缩） | 收缩率+突破+成交量，多周期 | 形态 | `vcp_score` | ⛔ 已屏蔽 |
+| ADX（趋势强度） | Wilder's 平滑方向指标，0-100映射 | 趋势 | `adx_score` | ✅ 启用 |
 
 ### 统一入口
 
@@ -170,7 +172,8 @@ python3 -m job.calc_scores --days 30
 # 单独刷新某项
 python3 -m job.calc_rs_score 000510 --days 30
 python3 -m job.calc_adx_score --days 30
-python3 -m job.calc_vcp_score --days 30
+# VCP已屏蔽，以下命令直接返回0
+# python3 -m job.calc_vcp_score --days 30
 ```
 
 ### ADX 评分算法
@@ -185,9 +188,9 @@ python3 -m job.calc_vcp_score --days 30
 | JOB 文件 | 功能 | 数据源 | 输出表 |
 |-----------|------|--------|--------|
 | `update_daily_kline.py` | 全市场日K增量更新 | 新浪财经原生API | `daily_kline` |
-| `calc_scores.py` | 统一评分（RS+VCP+ADX） | 本地DB | `rs_score` / `vcp_score` / `adx_score` |
+| `calc_scores.py` | 统一评分（RS+ADX，VCP已屏蔽） | 本地DB | `rs_score` / `adx_score` |
 | `calc_rs_score.py` | RS相对强度评分 | 本地DB | `rs_score` |
-| `calc_vcp_score.py` | VCP波动收缩评分 | 本地DB | `vcp_score` |
+| `calc_vcp_score.py` | VCP波动收缩评分（已屏蔽） | 本地DB | — |
 | `calc_adx_score.py` | ADX趋势强度评分 | 本地DB | `adx_score` |
 | `fetch_index_info.py` | 获取全A股指数元数据 | 中证指数官网 | `index_info` |
 | `fetch_index_members.py` | 获取指定指数成分股列表 | 中证指数官网 | `index_members` |
@@ -237,7 +240,7 @@ sqlite3 data/stock_data.db < db_init/init_all.sql
 | minute_kline | 分钟K线数据 |
 | index_daily_kline | 指数日K线数据 |
 | rs_score | RS相对强度评分历史 |
-| vcp_score | VCP波动收缩评分历史 |
+| vcp_score | VCP波动收缩评分历史（已屏蔽，保留旧数据） |
 | adx_score | ADX趋势强度评分历史 |
 | index_info | 指数元数据 |
 | index_members | 指数成分股列表 |
