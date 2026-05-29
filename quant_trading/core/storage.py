@@ -1327,7 +1327,7 @@ def update_position_atr(account_id: int, code: str, new_atr: float) -> bool:
 
 def save_technical_indicators(code: str, indicators: dict) -> bool:
     """
-    保存技术指标到数据库
+    保存技术指标到数据库（单条写入，保留向后兼容）
     """
     if not indicators or 'calc_date' not in indicators:
         logger.warning(f"技术指标数据无效: {code}")
@@ -1370,5 +1370,73 @@ def save_technical_indicators(code: str, indicators: dict) -> bool:
     except Exception as e:
         logger.error(f"保存技术指标失败: {e}")
         return False
+    finally:
+        conn.close()
+
+
+def batch_upsert_technical_indicators(records: list[dict]) -> int:
+    """
+    批量写入/更新技术指标（INSERT OR REPLACE）
+
+    参数:
+        records: list of dict，每个 dict 包含:
+            code, calc_date, ma5, ma10, ma20, ma60, ma120, ma250,
+            ma5_slope, ma10_slope, ma20_slope,
+            st_upper_band, st_lower_band, st_direction, st_atr,
+            macd_dif, macd_dea, macd_histogram,
+            rsi_14, volume_ratio_5, volume_ratio_20,
+            is_long_upper_shadow, is_long_lower_shadow,
+            is_bullish_candle, is_bearish_candle,
+            created_at, obv, ma_obv,
+            macd_histogram_slope, macd_dif_slope, macd_dea_slope, macd_slope_summary
+
+    返回:
+        int: 写入条数
+    """
+    if not records:
+        return 0
+
+    conn = get_db_connection()
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rows = []
+        for r in records:
+            rows.append((
+                r['code'],
+                r.get('calc_date'),
+                r.get('ma5'), r.get('ma10'), r.get('ma20'),
+                r.get('ma60'), r.get('ma120'), r.get('ma250'),
+                r.get('ma5_slope'), r.get('ma10_slope'), r.get('ma20_slope'),
+                r.get('st_upper_band'), r.get('st_lower_band'),
+                r.get('st_direction'), r.get('st_atr'),
+                r.get('macd_dif'), r.get('macd_dea'), r.get('macd_histogram'),
+                r.get('rsi_14'),
+                r.get('volume_ratio_5'), r.get('volume_ratio_20'),
+                r.get('is_long_upper_shadow', 0), r.get('is_long_lower_shadow', 0),
+                r.get('is_bullish_candle', 0), r.get('is_bearish_candle', 0),
+                r.get('created_at', now),
+                r.get('obv'), r.get('ma_obv'),
+                r.get('macd_histogram_slope', 0), r.get('macd_dif_slope', 0),
+                r.get('macd_dea_slope', 0), r.get('macd_slope_summary', '→震荡'),
+            ))
+
+        conn.executemany("""
+            INSERT OR REPLACE INTO technical_indicators
+            (code, calc_date, ma5, ma10, ma20, ma60, ma120, ma250,
+             ma5_slope, ma10_slope, ma20_slope,
+             st_upper_band, st_lower_band, st_direction, st_atr,
+             macd_dif, macd_dea, macd_histogram,
+             rsi_14, volume_ratio_5, volume_ratio_20,
+             is_long_upper_shadow, is_long_lower_shadow,
+             is_bullish_candle, is_bearish_candle,
+             created_at, obv, ma_obv,
+             macd_histogram_slope, macd_dif_slope, macd_dea_slope, macd_slope_summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
+        conn.commit()
+        return len(rows)
+    except Exception as e:
+        logger.error(f"批量写入技术指标失败: {e}")
+        return 0
     finally:
         conn.close()

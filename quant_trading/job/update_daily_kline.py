@@ -47,7 +47,7 @@ from core.storage import (
     batch_upsert_index_daily_kline,
     batch_upsert_etf_daily_kline,
     get_recent_trade_dates, get_avg_volume_by_code,
-    get_db_connection, save_technical_indicators,
+    get_db_connection, batch_upsert_technical_indicators,
 )
 from indicators.utils import (
     calculate_ma, calculate_ma_slope,
@@ -660,8 +660,10 @@ def batch_update_technical_indicators(force: bool = False) -> dict:
     total = len(codes)
     calculated = 0
     skipped = 0
+    batch_records = []
+    BATCH_SIZE = 1000
 
-    # 3. 逐股计算并保存
+    # 3. 逐股计算并批量保存
     for idx, code in enumerate(codes, 1):
         try:
             # 读取日K数据（MA250需要至少250天，SuperTrend 90天ATR需要至少100天）
@@ -735,9 +737,16 @@ def batch_update_technical_indicators(force: bool = False) -> dict:
             indicators['is_bullish_candle'] = candle_data.get('is_bullish_candle', 0)
             indicators['is_bearish_candle'] = candle_data.get('is_bearish_candle', 0)
 
-            # 保存
-            save_technical_indicators(code, indicators)
+            # 加入批量队列
+            indicators['code'] = code
+            batch_records.append(indicators)
             calculated += 1
+
+            # 达到批量阈值则写入
+            if len(batch_records) >= BATCH_SIZE:
+                inserted = batch_upsert_technical_indicators(batch_records)
+                logger.info(f"批量写入技术指标: {inserted} 条")
+                batch_records = []
 
             # 进度日志
             if idx % 100 == 0:
@@ -747,6 +756,11 @@ def batch_update_technical_indicators(force: bool = False) -> dict:
         except Exception as e:
             skipped += 1
             logger.debug(f"[{code}] 计算失败: {e}")
+
+    # 写入剩余数据
+    if batch_records:
+        inserted = batch_upsert_technical_indicators(batch_records)
+        logger.info(f"批量写入技术指标(剩余): {inserted} 条")
 
     elapsed = time.time() - start_time
     logger.info(f"技术指标更新完成: 总计{total}, 已计算{calculated}, 跳过{skipped}, 耗时{elapsed:.1f}s")
