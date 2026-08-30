@@ -10,7 +10,7 @@ import json
 
 # KLinePredictor 的项目根目录
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 根目录的config（openclaw_project/config）
+# 根目录的config（trading_ai_toolkit/config）
 _ROOT_CONFIG_DIR = os.path.join(os.path.dirname(_PROJECT_ROOT), 'config')
 
 

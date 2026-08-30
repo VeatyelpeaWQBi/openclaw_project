@@ -36,6 +36,7 @@ if _project_base not in sys.path:
 
 from core.storage import (
     get_db_connection, batch_upsert_daily_kline,
+    batch_upsert_rs_score,
     get_watchlist_index_codes,
 )
 
@@ -289,6 +290,7 @@ def _recalc_scores_for_codes(codes):
                         continue
 
                     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    index_rs_batch = []
 
                     for calc_idx in range(lookback, len(trade_days)):
                         calc_date = trade_days[calc_idx]
@@ -299,15 +301,17 @@ def _recalc_scores_for_codes(codes):
                         )
 
                         if result:
-                            from core.storage import batch_upsert_rs_score
-                            batch_upsert_rs_score([
+                            index_rs_batch.extend([
                                 (code, index_code, calc_date,
                                  round(r[1], 6), r[2], r[3],
                                  round(r[4], 6), round(r[5], 6),
                                  lookback, now_str)
                                 for r in result if r[0] == code
                             ])
-                            rs_count_for_code += 1
+
+                    if index_rs_batch:
+                        batch_upsert_rs_score(index_rs_batch)
+                        rs_count_for_code += len(index_rs_batch)
 
                 except Exception as e:
                     logger.warning(f"  {code} RS({index_code})计算失败: {e}")

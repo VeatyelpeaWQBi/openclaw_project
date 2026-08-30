@@ -19,7 +19,7 @@ from datetime import datetime
 
 # 路径设置
 _BE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backtest_engine
-_PROJECT_ROOT = os.path.dirname(_BE_ROOT)  # openclaw_project
+_PROJECT_ROOT = os.path.dirname(_BE_ROOT)  # trading_ai_toolkit
 _QT_ROOT = os.path.join(_PROJECT_ROOT, 'quant_trading')
 for p in [_BE_ROOT, _QT_ROOT]:
     if p not in sys.path:

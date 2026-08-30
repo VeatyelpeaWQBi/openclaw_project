@@ -15,7 +15,7 @@ from datetime import datetime
 
 # 确保项目根目录和 config 在 sys.path 中
 _project_root = os.path.dirname(os.path.abspath(__file__))
-_openclaw_root = os.path.dirname(_project_root)  # openclaw_project 根目录
+_openclaw_root = os.path.dirname(_project_root)  # trading_ai_toolkit 根目录
 _config_dir = os.path.join(_openclaw_root, 'config')
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
